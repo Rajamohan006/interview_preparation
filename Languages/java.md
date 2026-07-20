@@ -537,9 +537,20 @@ System.out.println(obj instanceof Animal);  // true (if Dog extends Animal)
 
 ## 7. Decision Making Statements
 
+Decision-making statements (also known as conditional or selection statements) in Java allow the programmer to control the flow of program execution based on the evaluation of boolean conditions.
+
 ### 1. if Statement
+An `if` statement evaluates a boolean expression. If the expression evaluates to `true`, the statements inside the `if` block are executed. If `false`, the block is skipped.
+
+**Syntax:**
 ```java
-// Executes block ONLY when condition is true
+if (condition) {
+    // block of code to be executed if condition is true
+}
+```
+
+**Example:**
+```java
 int age = 18;
 if (age >= 18) {
     System.out.println("You can vote");
@@ -547,8 +558,19 @@ if (age >= 18) {
 ```
 
 ### 2. if-else Statement
+An `if-else` statement provides two execution paths. If the condition is `true`, the `if` block is executed; otherwise, the `else` block is executed.
+
+**Syntax:**
 ```java
-// Chooses between two outcomes
+if (condition) {
+    // block of code to be executed if condition is true
+} else {
+    // block of code to be executed if condition is false
+}
+```
+
+**Example:**
+```java
 int i = 20;
 if (i < 15) {
     System.out.println("Small");
@@ -558,8 +580,19 @@ if (i < 15) {
 ```
 
 ### 3. Nested if
+A nested `if` is an `if` statement that is the target of another `if` or `else` statement. It is used when a secondary condition must be checked only if the primary condition is true.
+
+**Syntax:**
 ```java
-// if inside another if — when second condition depends on first
+if (condition1) {
+    if (condition2) {
+        // block of code to be executed if both condition1 and condition2 are true
+    }
+}
+```
+
+**Example:**
+```java
 int age = 25;
 boolean hasID = true;
 
@@ -573,9 +606,21 @@ if (age >= 18) {
 ```
 
 ### 4. if-else-if Ladder
+An `if-else-if` ladder evaluates multiple conditions sequentially from top to bottom. As soon as one of the conditions is true, its block is executed, and the rest of the ladder is skipped. If none are true, the final `else` block (if present) executes.
+
+**Syntax:**
 ```java
-// Multiple conditions checked sequentially
-// ONLY first true condition executes
+if (condition1) {
+    // statement(s);
+} else if (condition2) {
+    // statement(s);
+} else {
+    // statement(s);
+}
+```
+
+**Example:**
+```java
 int marks = 75;
 
 if (marks >= 90) {
@@ -590,6 +635,26 @@ if (marks >= 90) {
 ```
 
 ### 5. switch Statement
+The `switch` statement selects one of many code blocks to execute based on the value of a single variable or expression (called the selector). 
+
+* **Supported Types:** byte, short, char, int, their respective wrapper classes (`Byte`, `Short`, `Character`, `Integer`), `String` (since Java 7), and `enum`s.
+* **Fall-Through Behavior:** Without a `break` statement, execution continues into the next `case` block automatically, even if that case doesn't match the condition.
+
+**Syntax:**
+```java
+switch (expression) {
+    case value1:
+        // code block
+        break;
+    case value2:
+        // code block
+        break;
+    default:
+        // default code block
+}
+```
+
+**Example:**
 ```java
 int num = 2;
 
@@ -606,12 +671,9 @@ switch (num) {
     default:
         System.out.println("Other");  // runs if no case matches
 }
-
-// ⚠️ switch works with: int, char, String (Java 7+), enum
-// ⚠️ Without break → FALL-THROUGH (all subsequent cases execute)
 ```
 
-### Fall-Through Concept (IMPORTANT)
+#### Fall-Through Concept (IMPORTANT)
 ```java
 int x = 1;
 switch (x) {
@@ -631,43 +693,123 @@ switch (x) {
 // Because: no break after case 1 and case 2!
 ```
 
-### 6. Ternary Operator (Shorthand if-else)
+### 6. switch Expressions (Java 12+, Standardized in Java 14)
+Java 14 introduced a modern form of `switch` that can be used as an expression (returns a value) and uses the arrow (`->`) syntax. 
+
+* **Arrow syntax (`->`):** Eliminates the need for `break` statements. No fall-through can occur.
+* **`yield` Keyword:** Used to return a value from a multi-line code block within a `switch` case.
+* **Exhaustiveness:** The compiler forces switch expressions to handle all possible inputs (requiring a `default` case, or complete coverage of enum/sealed types).
+
+**Example:**
+```java
+String day = "MONDAY";
+int numLetters = switch (day) {
+    case "MONDAY", "FRIDAY", "SUNDAY" -> 6;
+    case "TUESDAY" -> 7;
+    case "THURSDAY", "SATURDAY" -> 8;
+    case "WEDNESDAY" -> 9;
+    default -> throw new IllegalStateException("Invalid day: " + day);
+};
+// numLetters = 6
+
+// Example using yield for multi-line block
+int size = switch (day) {
+    case "MONDAY" -> {
+        System.out.println("Beginning of work week");
+        yield 6;
+    }
+    default -> day.length();
+};
+```
+
+### 7. Pattern Matching for switch (Java 17+, Finalized in Java 21)
+Java 21 finalized Pattern Matching for `switch`, allowing case labels to check the **type** of an object and automatically cast it.
+
+* **Type Patterns:** Simplifies `instanceof` checks and casts.
+* **Guarded Patterns (`when`):** Allows adding arbitrary boolean conditions to cases.
+* **Null Handling:** `null` can be matched directly as a case, avoiding a manual null check before the switch.
+
+**Example:**
+```java
+static String formatterPattern(Object obj) {
+    return switch (obj) {
+        case Integer i -> String.format("int %d", i);
+        case Long l    -> String.format("long %d", l);
+        case Double d  -> String.format("double %f", d);
+        case String s when s.length() > 5 -> String.format("long string: %s", s);
+        case String s  -> String.format("short string: %s", s);
+        case null      -> "null value";
+        default        -> obj.toString();
+    };
+}
+```
+
+### 8. Ternary Operator (Shorthand if-else)
+The ternary operator (`?:`) is a conditional operator that provides a shorthand way to write simple `if-else` statements. It evaluates a condition and returns one of two values.
+
+**Syntax:**
+```java
+variable = (condition) ? value_if_true : value_if_false;
+```
+
+**Example:**
 ```java
 int a = 10, b = 20;
 int max = (a > b) ? a : b;   // max = 20
 System.out.println("Max: " + max);
 ```
 
-### if-else vs switch — Key Differences
+---
 
-| Feature | if-else | switch |
-|---|---|---|
-| Condition type | Complex (>, <, &&, \|\|) | Exact value matching |
-| Performance | Slower for many checks | Faster (jump table) |
-| Readability | Better for 2-3 conditions | Better for many exact values |
-| Data types | Any boolean expression | int, char, String, enum |
-| Default case | else | default |
+### if-else vs switch vs switch Expressions
+
+| Feature | if-else | Traditional switch | switch Expression (Java 14+) |
+|---|---|---|---|
+| **Syntax Style** | Statement block | Statement block, requires `break` | Expression returning value, uses `->` or `yield` |
+| **Condition Type** | Boolean expression (complex comparison) | Constant exact matches only | Constant matches, type patterns (Java 21+) |
+| **Fall-through** | N/A | Yes (if `break` is omitted) | No |
+| **Performance** | O(N) sequential check | O(1) jump table (compiled optimization) | O(1) jump table |
+| **Exhaustiveness Check** | No (compiler doesn't check coverage) | No | Yes (compiler ensures all paths covered) |
+| **Supported Types** | Any boolean expression | byte, short, char, int, wrappers, String, enum | Any type (using Pattern Matching in Java 21+) |
+
+---
 
 ### Common Interview Questions
 
 **Q. What is fall-through in switch?**
-> Fall-through occurs when a `switch` case does not have a `break` statement. Execution continues into the next case(s) regardless of whether they match. This can be intentional (when multiple cases share the same code) or a bug if break is accidentally omitted.
+> Fall-through occurs when a `switch` case does not have a `break` statement. Execution continues into the subsequent case blocks regardless of whether they match the switch expression. This can be used intentionally to share execution logic, or it can be a source of bugs if omitted accidentally.
 
 **Q. Can switch work with String?**
-> Yes, from Java 7 onwards, `switch` supports `String` values.
+> Yes, from Java 7 onwards, `switch` supports `String` values. Internally, the compiler compares the String's `hashCode()` and then verifies equality using `.equals()`.
 
 **Q. Which is faster — if-else or switch?**
-> `switch` is faster when there are many conditions because the compiler can optimize it into a jump table (O(1) lookup), whereas `if-else` checks conditions sequentially (O(n)).
+> `switch` is generally faster when there are many conditions because the compiler can compile it into a jump table (`lookupswitch` or `tableswitch` JVM instructions) which operates in O(1) time complexity, whereas `if-else` executes conditions sequentially in O(N) time.
 
 **Q. What is the dangling else problem?**
-```java
-// else always binds to the NEAREST if
-if (x > 2)
-    if (x > 4)
-        System.out.println("A");
-    else
-        System.out.println("B");  // belongs to inner if (x > 4), NOT outer!
-```
+> The **dangling else** problem is a confusion that happens when we write nested `if` statements without using curly braces `{ }`. Because there are no braces, it is hard to tell which `if` statement the `else` belongs to.
+> 
+> In Java, the rule is simple: **an `else` always pairs with the closest preceding `if` that does not already have an `else`.**
+> 
+> **Example:**
+> ```java
+> if (x > 2)
+>     if (x > 4)
+>         System.out.println("A");
+>     else
+>         System.out.println("B");  // Belongs to the INNER if (x > 4), NOT the outer one!
+> ```
+> **Best Practice:** Always use curly braces `{ }` to make it clear and avoid this issue.
+
+**Q. What is the difference between a switch statement and a switch expression?**
+> - **Statement vs Expression:** A switch statement executes a block of statements but does not return a value. A switch expression evaluates to a value that can be assigned to a variable or passed as an argument.
+> - **Syntax:** Switch expressions typically use arrow (`->`) syntax instead of colons (`:`) and do not require `break` statements.
+> - **Exhaustiveness:** Switch expressions must cover all possible values (exhaustive), whereas switch statements do not have this requirement.
+
+**Q. How does pattern matching for switch (Java 21) handle null values?**
+> In traditional `switch`, passing a `null` value results in a `NullPointerException`. In Java 21's pattern matching, you can explicitly add `case null -> ...` to handle null inputs safely. If no `null` case is present and the value is null, the switch expression will still throw a `NullPointerException`.
+
+**Q. What are Guarded Patterns in switch?**
+> Guarded patterns allow case labels to refine a type match with an additional boolean condition using the `when` keyword (e.g., `case String s when s.length() > 5 -> ...`). The case matches only if both the type matches and the `when` condition evaluates to `true`.
 
 ---
 
