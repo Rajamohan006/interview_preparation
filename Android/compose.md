@@ -57,6 +57,104 @@ The Compose runtime executes composable functions and records the output in a **
 
 ---
 
+## 1.3 The Compose Graphics & Rendering Pipeline
+
+### Concept Overview
+A common misconception is that Jetpack Compose compiles layout definitions into native Android `View` subclasses (like `LinearLayout`, `FrameLayout`, or `TextView`) at runtime. **This is incorrect.**
+Instead, Compose bypasses the traditional Android View system. It processes state declarations, builds a virtual layout node tree, calculates layout sizes, and directly issues drawing commands to Android's low-level graphics pipeline (`Canvas`, `RenderNode`, and the hardware-accelerated `Skia` or `Impeller` engines).
+
+### The Rendering Pipeline Flow
+
+```mermaid
+graph TD
+    Comp[1. @Composable Functions] -->|Compile-Time Plugin| Compiler[2. Compose Compiler]
+    Compiler -->|Slot Table Tracking| Runtime[3. Compose Runtime]
+    Runtime -->|Virtual LayoutNode Tree| CompositionTree[4. Composition Tree]
+    CompositionTree -->|Measure & Position Passes| LayoutPhase[5. Measure & Layout Phase]
+    LayoutPhase -->|Generate Drawing Commands| DrawPhase[6. Draw Phase]
+    DrawPhase -->|RenderNode List Recording| Canvas[7. Android Canvas / RenderNode]
+    Canvas -->|Vector Rasterization| Skia[8. Skia / Impeller Engine]
+    Skia -->|Frame Compositing| GPU[9. GPU]
+    GPU -->|Update screen pixels| Display[10. Physical Screen Display]
+```
+
+### Detailed Pipeline Mechanics
+
+1. **`@Composable` Functions:**
+   * The entry point. The developer writes declarative functions describing the UI state.
+2. **Compose Compiler:**
+   * During compilation, the Kotlin compiler plugin processes `@Composable` annotations. It injects a `Composer` instance into the function parameters and rewrites the method body to log calls and track state reads.
+3. **Compose Runtime:**
+   * At runtime, the runtime library manages the **Slot Table** (Gap Buffer). It tracks state reads. When a state changes (e.g., a `MutableState` value is modified), the runtime identifies the affected slots and schedules recomposition.
+4. **Composition Tree:**
+   * The output of the composition phase. A virtual tree structure made of **`LayoutNode`** objects representing the UI layout metadata, modifiers, and children.
+5. **Measure & Layout:**
+   * The runtime traverses the `LayoutNode` tree:
+     * **Measure:** Parent nodes pass constraints (size boundaries) to child nodes. Child nodes calculate their desired sizes and return their dimensions.
+     * **Layout:** Parent nodes position the child nodes relative to their coordinate space. This is executed in a **single pass** ($O(N)$ speed).
+6. **Draw Phase:**
+   * The `LayoutNode` tree is traversed again. Each node runs its draw modifier chain to record canvas drawing instructions.
+7. **Android Canvas / RenderNode:**
+   * Drawing commands are recorded into a native Android **`RenderNode`** using a hardware-accelerated **`Canvas`**. Using a `RenderNode` allows the OS to cache and recycle layout visual layers (e.g. scroll offsets, scaling, rotation) without re-executing composition or measurement passes.
+8. **Skia / Impeller Graphics Engine:**
+   * The native display lists are fed into the OS vector graphics engine (**Skia** on older systems, **Impeller** or Vulkan-based drivers on modern OSs). The engine rasterizes vector operations (shapes, fonts, paths) into pixel matrices.
+   * *Note: On iOS/desktop, **Skiko** acts as the bridge connecting Kotlin code directly to this Skia engine.*
+9. **GPU:**
+   * The GPU receives the rasterized frames to execute blending, shading, and compositing before updating the hardware buffer.
+10. **Physical Screen Display:**
+    * The display controller outputs the frame buffer to the physical screen synced to VSync refresh cycles (60Hz/120Hz).
+
+---
+
+## 1.4 Compose Multiplatform (CMP) Rendering Architecture: Android vs. iOS
+
+### Conceptual Diagram
+
+```mermaid
+graph TD
+    SharedCode[Shared Composable Code in commonMain] -->|CMP Gradle Compiler| BuildAndroid[Compile to JVM Bytecode]
+    SharedCode -->|K/N LLVM Compiler| BuildiOS[Compile to iOS Native ARM Binary]
+
+    subgraph Android Execution
+        BuildAndroid -->|1. Mount to| ComposeView[ComposeView ViewGroup]
+        ComposeView -->|2. Record Drawing| AndroidCanvas[Android Canvas / RenderNode]
+        AndroidCanvas -->|3. System Rasterization| AndroidSkia[Android OS Skia/Impeller]
+    end
+
+    subgraph iOS Execution
+        BuildiOS -->|1. Mount to| UIViewController[Native UIViewController]
+        UIViewController -->|2. Direct Metal Bridge| Skiko[Skiko Graphic Bindings]
+        Skiko -->|3. C++ Rasterization| iOSSkia[Bundled Skia Engine]
+    end
+
+    AndroidSkia --> DisplayAndroid[Android Screen]
+    iOSSkia --> DisplayiOS[iOS Metal Layer Screen]
+```
+
+### Key Differences in execution
+
+| Architectural Dimension | Android Target Execution | iOS Target Execution |
+|---|---|---|
+| **Compilation Output** | Compiled to JVM Bytecode (`.class` / `.dex`) | Compiled to native ARM machine binaries via LLVM |
+| **Window Host container** | Mounts to a native `ComposeView` (`ViewGroup` subclass) | Instantiates a native `UIViewController` controller shell |
+| **Drawing Engine** | System-provided `android.graphics.Canvas` APIs | Embedded C++ **Skia** / **Impeller** graphics engine |
+| **Framework Bridge** | Direct SDK call integration (native graphics drivers) | **Skiko** (Kotlin-to-C++ bindings for Skia runtime) |
+| **Graphics API** | Executes via OS RenderNodes on Vulkan/OpenGL ES | Executes via Skiko directly onto Apple **Metal** layers |
+| **Touch/Input Mapping** | Maps standard OS `MotionEvent` calls | Intercepts native UIKit `UITouch` events |
+
+### How it Works Internally on Android
+1. The app boots, and the Android compiler mounts the composables to a **`ComposeView`** container attached to the Window.
+2. The runtime processes composition, layout measurements, and draw commands.
+3. The layout calls compile into native Android drawing commands (`Canvas.drawRect`, `Canvas.drawPath`). These instructions are recorded inside standard system `RenderNode` display lists managed by the OS graphics compositor.
+
+### How it Works Internally on iOS
+1. At application launch, the iOS target creates a standard UIKit window hosting a custom **`UIViewController`**.
+2. Within this controller, a single native view is created to act as a physical viewport canvas.
+3. The Kotlin/Native runtime executes the measurement, layout, and compositing processes inside the LLVM compiled binary block.
+4. When executing draw calls, **Skiko** passes drawing vectors to the bundled **Skia** engine, which translates them directly into hardware-accelerated **Metal** framework calls. This draws pixels directly onto the screen without ever interacting with UIKit widgets (like `UIButton` or `UILabel`).
+
+---
+
 # 2. Side-Effects & Effect APIs
 
 ## 2.1 Side-Effects

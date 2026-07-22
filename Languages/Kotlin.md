@@ -6,6 +6,7 @@
 ## 📚 Table of Contents
 
 1. [Kotlin Basics](#1-kotlin-basics)
+   - [Compile-Time vs. Runtime in Kotlin](#compile-time-vs-runtime-in-kotlin)
 2. [Variables — var, val, const](#2-variables--var-val-const)
 3. [Null Safety](#3-null-safety)
 4. [Data Types & Type System](#4-data-types--type-system)
@@ -52,6 +53,85 @@ Kotlin can also compile to JavaScript or native machine code using Kotlin/JS and
 | **Multiplatform** | Share code across Android, backend, web, and native targets |
 
 > Kotlin is often used on Android because it combines modern language features with strong Java interoperability.
+
+### Compile-Time vs. Runtime in Kotlin
+
+Understanding the distinction between **Compile-Time** and **Runtime** is fundamental to writing safe, high-performance Kotlin code.
+
+```mermaid
+graph TD
+    Source[1. Source Code: .kt Files] -->|Compile-Time kotlinc| Compiler[2. Kotlin Compiler]
+    Compiler -->|Syntax Check, Type Check, Inlining, KSP| Bytecode[3. Bytecode: .class / DEX]
+    Bytecode -->|Runtime ART / JVM| JVM[4. Virtual Machine Execution]
+    JVM -->|Memory Alloc, GC, Reflection, Coroutine Execution| App[5. Running Application]
+```
+
+#### 1. Definitions & Execution Environments
+
+* **Compile-Time (Build Phase):**
+  * **What happens:** The Kotlin compiler (`kotlinc`) parses, analyzes, and translates `.kt` source files into JVM bytecode (`.class` files), DEX bytecode, or native machine code.
+  * **Key Operations:** Syntax validation, static type checking, nullability analysis, inline function code expansion, constant value substitution (`const val`), macro/annotation processing (KSP/KAPT), and checking `when` expression exhaustiveness.
+  * **Errors:** If an issue is found (e.g., type mismatch, non-null variable assigned `null`, missing `when` branch), the build fails immediately with a **Compile-Time Error**. No executable binary is produced.
+
+* **Runtime (Execution Phase):**
+  * **What happens:** The compiled application binary is loaded into memory and executed by the Java Virtual Machine (JVM), Android Runtime (ART), or Native CPU.
+  * **Key Operations:** Object instantiation (`heap` allocations), dynamic method dispatching (polymorphism), reflection inspection (`kotlin-reflect`), evaluation of `val` property getters, Coroutine continuation state machine execution, and Garbage Collection (GC).
+  * **Errors:** Unhandled errors during execution crash the application with a **Runtime Exception** (e.g. `NullPointerException`, `ClassCastException`, `IndexOutOfBoundsException`, `OutOfMemoryError`).
+
+---
+
+#### 2. Direct Feature Comparison Table
+
+| Aspect / Feature | Compile-Time | Runtime |
+|---|---|---|
+| **Phase** | Build time (Source code &rarr; Bytecode) | Application execution time on JVM / ART |
+| **Error Feedback** | Immediate IDE / Compiler error (Build Fails) | Exception thrown during execution (App Crashes) |
+| **Type Checking** | Static type checking for all variables & signatures | Dynamic type checks (e.g., `is` / `as` casts, reflection) |
+| **Constants (`const val`)** | Inlined directly into call-site bytecode | N/A (Already replaced with literal value) |
+| **Read-Only (`val`)** | Reference immutability enforced by compiler | Getter called at runtime; value computed on execution |
+| **Null Safety** | Prevents null assignments to non-nullable types (`String`) | Enforces `!!` assertion checks; handles `?` safe calls |
+| **Generics** | Type parameter checking & `reified` inline substitution | Type Erasure (Generic types `List<T>` become raw `List`) |
+| **Annotations** | `@Retention(AnnotationRetention.SOURCE / BINARY)` | `@Retention(AnnotationRetention.RUNTIME)` via Reflection |
+| **Sealed Classes / Enums** | Exhaustiveness check enforced in `when` blocks | Instance creation & ordinal value evaluations |
+| **Metaprogramming** | KSP / KAPT code generation | Reflection (`KClass`, `KProperty`, `reflect()`) |
+
+---
+
+#### 3. Deep Dive: Kotlin Features at Compile-Time vs. Runtime
+
+##### A. `const val` vs. `val`
+```kotlin
+const val API_TIMEOUT = 5000L   // Compile-Time Constant
+val currentTimestamp = System.currentTimeMillis() // Runtime Value
+```
+* `const val API_TIMEOUT`: At compile-time, `kotlinc` replaces every usage of `API_TIMEOUT` with the literal value `5000L` directly inside the bytecode. No memory lookup or getter call occurs at runtime.
+* `val currentTimestamp`: Evaluated at runtime when the execution thread reaches this line.
+
+##### B. Null Safety Mechanics
+```kotlin
+val name: String = null  // ❌ Compile-time error: Type mismatch
+val str: String? = getNullableString()
+val len = str!!.length   // ⚠️ Compiles fine! Throws NullPointerException at Runtime if str is null
+```
+* The compiler detects invalid null assignments before your app ever runs.
+* When using `!!` (not-null assertion), the compiler emits a runtime check (`Intrinsics.checkNotNull()`) that throws a `NullPointerException` at runtime if the value is null.
+
+##### C. Generics & Inline `reified` Parameters
+```kotlin
+// Normal Generic (Type Erasure at Runtime)
+fun <T> printType(item: T) {
+    // println(T::class) // ❌ Compile error: Cannot access T at runtime due to Type Erasure
+}
+
+// Inline Reified Function (Preserved at Compile-Time)
+inline fun <reified T> checkType(item: Any) {
+    if (item is T) { // ✅ Allowed! Compiler substitutes T at call site during compilation
+        println("Item is of type: ${T::class.simpleName}")
+    }
+}
+```
+* **Standard Generics:** At runtime, the JVM erases generic type parameters (**Type Erasure**). `List<String>` and `List<Int>` both become plain `List`.
+* **Inline `reified` Functions:** At compile-time, the Kotlin compiler copies the function body directly to the invocation site and substitutes `T` with the concrete type, making the type information available at runtime without reflection.
 
 ---
 
@@ -1723,6 +1803,9 @@ println(obj1 === obj2)   // false — different references
 
 **Q: What is the difference between `val` and `const val`?**
 > Both are immutable. `val` is assigned at runtime and can hold any type. `const val` is a compile-time constant, only for primitives and String, and is faster because the value is inlined at compile time.
+
+**Q: What is the difference between compile-time and runtime in Kotlin?**
+> Compile-time is when the Kotlin compiler (`kotlinc`) analyzes source code, performs type checks, checks nullability, expands inline functions, and translates `.kt` files into bytecode/DEX. Errors result in compilation failures before the app runs. Runtime is when the compiled bytecode is executed by the JVM/ART, performing memory allocations, polymorphism, reflection, and coroutine execution. Errors result in runtime exceptions (`NullPointerException`, `ClassCastException`).
 
 **Q: Does Kotlin have a ternary operator?**
 > No. Use `if-else` as an expression: `val result = if (x > 0) "positive" else "negative"` or the Elvis operator `?:` for null checks.

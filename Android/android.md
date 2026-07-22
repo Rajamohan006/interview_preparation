@@ -120,6 +120,64 @@ adb pull /sdcard/screen.png ./
 
 ---
 
+## 1.4 R8 Compiler, Optimization, and Obfuscation
+
+### Definition
+* **Simple:** R8 is a tool that shrinks your app's code and resources, renames classes and methods to make reverse engineering harder, and optimizes the code to make it run faster and consume less storage space.
+* **Advanced:** R8 is Android's default compiler tool that converts Java bytecode into optimized Dalvik Executable (DEX) bytecode. It integrates the functionality of shrinking, optimization, obfuscation, and resource reduction into a single compilation pass.
+
+```mermaid
+graph TD
+    Bytecode[Java/Kotlin Bytecode .class] -->|R8 Compiler Pass| Optimize[Optimizes instructions, merges classes]
+    Optimize -->|Tree Shaking| Shrink[Removes unused code & resources]
+    Shrink -->|Obfuscator| Obfuscate[Renames symbols to short letters]
+    Obfuscate -->|DEX Generator| Output[Final optimized classes.dex]
+```
+
+### The 4 Pillars of R8 Execution
+1. **Code Shrinking (Tree Shaking):** Statically analyzes the codebase starting from declared entry points (e.g. Activities, Services, and Receivers declared in `AndroidManifest.xml`). R8 maps the call graph and discards any class, method, variable, or library dependency that cannot be reached through active execution paths, drastically reducing APK size.
+2. **Optimization:** Performs dead-code elimination, inlines short method bodies, removes unused parameters, and merges vertical inheritance trees (e.g., merging a subclass into its parent class if it is the sole implementer) to minimize runtime call stacks.
+3. **Obfuscation:** Renames human-readable classes, variables, and methods to short, meaningless identifiers (e.g. `UserRepository` becomes `a`, `fetchData` becomes `b`). This shrinks the string pool inside the DEX file and increases the difficulty of reverse engineering.
+4. **Resource Shrinking:** Runs in tandem with code shrinking. Once R8 identifies and discards unused code, it checks resource folder files (`res/`, `assets/`). Any resource drawable, string, or layout that is not referenced in the remaining code graph is stripped.
+
+### R8 vs. ProGuard
+
+```mermaid
+graph TD
+    subgraph Legacy Build Pipeline
+        Code1[Bytecode] --> PG[ProGuard Shrink/Optimize]
+        PG --> BytecodeOptimized[Optimized Bytecode]
+        BytecodeOptimized --> D8[D8 Compiler]
+        D8 --> DEX1[classes.dex]
+    end
+
+    subgraph Modern Build Pipeline (R8)
+        Code2[Bytecode] --> R8Compiler[R8 Single-Pass Tool]
+        R8Compiler --> DEX2[classes.dex]
+    end
+```
+
+* **Pipeline Differences:** ProGuard operates on Java bytecode (`.class`), outputting modified Java bytecode that must subsequently be compiled into DEX by the D8 compiler. R8 combines bytecode optimization and DEX translation into a **single step**, reducing compile times by up to 30%.
+* **Memory & Efficiency:** Because R8 has complete visibility over the final DEX register layout during optimization, it can make more accurate register allocations and class merging decisions than ProGuard.
+
+### Reflection Gotchas & Keep Rules
+Because R8 relies on static analysis of the source code, any class or field accessed **dynamically at runtime via reflection** (such as JSON deserialization using Gson/Moshi, or dependency injection frameworks) will appear to R8 as "unused" and will be stripped or obfuscated, leading to runtime crash exceptions (e.g., `ClassNotFoundException` or JSON parsing failures).
+
+Developers resolve this by defining **Keep Rules** in the `proguard-rules.pro` file:
+
+```proguard
+# Prevent R8 from obfuscating or shrinking data model classes used in JSON serialization
+-keep class com.example.app.data.model.** { *; }
+
+# Keep class names for custom views referenced exclusively in XML layouts
+-keepclassmembers class * extends android.view.View {
+    public <init>(android.content.Context);
+    public <init>(android.content.Context, android.util.AttributeSet);
+}
+```
+
+---
+
 # 2. Core Application Components & Manifest
 
 Android apps are composed of four primary entry points, which must be declared in the `AndroidManifest.xml` file.
