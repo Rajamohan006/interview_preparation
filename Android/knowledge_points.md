@@ -1,22 +1,31 @@
 # 🧠 Android Core Knowledge Points — Technical Interview Reference
 
-> **Authoritative Technical Reference**  
-> Designed for Android Developers with 2–5 years of experience. This document covers miscellaneous advanced Android core knowledge points, boot sequences, low-level process behaviors, memory references, serialization, task flags, and native integrations (NDK/JNI).
+> **Authoritative Technical Reference**
+> The platform internals interviewers use to separate "uses the SDK" from "understands the system".
+>
+> **30 internals interview questions:** [`interview_questions/01_system_internals.md`](./interview_questions/01_system_internals.md)
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Module 1: Android System Boot Sequence](#1-android-system-boot-sequence)
-2. [Module 2: Zygote Process & Copy-On-Write (CoW)](#2-zygote-process--copy-on-write-cow)
-3. [Module 3: Class Loaders in Android](#3-class-loaders-in-android)
-4. [Module 4: Reference Types & JVM/ART Heap Structure](#4-reference-types--jvmart-heap-structure)
-5. [Module 5: Serialization: Serializable vs. Parcelable](#5-serialization-serializable-vs-parcelable)
-6. [Module 6: Intent Flags & Back Stack Manipulations](#6-intent-flags--back-stack-manipulations)
-7. [Module 7: Android NDK & JNI Boundaries](#7-android-ndk--jni-boundaries)
-8. [Module 8: Open Source Software Licenses](#8-open-source-software-licenses)
-9. [Module 9: Google ML Kit Architecture & APIs](#9-google-ml-kit-architecture--apis)
-10. [Module 10: MediaPipe & TensorFlow Lite (TFLite) Architecture](#10-mediapipe--tensorflow-lite-tflite-architecture)
+| # | Topic | Key Points |
+|---|---|---|
+| 1 | [Android Boot Sequence](#1-android-system-boot-sequence) | Bootloader → kernel → init → Zygote → SystemServer |
+| 2 | [Zygote & Copy-On-Write](#2-zygote-process--copy-on-write-cow) | Process forking, preloaded classes, shared memory pages |
+| 3 | [Class Loaders](#3-class-loaders-in-android) | `PathClassLoader`, `DexClassLoader`, delegation model |
+| 4 | [Reference Types & Heap](#4-reference-types--jvmart-heap-structure) | Strong/soft/weak/phantom, generational heap layout |
+| 5 | [Serialization](#5-serialization-serializable-vs-parcelable) | `Serializable` vs `Parcelable`, reflection cost |
+| 6 | [Intent Flags & Back Stack](#6-intent-flags--back-stack-manipulations) | Task affinity, `CLEAR_TOP`, `NEW_TASK`, `SINGLE_TOP` |
+| 7 | [NDK & JNI](#7-android-ndk--jni-boundaries) | JNI boundary cost, when native code pays off |
+| 8 | [Open Source Licenses](#8-open-source-software-licenses) | Permissive vs copyleft, obligations for shipped apps |
+| 9 | [Google ML Kit](#9-google-ml-kit-architecture--apis) | On-device vs cloud models, delegate acceleration |
+| 10 | [MediaPipe & TFLite](#10-mediapipe--tensorflow-lite-tflite-architecture) | Graph runtime, quantization, pruning |
+| 11 | [AIDL & IPC](#11-aidl-messenger-and-cross-process-communication) | AIDL vs Messenger, Binder threading, death recipients |
+| 12 | [Multi-Process Apps](#12-multi-process-apps-transactiontoolargeexception-and-process-isolation) | `android:process`, per-process state, Binder buffer limits |
+| 13 | [APK Anatomy & Signing](#13-apk-anatomy-multidex-and-signing-schemes) | DEX mmap, 64K limit, multidex, v1–v4 signatures |
+| 14 | [ANR Traces & Triage](#14-anr-traces-and-crash-triage) | Reading thread dumps, lock contention, common causes |
+| 15 | [Interview Questions](#15-interview-questions) | Pointer to the question bank |
 
 ---
 
@@ -311,15 +320,381 @@ To run models on memory-constrained mobile devices, engineers optimize TFLite mo
 
 ---
 
-# 11. Core Interview Questions & Answers
+# 11. AIDL, Messenger, and Cross-Process Communication
 
-### Q. Explain the Copy-on-Write (CoW) optimization used by the Zygote process.
-* **Answer:** When Zygote forks a new application process using the `fork()` system call, the operating system doesn't duplicate the parent's physical RAM memory pages. Instead, both the parent and child processes share the same physical memory addresses. Memory pages are only copied when one of the processes attempts to write to or modify a shared page. This prevents duplicate loading of read-only framework resources, significantly reducing RAM usage across the operating system.
+### Definition
+* **AIDL (Android Interface Definition Language):** A language for declaring an interface that two processes agree on. The AIDL compiler generates the `Stub` (server) and `Proxy` (client) classes that marshal calls across Binder.
+* **Messenger:** A lightweight IPC wrapper that serializes calls onto a single `Handler`, so requests are processed sequentially rather than concurrently.
 
-### Q. What is the difference between `PathClassLoader` and `DexClassLoader`?
-* **Answer:** Both inherit from `BaseDexClassLoader`, but they serve different distribution paths.
-  * `PathClassLoader` is configured to only load compiled classes from local, read-only system paths (such as the `/data/app/` installed application package directory).
-  * `DexClassLoader` is designed to load compiled classes from external, writable paths (like local SD card folders or application cache folders). This enables dynamic class loading, allowing apps to fetch and run remote dex files at runtime for plugin updates or dynamic feature delivery.
+### Why It Is Used
+Most apps never need AIDL — but IPC is unavoidable when writing a bound service consumed by another app, integrating a system-level SDK, or running your own app across multiple processes to isolate a crash-prone component.
 
-### Q. Why is `Parcelable` preferred over `Serializable` for Android IPC?
-* **Answer:** `Serializable` is a marker interface that relies on Java's reflection mechanism. When serializing objects, it parses fields dynamically at runtime and creates a large number of temporary garbage collection objects, which slows down execution. `Parcelable` requires explicit definition of how fields are written to a flat byte-buffer (`Parcel`). It avoids runtime reflection, executing data serialization in native code at near-zero execution cost, making it highly optimized for Binder IPC transitions.
+### How It Works Internally
+
+| Mechanism | Concurrency | Complexity | Use When |
+|---|---|---|---|
+| **`Messenger`** | Serialized on one Handler thread | Low | Simple request/response, ordering matters |
+| **AIDL** | Concurrent — multiple Binder threads | High | Multiple simultaneous callers, throughput matters |
+| **`ContentProvider`** | Concurrent | Medium | Structured, queryable, permission-controlled data |
+| **Broadcast** | Asynchronous, one-way | Low | Fan-out notification, no return value |
+
+**The threading trap.** AIDL methods are invoked on a thread from the Binder thread pool, **not** on the main thread. Touching UI from an AIDL implementation crashes; conversely, blocking in an AIDL method blocks a pool thread, and the pool is finite (16 threads).
+
+### Code Example
+```java
+// IUserService.aidl — the contract both processes compile against
+package com.example.app;
+
+import com.example.app.UserParcel;
+import com.example.app.IUserCallback;
+
+interface IUserService {
+    UserParcel getUser(long id);
+    // oneway makes the call asynchronous: it returns immediately and cannot return a value
+    oneway void subscribe(IUserCallback callback);
+}
+```
+
+```kotlin
+// Service implementation. onTransact runs on a Binder POOL thread, not the main thread.
+class UserService : Service() {
+
+    private val callbacks = RemoteCallbackList<IUserCallback>()
+
+    private val binder = object : IUserService.Stub() {
+        override fun getUser(id: Long): UserParcel {
+            // Enforce permission per call: the caller is another process and is untrusted
+            enforceCallingPermission("com.example.app.permission.READ_USERS", null)
+            return repository.getUserBlocking(id).toParcel()
+        }
+
+        override fun subscribe(callback: IUserCallback) {
+            // RemoteCallbackList handles death recipients automatically, so a crashed
+            // client is removed instead of leaking a dead Binder reference forever.
+            callbacks.register(callback)
+        }
+    }
+
+    override fun onBind(intent: Intent): IBinder = binder
+
+    private fun notifyAll(user: UserParcel) {
+        val n = callbacks.beginBroadcast()
+        repeat(n) { i ->
+            // A remote process can die between the check and the call
+            runCatching { callbacks.getBroadcastItem(i).onUserChanged(user) }
+        }
+        callbacks.finishBroadcast()
+    }
+}
+```
+
+```kotlin
+// Client side: bind, then survive the service process dying
+class UserServiceClient(private val context: Context) {
+    private var service: IUserService? = null
+
+    private val deathRecipient = IBinder.DeathRecipient {
+        service = null
+        rebindWithBackoff()          // The remote process died; reconnect
+    }
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            service = IUserService.Stub.asInterface(binder)
+            binder.linkToDeath(deathRecipient, 0)
+        }
+        override fun onServiceDisconnected(name: ComponentName) { service = null }
+    }
+
+    fun bind() {
+        val intent = Intent("com.example.app.USER_SERVICE").apply {
+            setPackage("com.example.app")   // MANDATORY: an implicit service intent is illegal
+        }
+        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+    }
+
+    // Every remote call can throw when the other process dies mid-call
+    fun getUser(id: Long): UserParcel? = try {
+        service?.getUser(id)
+    } catch (e: DeadObjectException) {
+        service = null; null
+    } catch (e: RemoteException) {
+        null
+    }
+}
+```
+
+### Common Pitfalls
+* **Touching UI from an AIDL method.** It runs on a Binder pool thread. Post to the main thread.
+* **Not handling `DeadObjectException`.** The other process can be killed at any time by the LMK.
+* **Passing large data.** The 1 MB Binder transaction buffer is shared per process; a large `Parcel` throws `TransactionTooLargeException`.
+* **An exported service with no permission.** Any app on the device can bind and call it.
+* **Blocking inside an AIDL method.** It occupies a finite pool thread; a few slow calls starve every other transaction.
+
+---
+
+# 12. Multi-Process Apps, TransactionTooLargeException, and Process Isolation
+
+### Definition
+`android:process` in the manifest runs a component in a separate OS process with its own heap, its own `Application` instance, and its own static state.
+
+### Why It Is Used
+Isolation: a native crash in a WebView or a video decoder kills only that process. Memory: a memory-hungry component gets its own heap limit rather than pushing the main process toward OOM.
+
+### How It Works Internally
+Each process is forked from Zygote separately, so `Application.onCreate` runs **once per process**. Every singleton, every static field, and every in-memory cache exists independently per process — the source of the most confusing multi-process bugs.
+
+**`TransactionTooLargeException` mechanics.** The Binder transaction buffer is **1 MB per process, shared across all in-flight transactions**. This means the practical limit for any single transaction is well under 1 MB, and it depends on what else is happening concurrently — which is why the bug reproduces only sometimes.
+
+Common triggers:
+* A large `Bundle` in `onSaveInstanceState` (bitmaps, big lists).
+* A big list passed as an Intent extra.
+* A `ContentProvider` query returning too many rows in one `CursorWindow`.
+* Many pending `Parcelable`s in a fragment back stack save.
+
+### Code Example
+```xml
+<!-- The WebView runs in its own process: a renderer crash cannot take down the app -->
+<activity
+    android:name=".WebContainerActivity"
+    android:process=":web" />
+
+<!-- A leading ':' makes it private to this app. A fully-qualified name makes it shareable
+     between apps signed with the same key. -->
+<service
+    android:name=".sync.SyncService"
+    android:process=":sync" />
+```
+
+```kotlin
+// Application.onCreate runs in EVERY process — initialize selectively or waste memory
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        when (currentProcessName()) {
+            packageName -> {
+                // Main process only: UI-related initialization
+                initImageLoader()
+                initAnalytics()
+            }
+            "$packageName:sync" -> initSyncOnly()
+            "$packageName:web" -> Unit          // Keep the web process minimal
+        }
+    }
+
+    private fun currentProcessName(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) getProcessName()
+        else getSystemService(ActivityManager::class.java)
+            .runningAppProcesses
+            ?.firstOrNull { it.pid == Process.myPid() }?.processName
+            ?: packageName
+}
+```
+
+```kotlin
+// Avoiding TransactionTooLargeException: save identity, not data
+class GalleryFragment : Fragment() {
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // WRONG: outState.putParcelableArrayList("photos", photos)  // MBs of data
+        // RIGHT: save what lets you rebuild the state
+        outState.putLong("album_id", albumId)
+        outState.putInt("scroll_position", layoutManager.findFirstVisibleItemPosition())
+    }
+}
+
+// Diagnosing it: log the actual bundle size before it throws
+fun Bundle.sizeInBytes(): Int = Parcel.obtain().use { parcel ->
+    parcel.writeBundle(this)
+    parcel.dataSize()
+}
+```
+
+```kotlin
+// Cross-process state sharing: static fields DO NOT work.
+// Use a ContentProvider, a bound service, or a file-backed store.
+class SettingsProvider : ContentProvider() {
+    // Reads/writes here are visible to every process, unlike a singleton
+}
+```
+
+### Common Pitfalls
+* **Assuming a singleton is shared across processes.** Each process has its own instance, silently.
+* **Initializing everything in `Application.onCreate`.** Every process pays the cost and the memory.
+* **Room or SQLite accessed from multiple processes** without `enableMultiInstanceInvalidation()`. Change notifications do not cross the process boundary.
+* **Debugging only the main process.** Attach the debugger to the specific process, and note that `Log` output interleaves from all of them.
+
+---
+
+# 13. APK Anatomy, Multidex, and Signing Schemes
+
+### Definition
+The internal structure of an installable artifact and the mechanisms that make it verifiable and loadable.
+
+### Why It Is Used
+Build failures (`Cannot fit requested classes in a single dex file`), install failures (`INSTALL_PARSE_FAILED_NO_CERTIFICATES`), and update failures (signature mismatch) are all explained by these mechanics.
+
+### How It Works Internally
+
+**DEX loading.** `PathClassLoader` memory-maps `classes.dex` from inside the APK — the file is stored uncompressed and page-aligned precisely so it can be `mmap`'d rather than extracted. This is why DEX files are not compressed in a modern APK even though the APK is a ZIP.
+
+**The 64K limit.** The DEX format's `method_id` index is 16-bit, so a single DEX file can reference at most 65,536 methods. Note this counts **referenced** methods, including every framework and library method your code calls — not just methods you wrote.
+
+| minSdk | Multidex Behavior |
+|---|---|
+| **< 21** | Legacy multidex: secondary DEX files are extracted and dex-opted at first launch, adding seconds to cold start and risking ANR |
+| **≥ 21** | Native multidex: ART loads all `classes*.dex` directly, no runtime cost, no configuration |
+
+**Signature scheme summary:**
+
+| Scheme | Since | Protects | Notes |
+|---|---|---|---|
+| v1 (JAR) | Always | Per-file digests in `META-INF` | Does not protect ZIP metadata; slow to verify |
+| v2 | API 24 | The whole APK as bytes | Fast, detects any modification |
+| v3 | API 28 | v2 + a key-rotation lineage | Rotate the signing key without losing update rights |
+| v4 | API 30 | A Merkle tree in a sidecar file | Enables ADB incremental install |
+
+### Code Example
+```bash
+# What is actually in the artifact
+unzip -l app-release.apk
+apkanalyzer apk summary app-release.apk
+apkanalyzer dex references app-release.apk        # Total method reference count vs the 64K limit
+apkanalyzer dex packages --defined-only app-release.apk | sort -k2 -nr | head -20
+
+# Which signature schemes are present, and with which certificate
+apksigner verify --verbose --print-certs app-release.apk
+
+# Why the DEX is not compressed: it is mmap'd directly out of the APK
+unzip -v app-release.apk | grep classes.dex        # Method column shows "Stored"
+```
+
+```gradle
+android {
+    defaultConfig {
+        // Only needed below API 21; above that, multidex is native and automatic
+        multiDexEnabled = true
+    }
+}
+
+dependencies {
+    // Legacy support library, only for minSdk < 21
+    implementation("androidx.multidex:multidex:2.0.1")
+}
+```
+
+```kotlin
+// Legacy multidex requires either extending MultiDexApplication or installing manually
+class App : Application() {
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        MultiDex.install(this)     // Must run before any secondary-DEX class is touched
+    }
+}
+```
+
+### Common Pitfalls
+* **Enabling multidex to "fix" the 64K limit** instead of enabling R8. Shrinking usually removes the problem entirely and produces a smaller app.
+* **Signature mismatch on update.** A different signing key means the update is rejected with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; the only remedy without Play App Signing key rotation is a new package name.
+* **Disabling v2/v3 signing** to support very old devices, losing fast verification and tamper detection.
+* **Counting only your own methods** against the 64K limit. Library method references dominate.
+
+---
+
+# 14. ANR Traces and Crash Triage
+
+### Definition
+Reading `/data/anr/traces.txt` (or the Play Console's ANR cluster) to identify why the main thread was blocked.
+
+### Why It Is Used
+An ANR report is not a stack trace of a crash — it is a snapshot of every thread at the moment the system gave up. Reading it correctly is a distinguishing skill, because the useful information is usually in a *different* thread from the one that is stuck.
+
+### How It Works Internally
+When an ANR is declared, the system dumps the state of every thread in the process (and often in related processes). The main thread's stack shows *where it is blocked*; the cause is whoever holds the resource it is waiting for.
+
+**The three shapes you will actually see:**
+
+| Main-thread state | Meaning | Where the cause is |
+|---|---|---|
+| `Blocked` on a monitor, with `held by tid=N` | Lock contention | Thread N's stack |
+| `Native` in `epoll_wait` / `Runnable` in your own code | Slow main-thread work | The main thread's own stack |
+| `Waiting` on a `CountDownLatch` / `Object.wait` | Synchronous wait for background work | The background thread that never signalled |
+
+### Code Example
+```
+"main" prio=5 tid=1 Blocked
+  | group="main" sCount=1 dsCount=0 flags=1 obj=0x72a985d0 self=0xb400007
+  | sysTid=8462 nice=-10 cgrp=top-app sched=0/0 handle=0x7b1e4b34f8
+  at com.example.app.data.CacheManager.get(CacheManager.kt:42)
+  - waiting to lock <0x0a3f1c22> (a java.lang.Object) held by thread 14      <-- the pointer
+  at com.example.app.ui.FeedAdapter.onBindViewHolder(FeedAdapter.kt:88)
+  ...
+
+"pool-3-thread-2" prio=5 tid=14 Runnable
+  at java.io.FileInputStream.read(FileInputStream.java)
+  at com.example.app.data.CacheManager.loadFromDisk(CacheManager.kt:97)
+  - locked <0x0a3f1c22> (a java.lang.Object)                                <-- the culprit
+```
+The main thread is blocked on a lock that a background thread holds while doing disk IO. The fix is not on the main thread at all — it is to stop holding the lock across an IO call.
+
+```kotlin
+// The bug
+class CacheManager {
+    private val lock = Any()
+    private val cache = mutableMapOf<String, Bitmap>()
+
+    fun get(key: String): Bitmap? = synchronized(lock) {
+        cache[key] ?: loadFromDisk(key)?.also { cache[key] = it }   // Disk IO INSIDE the lock
+    }
+}
+
+// The fix: never hold a lock across IO; and never let the UI thread wait on it at all
+class CacheManager(private val scope: CoroutineScope) {
+    private val cache = ConcurrentHashMap<String, Deferred<Bitmap?>>()
+
+    // Callers await; the lock is never held across the IO, and duplicate loads are shared
+    suspend fun get(key: String): Bitmap? =
+        cache.computeIfAbsent(key) {
+            scope.async(Dispatchers.IO) { loadFromDisk(key) }
+        }.await()
+}
+```
+
+```bash
+# Pull ANR traces from a device
+adb shell ls /data/anr/
+adb pull /data/anr/anr_2026-09-09-10-42-11-000
+
+# Reproduce main-thread blocking during development instead of finding it in production
+# (StrictMode with penaltyLog is the cheapest ANR-prevention tool that exists)
+adb shell am broadcast -a com.android.internal.intent.action.ANR   # Some builds only
+```
+
+### Common Pitfalls
+* **Reading only the main thread's stack.** For lock contention the answer is in the holder's stack; follow `held by thread N`.
+* **Blaming the topmost frame.** `Object.wait` is where it stopped, not why.
+* **Ignoring "no focused window" ANRs.** These usually mean the Activity never finished starting — look at `Application.onCreate` and startup work.
+* **Treating a low ANR rate as fine.** Play Vitals thresholds are per-device-model; a single bad OEM can breach the bad-behavior threshold on its own.
+* **No StrictMode in debug.** Main-thread IO is the most common ANR cause and StrictMode catches it in seconds.
+
+---
+
+# 15. Interview Questions
+
+**➡️ [`interview_questions/01_system_internals.md`](./interview_questions/01_system_internals.md) — 30 questions on Android internals: boot, Zygote, ART, class loaders, Binder, DEX.**
+
+See also:
+* [`interview_questions/10_performance_memory.md`](./interview_questions/10_performance_memory.md) — GC, leaks, ANR triage
+* [`interview_questions/02_components_manifest.md`](./interview_questions/02_components_manifest.md) — IPC, providers, services
+* [`interview_questions/00_INDEX.md`](./interview_questions/00_INDEX.md) — full index
+
+---
+
+## 📚 Related Guides
+
+| Guide | Covers |
+|---|---|
+| [`android.md`](./android.md) | Application-level use of everything described here |
+| [`testing_security.md`](./testing_security.md) | Attacking and defending these mechanisms |
+| [`../Languages/java.md`](../Languages/java.md) | JVM memory model, references, class loading |
