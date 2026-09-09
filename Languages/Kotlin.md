@@ -1,2027 +1,4196 @@
 # 🚀 Kotlin Interview Preparation Guide
-> A complete, interview-ready reference covering Kotlin from basics to advanced topics.
+
+> **Complete technical reference** — Kotlin from fundamentals to advanced, written for interview preparation.
+>
+> Every topic follows the same structure: **Definition → Why It Is Used → How It Works Internally → Code Example → Common Pitfalls**.
+>
+> Updated for **Kotlin 2.x (K2 compiler)**. Android-specific usage lives in [`../Android/`](../Android/); Java fundamentals in [`java.md`](./java.md).
 
 ---
 
 ## 📚 Table of Contents
 
-1. [Kotlin Basics](#1-kotlin-basics)
-   - [Compile-Time vs. Runtime in Kotlin](#compile-time-vs-runtime-in-kotlin)
-2. [Variables — var, val, const](#2-variables--var-val-const)
-3. [Null Safety](#3-null-safety)
-4. [Data Types & Type System](#4-data-types--type-system)
-5. [String Operations](#5-string-operations)
-6. [Control Flow](#6-control-flow)
-7. [Functions](#7-functions)
-8. [OOP in Kotlin](#8-oop-in-kotlin)
-9. [Visibility Modifiers](#9-visibility-modifiers)
-10. [Collections](#10-collections)
-11. [Lambdas & Higher-Order Functions](#11-lambdas--higher-order-functions)
-12. [Extension Functions](#12-extension-functions)
-13. [Scope Functions — let, run, with, also, apply](#13-scope-functions--let-run-with-also-apply)
-14. [Coroutines](#14-coroutines)
-15. [Flow & Channels](#15-flow--channels)
-16. [Annotations & Processing](#16-annotations--processing)
-17. [Advanced Kotlin Concepts](#17-advanced-kotlin-concepts)
-18. [Kotlin vs Java Interop](#18-kotlin-vs-java-interop)
-19. [Top Interview Questions & Answers](#19-top-interview-questions--answers)
+| # | Section | Key Topics |
+|---|---|---|
+| 1 | [Kotlin Fundamentals](#1-kotlin-fundamentals) | What Kotlin is, compilation targets, compile-time vs runtime, the K2 compiler |
+| 2 | [Variables & Constants](#2-variables--constants) | `var`, `val`, `const val`, type inference, `lateinit`, `lazy` |
+| 3 | [Null Safety](#3-null-safety) | Nullable types, `?.`, `?:`, `!!`, `as?`, smart casts, platform types |
+| 4 | [Type System](#4-type-system) | Numeric types, `Any`/`Unit`/`Nothing`, type checks, `typealias`, value classes |
+| 5 | [Strings](#5-strings) | Interpolation, raw strings, `StringBuilder`, formatting, comparison |
+| 6 | [Control Flow](#6-control-flow) | `if`/`when` as expressions, loops, ranges, labels, jumps, non-local return |
+| 7 | [Functions](#7-functions) | Declarations, default/named/`vararg`, extensions, `infix`, `operator`, `tailrec`, `inline`, lambdas, higher-order functions, references, composition, closures |
+| 8 | [Object-Oriented Kotlin](#8-object-oriented-kotlin) | Classes, constructors, `data`, `sealed`, `enum`, `object`, `companion`, nested vs inner, inheritance, interfaces, delegation |
+| 9 | [Visibility Modifiers](#9-visibility-modifiers) | `public`, `private`, `protected`, `internal` |
+| 10 | [Delegated Properties](#10-delegated-properties) | `by lazy`, `observable`, `vetoable`, map delegation, custom delegates |
+| 11 | [Generics](#11-generics) | Type parameters, constraints, variance (`in`/`out`), star projection, type erasure, `reified` |
+| 12 | [Collections](#12-collections) | List/Set/Map, mutability, operations, sequences, arrays, complexity, builders |
+| 13 | [Scope Functions](#13-scope-functions) | `let`, `run`, `with`, `also`, `apply`, `takeIf`, `takeUnless` |
+| 14 | [Coroutines](#14-coroutines) | `suspend`, builders, dispatchers, structured concurrency, cancellation, exceptions, internals |
+| 15 | [Flow & Channels](#15-flow--channels) | Cold/hot streams, operators, `flowOn`, `StateFlow`/`SharedFlow`, `callbackFlow`, channels |
+| 16 | [Exceptions & Result](#16-exceptions--result) | `try`/`catch`, `Nothing`, `require`/`check`/`error`, `runCatching`, `Result`, contracts |
+| 17 | [Annotations & Reflection](#17-annotations--reflection) | Declaring annotations, use-site targets, KAPT vs KSP, reflection, callable references |
+| 18 | [DSLs & Idiomatic Kotlin](#18-dsls--idiomatic-kotlin) | Lambdas with receiver, `@DslMarker`, idioms, performance and boxing |
+| 19 | [Java Interoperability](#19-java-interoperability) | Platform types, `@Jvm*` annotations, SAM conversion, `==` vs `===`, collection mutability |
+| 20 | [Testing Kotlin](#20-testing-kotlin) | `kotlin.test`, coroutine tests, Flow tests, fakes |
+| 21 | [Interview Questions & Answers](#21-interview-questions--answers) | **150 questions** with answers, follow-ups, and code |
+| 22 | [Quick Reference Cheat Sheet](#-quick-reference-cheat-sheet) | One-page syntax recall |
 
 ---
 
-## 1. Kotlin Basics
+# 1. Kotlin Fundamentals
 
-### What is Kotlin?
-Kotlin is a modern, statically typed programming language from JetBrains. It is designed to be concise, safe, and fully interoperable with Java. Kotlin supports multiple platforms: JVM, Android, JavaScript, and native binaries.
+## 1.1 What Kotlin Is
 
-### How does Kotlin work on Android?
-Kotlin source code is compiled into Java bytecode, then converted to Dalvik bytecode (DEX) and executed on Android runtime (ART).
+### Definition
+* **Simple:** Kotlin is a modern programming language from JetBrains that runs anywhere Java runs, with far less boilerplate and null-pointer crashes designed out of the type system.
+* **Advanced:** Kotlin is a statically typed, multi-paradigm language targeting JVM bytecode, JavaScript, WebAssembly, and native binaries via LLVM. It is fully bidirectionally interoperable with Java on the JVM.
 
-```text
-Main.kt → Kotlin Compiler → MainKt.class → DEX → Android Runtime
-```
-
-Kotlin can also compile to JavaScript or native machine code using Kotlin/JS and Kotlin/Native.
-
-### Why use Kotlin?
-| Benefit | What it means |
+### Why It Is Used
+| Benefit | What it actually means |
 |---|---|
-| **Concise** | Reduces boilerplate and makes code easier to read |
-| **Null-safe** | Nullability is part of the type system, reducing runtime crashes |
-| **Interoperable** | Can call Java code and be called from Java without extra wrappers |
-| **Expressive** | Supports lambdas, extension functions, data classes, and more |
-| **Safe** | Encourages immutability and modern language features |
-| **Multiplatform** | Share code across Android, backend, web, and native targets |
+| **Null safety** | Nullability is part of the type system, so most NPEs become compile errors |
+| **Conciseness** | Data classes, type inference, and expression bodies remove large amounts of boilerplate |
+| **Interoperability** | Java and Kotlin coexist in the same module with no wrappers |
+| **Expressiveness** | Extension functions, lambdas, and DSL support let libraries read like language features |
+| **Coroutines** | Structured, cancellable asynchrony built into the language rather than bolted on |
+| **Multiplatform** | One codebase for Android, iOS, server, desktop, and web |
 
-> Kotlin is often used on Android because it combines modern language features with strong Java interoperability.
+### How It Works Internally
+```text
+Main.kt ──kotlinc──> MainKt.class (JVM bytecode) ──D8/R8──> classes.dex ──> ART
+                 └──> .js / .wasm         (Kotlin/JS, Kotlin/Wasm)
+                 └──> native binary       (Kotlin/Native via LLVM)
+```
+On Android the Kotlin compiler produces standard JVM bytecode, which D8/R8 converts to DEX. There is **no Kotlin runtime interpreter** — the output is ordinary bytecode plus a small standard-library dependency (`kotlin-stdlib`).
 
-### Compile-Time vs. Runtime in Kotlin
+### Common Pitfalls
+* **Assuming Kotlin is slower than Java.** It compiles to the same bytecode. Measured differences come from specific constructs (boxing, non-inlined lambdas), not from the language itself.
+* **Assuming null safety extends to Java calls.** Values from unannotated Java are *platform types* and receive no null checks. See [§19.1](#191-platform-types-and-null-safety-at-the-boundary).
 
-Understanding the distinction between **Compile-Time** and **Runtime** is fundamental to writing safe, high-performance Kotlin code.
+---
 
+## 1.2 Compile-Time vs. Runtime
+
+### Definition
+* **Compile-time** is when `kotlinc` parses, type-checks, and translates source into bytecode. Errors here fail the build; no binary is produced.
+* **Runtime** is when the produced bytecode executes on the JVM, ART, or a native CPU. Errors here crash a running application.
+
+### Why It Is Used
+Almost every Kotlin design decision — `const val`, `inline`, `reified`, sealed exhaustiveness, nullability — is a choice about *which phase* does the work. Knowing the phase tells you the cost and the failure mode.
+
+### How It Works Internally
 ```mermaid
 graph TD
-    Source[1. Source Code: .kt Files] -->|Compile-Time kotlinc| Compiler[2. Kotlin Compiler]
-    Compiler -->|Syntax Check, Type Check, Inlining, KSP| Bytecode[3. Bytecode: .class / DEX]
-    Bytecode -->|Runtime ART / JVM| JVM[4. Virtual Machine Execution]
-    JVM -->|Memory Alloc, GC, Reflection, Coroutine Execution| App[5. Running Application]
+    Source[Source .kt] -->|kotlinc| Compiler[Kotlin Compiler]
+    Compiler -->|type check, nullability, inlining, const folding, KSP| Bytecode[.class / DEX]
+    Bytecode -->|JVM / ART| Runtime[Execution]
+    Runtime -->|allocation, dispatch, reflection, GC| App[Running app]
 ```
 
-#### 1. Definitions & Execution Environments
-
-* **Compile-Time (Build Phase):**
-  * **What happens:** The Kotlin compiler (`kotlinc`) parses, analyzes, and translates `.kt` source files into JVM bytecode (`.class` files), DEX bytecode, or native machine code.
-  * **Key Operations:** Syntax validation, static type checking, nullability analysis, inline function code expansion, constant value substitution (`const val`), macro/annotation processing (KSP/KAPT), and checking `when` expression exhaustiveness.
-  * **Errors:** If an issue is found (e.g., type mismatch, non-null variable assigned `null`, missing `when` branch), the build fails immediately with a **Compile-Time Error**. No executable binary is produced.
-
-* **Runtime (Execution Phase):**
-  * **What happens:** The compiled application binary is loaded into memory and executed by the Java Virtual Machine (JVM), Android Runtime (ART), or Native CPU.
-  * **Key Operations:** Object instantiation (`heap` allocations), dynamic method dispatching (polymorphism), reflection inspection (`kotlin-reflect`), evaluation of `val` property getters, Coroutine continuation state machine execution, and Garbage Collection (GC).
-  * **Errors:** Unhandled errors during execution crash the application with a **Runtime Exception** (e.g. `NullPointerException`, `ClassCastException`, `IndexOutOfBoundsException`, `OutOfMemoryError`).
-
----
-
-#### 2. Direct Feature Comparison Table
-
-| Aspect / Feature | Compile-Time | Runtime |
+| Aspect | Compile-time | Runtime |
 |---|---|---|
-| **Phase** | Build time (Source code &rarr; Bytecode) | Application execution time on JVM / ART |
-| **Error Feedback** | Immediate IDE / Compiler error (Build Fails) | Exception thrown during execution (App Crashes) |
-| **Type Checking** | Static type checking for all variables & signatures | Dynamic type checks (e.g., `is` / `as` casts, reflection) |
-| **Constants (`const val`)** | Inlined directly into call-site bytecode | N/A (Already replaced with literal value) |
-| **Read-Only (`val`)** | Reference immutability enforced by compiler | Getter called at runtime; value computed on execution |
-| **Null Safety** | Prevents null assignments to non-nullable types (`String`) | Enforces `!!` assertion checks; handles `?` safe calls |
-| **Generics** | Type parameter checking & `reified` inline substitution | Type Erasure (Generic types `List<T>` become raw `List`) |
-| **Annotations** | `@Retention(AnnotationRetention.SOURCE / BINARY)` | `@Retention(AnnotationRetention.RUNTIME)` via Reflection |
-| **Sealed Classes / Enums** | Exhaustiveness check enforced in `when` blocks | Instance creation & ordinal value evaluations |
-| **Metaprogramming** | KSP / KAPT code generation | Reflection (`KClass`, `KProperty`, `reflect()`) |
+| Error feedback | Build fails | Exception thrown |
+| Type checking | Static, for all declarations | Dynamic, via `is`/`as` and reflection |
+| `const val` | Inlined as a literal into every call site | Nothing left to evaluate |
+| `val` | Reassignment forbidden | Getter invoked; value computed |
+| Null safety | Non-nullable types cannot receive `null` | `!!` emits a runtime check that can throw |
+| Generics | Type parameters checked; `reified` substituted | **Type erasure** — `List<String>` becomes `List` |
+| Sealed/enum | `when` exhaustiveness enforced | Instances created, branches dispatched |
+| Metaprogramming | KSP/KAPT code generation | Reflection (`KClass`, `KProperty`) |
 
----
-
-#### 3. Deep Dive: Kotlin Features at Compile-Time vs. Runtime
-
-##### A. `const val` vs. `val`
+### Code Example
 ```kotlin
-const val API_TIMEOUT = 5000L   // Compile-Time Constant
-val currentTimestamp = System.currentTimeMillis() // Runtime Value
-```
-* `const val API_TIMEOUT`: At compile-time, `kotlinc` replaces every usage of `API_TIMEOUT` with the literal value `5000L` directly inside the bytecode. No memory lookup or getter call occurs at runtime.
-* `val currentTimestamp`: Evaluated at runtime when the execution thread reaches this line.
+// A. const val is substituted at compile time; val is evaluated at runtime
+const val TIMEOUT_MS = 5_000L                       // Becomes the literal 5000L everywhere
+val startedAt = System.currentTimeMillis()          // Computed when execution reaches it
 
-##### B. Null Safety Mechanics
-```kotlin
-val name: String = null  // ❌ Compile-time error: Type mismatch
-val str: String? = getNullableString()
-val len = str!!.length   // ⚠️ Compiles fine! Throws NullPointerException at Runtime if str is null
-```
-* The compiler detects invalid null assignments before your app ever runs.
-* When using `!!` (not-null assertion), the compiler emits a runtime check (`Intrinsics.checkNotNull()`) that throws a `NullPointerException` at runtime if the value is null.
+// B. Null safety is split across both phases
+val a: String = null        // Compile error: null cannot be a value of a non-null type
+val b: String? = maybe()
+val n = b!!.length          // Compiles; Intrinsics.checkNotNull throws NPE at runtime if null
 
-##### C. Generics & Inline `reified` Parameters
-```kotlin
-// Normal Generic (Type Erasure at Runtime)
-fun <T> printType(item: T) {
-    // println(T::class) // ❌ Compile error: Cannot access T at runtime due to Type Erasure
+// C. Generics: erased unless reified
+fun <T> naive(item: T) {
+    // if (item is T) { }   // Compile error: cannot check for erased type T
 }
 
-// Inline Reified Function (Preserved at Compile-Time)
-inline fun <reified T> checkType(item: Any) {
-    if (item is T) { // ✅ Allowed! Compiler substitutes T at call site during compilation
-        println("Item is of type: ${T::class.simpleName}")
-    }
+inline fun <reified T> checked(item: Any): Boolean = item is T   // T substituted at each call site
+```
+
+### Common Pitfalls
+* **Expecting `!!` to be a compile-time guarantee.** It defers the check to runtime and converts a compile error into a crash.
+* **Reflecting on generic types.** Erasure means `List<String>` and `List<Int>` are indistinguishable at runtime unless the function is `inline` + `reified`.
+* **Overusing `const val` for non-primitives.** It is restricted to primitives and `String` precisely because the value must be embeddable in bytecode.
+
+---
+
+## 1.3 The K2 Compiler (Kotlin 2.x)
+
+### Definition
+* **Compiler frontend** — the stage that reads source, resolves names, infers and checks types, and reports errors. The *backend* then turns the checked program into bytecode for a specific target.
+* **K2** — the rewritten frontend, default since Kotlin 2.0. It replaces the original one, which analysed code separately per target.
+* **FIR (Frontend Intermediate Representation)** — the single internal model K2 builds from your source. Because every target now shares it, analysis happens **once** instead of per platform.
+* **What that buys you** — roughly 1.5–2× faster compilation, smarter smart casts, and identical behavior across JVM, JS, and Native.
+
+### Why It Is Used
+The old frontend had target-specific analysis, so a bug or a smart-cast limitation could differ between JVM, JS, and Native. K2 gives one analysis pipeline: **faster compilation** (roughly 1.5–2× on large projects), **better smart casts**, and consistent behavior across platforms.
+
+### How It Works Internally
+K2 builds FIR from source, resolves and type-checks it once, then lowers it to each backend's IR. Compiler plugins (Compose, serialization, Parcelize) target this shared IR rather than each backend separately.
+
+Practical improvements you can observe:
+```kotlin
+// Smart casts K2 handles that the old frontend rejected
+fun render(value: Any?) {
+    if (value !is String) return
+    println(value.length)          // Smart cast survives the early return
 }
-```
-* **Standard Generics:** At runtime, the JVM erases generic type parameters (**Type Erasure**). `List<String>` and `List<Int>` both become plain `List`.
-* **Inline `reified` Functions:** At compile-time, the Kotlin compiler copies the function body directly to the invocation site and substitutes `T` with the concrete type, making the type information available at runtime without reflection.
 
----
-
-## 2. Variables — `var`, `val`, `const`
-
-### `var` vs `val`
-`var` declares a mutable variable, while `val` declares a read-only reference.
-
-```kotlin
-var name = "John"
-name = "Jane" // OK
-
-val age = 25
-// age = 30   // ❌ Compile-time error
-```
-
-A `val` reference cannot be reassigned, but the object it points to may still be mutable.
-
-```kotlin
-val numbers = mutableListOf(1, 2, 3)
-numbers.add(4)      // OK
-// numbers = mutableListOf(5, 6) // ❌ Not allowed
-```
-
-### Type inference
-Kotlin automatically infers the type from the assigned value.
-
-```kotlin
-val title = "Kotlin"   // String
-var count = 10          // Int
-val pi = 3.14           // Double
-```
-
-Explicit typing is useful when declarations are separated from initialization.
-
-```kotlin
-val score: Long
-score = 1000L
-```
-
-### `val` vs `const val`
-`const val` is a compile-time constant and can only be used with primitive types and strings.
-
-| Feature | `val` | `const val` |
-|---|---|---|
-| Runtime or compile time | Runtime | Compile time |
-| Allowed types | Any type | Primitive types, String |
-| Local declaration | Yes | No |
-| Class member | Yes | Only in objects/companion objects |
-| Generated as | `final` field | `static final` constant |
-
-```kotlin
-const val BASE_URL = "https://api.example.com"
-val message = "Welcome, $user"
-```
-
-> `const val` is inlined into the bytecode, so it is slightly faster than `val` for constant values.
-
----
-
-## 3. Null Safety
-
-Kotlin’s type system distinguishes between nullable and non-nullable types to prevent null pointer exceptions at compile time.
-
-### Nullable vs non-nullable types
-```kotlin
-var name: String = "Raj"
-// name = null // ❌ Compile-time error
-
-var nickName: String? = "Reddy"
-nickName = null // ✅ Allowed
-```
-
-### Safe call operator `?.`
-Access members safely when a value may be null.
-
-```kotlin
-println(nickName?.length) // Prints null if nickName is null
-```
-
-### Elvis operator `?:`
-Provide a default when a nullable value is null.
-
-```kotlin
-val length = nickName?.length ?: 0
-```
-
-### Non-null assertion `!!`
-Force a nullable value to be treated as non-null. Use sparingly.
-
-```kotlin
-val len = nickName!!.length // Throws if nickName is null
-```
-
-### Safe cast `as?`
-Try to cast a value and return null on failure.
-
-```kotlin
-val anyValue: Any = "123"
-val number = anyValue as? Int // null if cast fails
-```
-
-### Smart cast
-After a successful type check, Kotlin automatically infers the narrowed type.
-
-```kotlin
-fun printText(value: Any) {
-    if (value is String) {
-        println(value.length) // Smart cast to String
+fun process(x: Any) {
+    val isText = x is String
+    if (isText) {
+        // K2 propagates the condition through the boolean variable
+        println((x as String).length)
     }
 }
 ```
 
-### `let` for nullable receivers
-Run a block only when the value is non-null.
-
-```kotlin
-nickName?.let { name ->
-    println("Name length: ${name.length}")
-}
-```
-
-### `run` and `also` with null values
-Use `run` to compute a result and `also` to perform side effects.
-
-```kotlin
-val result = nickName?.run { uppercase() } ?: "UNKNOWN"
-nickName?.also { println("Nickname: $it") }
-```
-
-> Kotlin’s null safety is built into the type system, not just syntax. That is why `String` and `String?` are different types.
+### Common Pitfalls
+* **Compiler plugin version drift.** KSP, Compose, and serialization plugin versions are tied to a specific Kotlin version. A mismatch fails the build with a version error — always upgrade them together.
+* **Assuming K2 changes runtime behavior.** It is a frontend change; the emitted bytecode semantics are the same. Build speed and diagnostics improve, program behavior does not.
 
 ---
 
-## 4. Data Types & Type System
+# 2. Variables & Constants
 
-### Built-in numeric and text types
-| Kotlin | Example | JVM primitive | Notes |
+## 2.1 `var`, `val`, and `const val`
+
+### Definition
+* **`var`** — a mutable reference; can be reassigned.
+* **`val`** — a read-only reference; assigned once. It is **not** deep immutability.
+* **`const val`** — a compile-time constant, inlined into bytecode. Only top-level, or inside an `object`/`companion object`, and only primitives or `String`.
+
+### Why It Is Used
+`val` by default makes state changes explicit and localized, which removes a large class of bugs. `const val` removes a getter call and a field lookup entirely.
+
+### How It Works Internally
+`val` compiles to a private final field plus a getter. `const val` produces no field at all — the compiler substitutes the literal at each use site, so changing it requires recompiling every consumer.
+
+| | `var` | `val` | `const val` |
 |---|---|---|---|
-| `Byte` | `val b: Byte = 10` | `byte` | 8-bit integer |
-| `Short` | `val s: Short = 100` | `short` | 16-bit integer |
-| `Int` | `val i = 123` | `int` | 32-bit integer |
-| `Long` | `val l = 1_000_000L` | `long` | 64-bit integer |
-| `Float` | `val f = 3.14f` | `float` | 32-bit floating point |
-| `Double` | `val d = 2.71` | `double` | 64-bit floating point |
-| `Char` | `val c = 'A'` | `char` | Single character |
-| `Boolean` | `val ok = true` | `boolean` | true/false |
-| `String` | `val text = "Hello"` | `String` | Immutable sequence of chars |
+| Reassignable | Yes | No | No |
+| Evaluated | Runtime | Runtime | **Compile time** |
+| Allowed types | Any | Any | Primitives + `String` |
+| Allowed location | Anywhere | Anywhere | Top level, `object`, `companion object` |
+| Bytecode | Field + getter + setter | Field + getter | Inlined literal |
 
-### `Any`, `Any?`, `Unit`, `Nothing`
-- `Any` is the root of all non-nullable types.
-- `Any?` can hold any type including `null`.
-- `Unit` means the function returns no meaningful value.
-- `Nothing` indicates code that never returns normally.
-
+### Code Example
 ```kotlin
-fun printMessage(): Unit {
-    println("Hello")
+const val BASE_URL = "https://api.example.com"   // Inlined literal, zero runtime cost
+
+class Session {
+    var token: String? = null                     // Mutable
+    val createdAt = System.currentTimeMillis()    // Read-only, computed at construction
+
+    // A `val` with a custom getter is recomputed on every access
+    val isExpired: Boolean
+        get() = System.currentTimeMillis() - createdAt > BASE_TTL
 }
 
-fun fail(message: String): Nothing {
-    throw IllegalStateException(message)
+// `val` is reference immutability, NOT content immutability
+val items = mutableListOf(1, 2, 3)
+items.add(4)          // Allowed — the list changes
+// items = mutableListOf()   // Not allowed — the reference cannot be reassigned
+```
+
+### Common Pitfalls
+* **Believing `val` means immutable.** `val list: MutableList<T>` is fully mutable. Use `List<T>` (read-only) or an immutable collection if you want that guarantee.
+* **`const val` for a value that may change per environment.** Every consuming module must be recompiled; a normal `val` in an `object` is safer for configuration.
+* **A `val` with a getter that does real work.** `val expensive get() = compute()` recomputes on every read and looks free at the call site.
+
+---
+
+## 2.2 Type Inference
+
+### Definition
+* **Type inference** — the compiler deducing a declaration's type from its initializer, so you need not write it: `val count = 42` is an `Int`.
+* **What it is not** — dynamic typing. The type is fixed at compile time and checked exactly as strictly as if you had written it; only the *spelling* is optional.
+* **Where it stops** — a public function's inferred return type becomes part of its published signature, so changing the body can silently change the API.
+
+### Why It Is Used
+It removes noise (`val map = mutableMapOf<String, List<User>>()` rather than repeating the type) while keeping full type safety and IDE support.
+
+### How It Works Internally
+Inference runs over the whole expression, including generic arguments and lambda parameter types. It does **not** cross a public API boundary: a public function's return type is inferred from its body but becomes part of the signature, which is why explicit return types on public APIs prevent accidental breaking changes.
+
+### Code Example
+```kotlin
+val count = 42                 // Int
+val ratio = 42.0               // Double
+val label = "hits"             // String
+val ids = listOf(1, 2, 3)      // List<Int>
+val lookup = mutableMapOf<String, Int>()   // Explicit generic args when the initializer is empty
+
+// Lambda parameter types are inferred from the expected type
+val lengths: List<Int> = listOf("a", "bb").map { it.length }
+
+// Explicit return type on a public API: prevents an implementation change
+// from silently altering the published signature
+fun activeUsers(): List<User> = repository.all().filter { it.isActive }
+```
+
+### Common Pitfalls
+* **Omitting return types on public functions.** Changing the body can silently change the public type, breaking callers.
+* **Expecting inference for a recursive function.** It cannot infer a type that depends on itself; declare it explicitly.
+* **`val x = 1` when you needed a `Long`.** Numeric literals default to `Int`; write `1L` or annotate the type.
+
+---
+
+## 2.3 `lateinit` and `lazy`
+
+### Definition
+* **`lateinit var`** — a *promise to the compiler* that you will assign this non-null property before anything reads it. It suspends the normal rule that a non-null property must be initialized at construction.
+* **`by lazy { }`** — a *read-only property whose value is produced by a lambda the first time it is read*, then cached and reused for every later read.
+* **The difference in one line:** `lateinit` is initialized by **you**, at a time you choose; `lazy` is initialized by **the lambda**, at the moment of first access.
+
+### Why It Is Used
+Some properties genuinely cannot be initialized at construction — a dependency injected after the constructor, or an Android view available only in `onCreate`. `lazy` avoids paying for expensive construction that may never be needed.
+
+### How It Works Internally
+`lateinit` compiles to a nullable backing field plus a generated check; reading before assignment throws `UninitializedPropertyAccessException`, not `NullPointerException`. `by lazy` creates a `Lazy<T>` delegate object holding the initializer and the cached value; the default mode is `SYNCHRONIZED`, using double-checked locking.
+
+| | `lateinit var` | `by lazy` |
+|---|---|---|
+| Mutability | `var` | `val` |
+| Types | Non-null, non-primitive | Any |
+| Initialized by | You, explicitly | The lambda, on first read |
+| Thread safety | None | `SYNCHRONIZED` by default |
+| Can check state | `::prop.isInitialized` | Not applicable |
+
+### Code Example
+```kotlin
+class ProfileFragment : Fragment() {
+    // Assigned in onViewCreated; reading earlier throws a clear exception
+    private lateinit var adapter: UserAdapter
+
+    // Computed once, on first access; never computed if never read
+    private val formatter: DateTimeFormatter by lazy {
+        DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.getDefault())
+    }
+
+    fun refresh() {
+        if (::adapter.isInitialized) adapter.notifyDataSetChanged()
+    }
 }
+
+// Modes: pick NONE only when access is provably single-threaded
+val cache: Map<String, Int> by lazy(LazyThreadSafetyMode.NONE) { buildExpensiveMap() }
 ```
 
-### Type inference
-Kotlin usually figures out the type from the assigned value.
+### Common Pitfalls
+* **`lateinit` on a primitive or nullable type.** Not allowed — the compiler needs a null sentinel, and primitives have none.
+* **`lazy` on a value that depends on mutable state.** It is computed once and cached; later state changes are never reflected.
+* **`LazyThreadSafetyMode.NONE` accessed from two threads.** The initializer can run twice and produce two different instances.
 
+---
+# 3. Null Safety
+
+## 3.1 The Nullable Type System
+
+### Definition
+* **Non-nullable type (`String`)** — a type that can **never** hold `null`. The compiler rejects any attempt to put `null` into it.
+* **Nullable type (`String?`)** — the same type widened to also permit `null`. It is a *different* type, and the compiler refuses any operation on it that does not account for `null`.
+* **The core idea** — nullability is part of the **type**, not a runtime property or a comment. That is what moves null errors from runtime to compile time.
+* **What remains at runtime** — nothing: nullability is erased. The compiler inserts checks at boundaries so a null arriving from Java fails immediately rather than corrupting state later.
+
+### Why It Is Used
+The null pointer exception — Tony Hoare's "billion-dollar mistake" — is moved from runtime to compile time. Nullability becomes documentation the compiler enforces, rather than a comment nobody reads.
+
+### How It Works Internally
+There is no runtime representation of nullability; it is erased. The compiler inserts `Intrinsics.checkNotNull` calls at boundaries (public function parameters, `!!`) so that a null crossing from Java fails fast with a clear message rather than corrupting state.
+
+### The Operators
+
+| Operator | Meaning | Result when receiver is `null` |
+|---|---|---|
+| `?.` | Safe call | `null` (does not invoke) |
+| `?:` | Elvis — supply a fallback | The right-hand side |
+| `!!` | Assert non-null | Throws `NullPointerException` |
+| `as?` | Safe cast | `null` instead of `ClassCastException` |
+| `?.let { }` | Run a block only if non-null | Block skipped, expression is `null` |
+
+### Code Example
 ```kotlin
-val city = "Bangalore" // inferred String
-val count = 5           // inferred Int
+val name: String? = user.displayName
+
+// Safe call: chains stop at the first null
+val length: Int? = name?.length
+val city: String? = user?.address?.city          // Any null in the chain yields null
+
+// Elvis: fallback value, or an early exit
+val safeLength: Int = name?.length ?: 0
+fun greet(user: User?): String {
+    val n = user?.name ?: return "Guest"          // Elvis with return works because `return` is Nothing
+    return "Hello, $n"
+}
+
+// Safe cast: null instead of an exception
+val asText: String? = payload as? String
+
+// let: operate only when non-null
+name?.let { nonNull ->
+    println(nonNull.uppercase())                  // `nonNull` is String, not String?
+}
+
+// Combining: transform if present, otherwise a default
+val slug: String = name?.lowercase()?.replace(" ", "-") ?: "unnamed"
 ```
 
-Explicit type declarations are useful for clarity and delayed initialization.
+### Common Pitfalls
+* **Using `!!` to silence the compiler.** It converts a compile-time question into a production crash. Every `!!` should be justified; most can be replaced by `?:`, `?.let`, or `requireNotNull` with a message.
+* **`?.let { }` as a null *check* with an else branch.** `x?.let { a() } ?: b()` runs `b()` when `a()` itself returns `null` — a real bug. Use `if (x != null) a() else b()`.
+* **Assuming a nullable chain short-circuits side effects.** `a?.b()?.c()` skips `c()` when `b()` returns null, which may not be what you intended.
 
+---
+
+## 3.2 Smart Casts
+
+### Definition
+* **Smart cast** — the compiler automatically treating a value as a narrower type after a check has already proven it, so no explicit cast is needed.
+* **What triggers one** — an `is` check, a `!is` early return, or a `null` comparison.
+* **The condition for it to apply** — the compiler must be able to prove the value **cannot change** between the check and the use. That is why it works for a local `val` and is refused for a `var` property, a custom getter, or an `open` property another module could override.
+
+### Why It Is Used
+It removes the redundant cast that a check has already justified, and — critically — the compiler will not let a smart cast apply where it would be unsound.
+
+### How It Works Internally
+Smart casting requires the compiler to prove the value **cannot change** between the check and the use. That is why it works for a local `val` but not for a `var` captured by a lambda, nor for a `var` property of another class (another thread could write it between the two lines).
+
+### Code Example
 ```kotlin
-val score: Double
-score = 95.5
-```
+fun describe(value: Any?): String {
+    if (value is String) return "text of ${value.length}"     // Smart cast to String
+    if (value == null) return "nothing"
+    return value.toString()                                    // Smart cast to Any (non-null)
+}
 
-### Smart casting and type checks
-Kotlin performs automatic casts after a successful `is` check.
+// Works with when, and with early returns (K2 handles more cases than the old frontend)
+fun area(shape: Shape): Double = when (shape) {
+    is Circle -> Math.PI * shape.radius * shape.radius          // Smart cast to Circle
+    is Rect -> shape.width * shape.height                       // Smart cast to Rect
+}
 
-```kotlin
-fun describe(value: Any) {
-    when (value) {
-        is String -> println("String length ${value.length}")
-        is Int -> println("Integer: $value")
-        else -> println("Unknown type")
+// Where smart cast is REFUSED, and why
+class Holder(var value: String?) {
+    fun show() {
+        if (value != null) {
+            // println(value.length)  // Error: `value` is a mutable property; another thread could null it
+            val local = value ?: return
+            println(local.length)     // Correct: copy to a local val first
+        }
     }
 }
 ```
 
-### Type aliases
-Give a readable name to a complex or repeated type.
-
-```kotlin
-typealias StringMap = Map<String, String>
-val headers: StringMap = mapOf("Accept" to "application/json")
-```
+### Common Pitfalls
+* **"Smart cast to String is impossible, because value is a mutable property."** The fix is always the same: copy into a local `val`.
+* **Expecting a smart cast through a custom getter.** `val x get() = compute()` can return a different value on each read, so no cast is possible.
+* **Smart casts across module boundaries on `open` properties.** A subclass could override the getter, so the compiler refuses.
 
 ---
 
-## 5. String Operations
+## 3.3 Null-Safety Helpers Beyond the Operators
 
-### String Interpolation
-Kotlin makes constructing strings easy with `$` placeholders.
+### Definition
+* **The gap they fill** — `!!` throws with no explanation, and `?:` silently substitutes a default. Sometimes you want to fail loudly *with a reason*, or to remove nulls from a collection cleanly.
+* **`requireNotNull` / `checkNotNull`** — assert a value is non-null and **return it**, throwing with a message you supply when it is not.
+* **`mapNotNull` / `filterNotNull`** — drop nulls while transforming, or from an existing collection, in a single pass.
+* **`orEmpty()`** — substitute an empty `String`, `List`, or `Map` for a null receiver.
+
+### Code Example
 ```kotlin
-val name = "MindOrks"
-println("Hello! I am learning from $name")           // Simple variable
-println("Name length: ${name.length}")               // Expression inside {}
+// requireNotNull / checkNotNull: assert with a message that explains the failure
+val id = requireNotNull(intent.getStringExtra("id")) { "Launch intent must carry an id" }
+
+// Filtering nulls out of a collection
+val names: List<String> = users.mapNotNull { it.displayName }      // Drops nulls while mapping
+val clean: List<String> = maybeNames.filterNotNull()               // Drops nulls from List<String?>
+
+// Default-on-null for collections and strings
+val label = user.nickname.orEmpty()                                 // "" when null
+val list = maybeList.orEmpty()                                      // emptyList() when null
+val n = maybeInt ?: 0
+
+// Nullable receiver extensions read naturally
+fun String?.isBlankOrNull(): Boolean = this == null || this.isBlank()
 ```
 
-### String Templates
-Expressions can be embedded directly inside strings.
-```kotlin
-val score = 75
-val result = "${if (score > 50) "Pass" else "Fail"}"
-println(result) // Pass
-```
-
-### Multiline Strings
-Use triple quotes for raw strings spanning multiple lines.
-```kotlin
-val text = """
-    Line 1
-    Line 2
-    Line 3
-""".trimIndent()
-println(text)
-```
-
-### Raw Strings with `trimMargin()`
-Use `trimMargin()` to strip a leading margin prefix from each line.
-```kotlin
-val html = """
-    |<html>
-    |  <body>
-    |    <p>Hello</p>
-    |  </body>
-    |</html>
-""".trimMargin()
-println(html)
-```
-
-### String Builder
-For building larger strings efficiently.
-```kotlin
-val message = buildString {
-    append("Hello")
-    append(", ")
-    append("World")
-}
-println(message) // Hello, World
-```
-
-### Destructuring
-Extract multiple values from a data object or tuple-like structure.
-```kotlin
-data class Developer(val name: String, val age: Int)
-
-val developer = Developer("Raj", 25)
-val (name, age) = developer   // Destructuring
-println(name)   // Raj
-println(age)    // 25
-```
+### Common Pitfalls
+* **`!!` where `requireNotNull(x) { "why" }` would do.** Both throw, but only one tells you what went wrong at 3 a.m.
+* **`filterNotNull` after `map` instead of `mapNotNull`.** The latter is one pass and one allocation.
 
 ---
 
-## 6. Control Flow
+# 4. Type System
 
-### `if` as an Expression
-In Kotlin, `if` can be used like an expression that returns a value.
+## 4.1 Numeric and Basic Types
+
+### Definition
+* **Basic type** — in Kotlin there are no primitive *types* in the source language. `Int`, `Long`, `Double`, `Boolean`, and `Char` are all classes with methods you can call.
+* **Primitive mapping** — the compiler still emits a JVM primitive (`int`, `long`) wherever a value can never be `null`, so you get object syntax at primitive cost.
+* **Boxing** — the fallback when a primitive *must* be an object (because it is nullable or a generic argument): the value is wrapped in `java.lang.Integer` and allocated on the heap.
+
+### How It Works Internally
+An `Int` variable compiles to a JVM `int`. An `Int?` **cannot** — null needs a reference — so it compiles to `java.lang.Integer`, which means boxing. The same applies to generic type arguments: `List<Int>` stores boxed `Integer`s.
+
+| Type | Bits | Notes |
+|---|---|---|
+| `Byte` / `Short` / `Int` / `Long` | 8 / 16 / 32 / 64 | No implicit widening — conversion is explicit |
+| `Float` / `Double` | 32 / 64 | `Double` is the default for decimal literals |
+| `Boolean` | — | |
+| `Char` | 16 | Not a number; no implicit `Int` conversion |
+| `UInt`, `ULong`, `UByte`, `UShort` | — | Unsigned, implemented as value classes |
+
+### Code Example
 ```kotlin
-val a = 10
-val b = 20
-val max = if (a > b) a else b
-println(max) // 20
+val a: Int = 1
+// val b: Long = a           // Error: no implicit widening in Kotlin
+val b: Long = a.toLong()     // Explicit conversion required
+
+// Readability separators and literal suffixes
+val million = 1_000_000
+val big = 10L
+val precise = 1.5f
+
+// Boxing: measurable in hot paths and large collections
+val boxed: List<Int> = listOf(1, 2, 3)     // Stores java.lang.Integer objects
+val unboxed: IntArray = intArrayOf(1, 2, 3) // Stores JVM int[] — no boxing
+
+// Integer overflow is silent, exactly as in Java
+val overflow = Int.MAX_VALUE + 1           // -2147483648
+val safe = Math.addExact(Int.MAX_VALUE, 1) // Throws ArithmeticException
 ```
 
-> 💡 **Kotlin has NO ternary operator (`? :`).** Use `if-else` or the Elvis operator instead.
+### Common Pitfalls
+* **Expecting implicit numeric widening.** Kotlin deliberately removed it because it hides precision loss; you must call `.toLong()`.
+* **`Int?` in a hot loop.** Every value is boxed, allocating an object per element.
+* **Comparing boxed values with `==` in Java-interop code.** In Kotlin `==` calls `equals`, so it is correct — but the same code read as Java would be reference comparison.
 
-### `when` Expression
-`when` replaces Java's `switch` and is more expressive.
+---
+
+## 4.2 `Any`, `Unit`, and `Nothing`
+
+### Definition
+* **`Any`** — the root of the non-nullable type hierarchy; `Any?` is the root of everything.
+* **`Unit`** — the type of a function that returns no meaningful value. A real singleton object, not a void keyword.
+* **`Nothing`** — the type with **no values**, and a subtype of every type. It marks code that never returns normally.
+
+### Why It Is Used
+`Nothing` is the one that earns its keep in real code: it is what makes `throw` and `return` usable as expressions, and what makes `?:` with an early exit type-check.
+
+### How It Works Internally
+Because `Nothing` is a subtype of everything, an expression of type `Nothing` fits wherever any type is expected. The compiler also uses it for **unreachable-code analysis**: anything after a `Nothing`-typed expression is dead code.
+
+### Code Example
 ```kotlin
-fun describe(value: Any): String = when (value) {
-    1 -> "One"
-    2, 3 -> "Two or Three"
-    in 4..10 -> "Between 4 and 10"
-    is String -> "It's a String"
-    else -> "Something else"
+// Unit is a value; these two are identical
+fun log(msg: String) { println(msg) }
+fun log2(msg: String): Unit { println(msg) }
+
+// Nothing lets throw be an expression
+fun fail(message: String): Nothing = throw IllegalStateException(message)
+
+val user = findUser(id) ?: fail("User $id not found")   // Type-checks: Nothing fits User
+
+// Nothing? is the type of a bare null literal
+val n = null                                             // Inferred as Nothing?
+
+// Any: equals/hashCode/toString are declared here
+fun printAll(items: List<Any>) = items.forEach { println(it) }
+```
+
+### Common Pitfalls
+* **Confusing `Unit` with `void`.** `Unit` is a real object, so `List<Unit>` is legal and a generic `T` can be `Unit`.
+* **Declaring a helper that always throws as returning `Unit`.** The compiler then cannot prove the code after the call is unreachable, and `?:` with it will not type-check. Return `Nothing`.
+* **Using `Any` where a generic would be better.** `Any` erases type information the caller has to cast back.
+
+---
+
+## 4.3 Type Checks and Casts
+
+### Definition
+* **Type check (`is`)** — asks at runtime whether a value is of a given type, returning `Boolean`. `!is` is the negation.
+* **Unsafe cast (`as`)** — asserts that a value *is* a given type. If it is not, it throws `ClassCastException`.
+* **Safe cast (`as?`)** — attempts the same cast but yields `null` instead of throwing, so the failure becomes a value you can handle.
+
+### Code Example
+```kotlin
+if (payload is String) println(payload.length)      // is + smart cast
+if (payload !is String) return
+
+val text = payload as String        // Throws ClassCastException when wrong
+val maybe = payload as? String      // null when wrong
+
+// Casting a collection: the element check is erased, so this succeeds and fails later
+val strings = anyList as List<String>       // Unchecked cast warning — no runtime verification
+val safeStrings = anyList.filterIsInstance<String>()   // Correct: checks each element
+```
+
+### Common Pitfalls
+* **Unchecked generic casts.** `as List<String>` cannot verify elements because of erasure; the failure surfaces later, far from the cast. Use `filterIsInstance`.
+* **`as` on a nullable value.** `x as String` throws when `x` is null; `x as String?` allows it.
+
+---
+
+## 4.4 Type Aliases and Value Classes
+
+### Definition
+* **`typealias`** — an alternative name for an existing type. Purely a compile-time convenience; **no new type is created**.
+* **`@JvmInline value class`** — a genuinely new type that wraps a single value and is **erased to that value at runtime** where possible, so it costs nothing.
+
+### Why It Is Used
+This is the fix for "primitive obsession". A function taking `(String, String)` invites passing the arguments in the wrong order; taking `(UserId, Email)` makes that a compile error — and with value classes, for free.
+
+### How It Works Internally
+A value class is compiled away: `UserId(5L)` is represented as a plain `long` in most positions. It is **boxed** only when it must be treated as an object — when used as a generic argument, when nullable, or when it implements an interface used polymorphically.
+
+| | `typealias` | `value class` |
+|---|---|---|
+| New type? | **No** — fully interchangeable | **Yes** — not interchangeable |
+| Type safety | None | Full |
+| Runtime cost | None | None when unboxed |
+| Can add members | No | Yes (functions, computed properties) |
+
+### Code Example
+```kotlin
+// typealias: readability only — these remain the same type
+typealias UserMap = Map<String, List<User>>
+typealias ClickHandler = (View) -> Unit
+
+// value class: a distinct type with no allocation
+@JvmInline
+value class UserId(val value: Long) {
+    init { require(value > 0) { "UserId must be positive" } }   // Validation at construction
 }
 
-val status = "SUCCESS"
-val result = when (status) {
-    "SUCCESS" -> "✅ Done"
-    "ERROR" -> "❌ Failed"
-    else -> "⏳ Pending"
-}
-println(result)
-```
-
-### Loops
-```kotlin
-// for loop
-for (i in 1..10) { println(i) }          // Inclusive range
-for (i in 1 until 10) { println(i) }     // Exclusive upper bound
-for (i in 10 downTo 1 step 2) { println(i) }   // Reverse with step
-for (item in listOf("A", "B", "C")) { println(item) }
-
-// while loop
-var count = 0
-while (count < 3) {
-    println(count)
-    count++
+@JvmInline
+value class Email(val value: String) {
+    val domain: String get() = value.substringAfter('@')
 }
 
-// do-while loop — executes at least once
-do {
-    println("Do at least once")
-    count--
-} while (count > 0)
+// The compiler now prevents argument-order mistakes
+fun invite(id: UserId, email: Email) { /* ... */ }
+// invite(email, id)   // Compile error — impossible with two raw Strings
+
+// Boxing happens here, and is worth knowing about
+val ids: List<UserId> = listOf(UserId(1))    // Generic argument => boxed
+val maybe: UserId? = null                     // Nullable => boxed
 ```
 
-### `forEach`
-```kotlin
-val list = listOf("A", "B", "C")
-list.forEach { println(it) }
-list.forEachIndexed { index, value -> println("$index: $value") }
-```
+### Common Pitfalls
+* **Expecting `typealias` to give type safety.** `typealias Meters = Double` still lets you pass seconds.
+* **A value class in a `List` or as a nullable, in a hot path.** Both box, so the "free" claim no longer holds.
+* **Java interop.** A value class's mangled JVM signature is awkward from Java; add `@JvmName` on functions taking one if Java must call them.
 
-### `break` and `continue` with Labels
+---
+
+# 5. Strings
+
+## 5.1 Templates, Raw Strings, and Building
+
+### Definition
+* **String template** — a string literal containing `$name` or `${expression}`, which the compiler replaces with the evaluated value at that position.
+* **Raw string (`"""…"""`)** — a literal that keeps newlines and treats backslashes literally, so no escaping is needed. Useful for SQL, JSON, and regex.
+* **`trimIndent()` / `trimMargin()`** — helpers that strip the leading whitespace a raw string picked up from your source indentation.
+* **`StringBuilder` / `buildString`** — a mutable character buffer used to assemble a string in a loop without allocating a new `String` per step.
+
+### How It Works Internally
+Simple concatenation and templates compile to `StringBuilder` operations (or `invokedynamic` string concat on newer JVM targets). A template inside a **loop** still allocates per iteration, which is why an explicit `StringBuilder` matters there.
+
+### Code Example
 ```kotlin
-outer@ for (i in 1..5) {
-    for (j in 1..5) {
-        if (j == 3) break@outer    // breaks the outer loop
-        if (j == 2) continue@outer // continues the outer loop
+val name = "Raj"
+val greeting = "Hello, $name — you have ${messages.size} messages"
+
+// Raw string: no escaping, newlines preserved
+val query = """
+    SELECT id, name
+    FROM users
+    WHERE active = 1
+""".trimIndent()          // Removes the common leading indentation
+
+val bordered = """
+    |Line one
+    |Line two
+""".trimMargin()          // Removes everything up to and including the | prefix
+
+// A literal dollar sign in a raw string
+val price = """Cost: ${'$'}9.99"""
+
+// StringBuilder for loops — a template here would allocate per iteration
+val csv = buildString {
+    users.forEachIndexed { i, u ->
+        if (i > 0) append(',')
+        append(u.name)
     }
 }
 ```
 
-### `return` behavior in lambdas
+### Common Pitfalls
+* **`trimIndent()` vs `trimMargin()`.** `trimIndent` removes the *common* indentation; `trimMargin` needs an explicit prefix. Mixing them up leaves ragged output.
+* **Building strings with `+=` in a loop.** Each iteration allocates a new string. Use `buildString` or `joinToString`.
+* **Forgetting that `$` needs escaping in raw strings.**
+
+---
+
+## 5.2 Comparison, Formatting, and Useful Operations
+
+### Definition
+* **Structural equality (`==`)** — compares **contents** by calling `equals()`. This is what you almost always want for strings.
+* **Referential equality (`===`)** — compares **object identity**: are these the same object in memory? Java's `==` behaves this way.
+* **Formatting** — producing a display string from values, via `String.format`/`"%.2f".format(x)` or a template.
+* **Locale sensitivity** — case conversion and formatting depend on the user's language settings, so a machine-facing comparison must pin the locale explicitly.
+
+### Code Example
 ```kotlin
-fun doWork() {
-    listOf(1, 2, 3).forEach {
-        if (it == 2) return      // returns from doWork(), not just lambda
+// Equality: == is structural (calls equals); === is referential
+val a = "kotlin"
+val b = buildString { append("kot"); append("lin") }
+println(a == b)      // true  — same content
+println(a === b)     // false — different objects
+
+// Case-insensitive comparison, locale-aware where it matters
+"Kotlin".equals("KOTLIN", ignoreCase = true)     // true
+
+// Joining is almost always better than manual loops
+val line = users.joinToString(separator = ", ", prefix = "[", postfix = "]") { it.name }
+
+// Splitting, trimming, checking
+"a,b,,c".split(",").filter { it.isNotBlank() }   // [a, b, c]
+"  text  ".trim()
+"".isEmpty()        // true  — length 0
+"   ".isBlank()     // true  — empty or only whitespace
+"".isNullOrBlank()  // Works on String?
+
+// Substring helpers that avoid index arithmetic
+val file = "report.2024.pdf"
+file.substringBefore('.')       // report
+file.substringAfterLast('.')    // pdf
+file.substringBeforeLast('.')   // report.2024
+
+// Formatting
+"%.2f".format(3.14159)          // 3.14
+"Total: %d items".format(42)
+```
+
+### Common Pitfalls
+* **`isEmpty()` when you meant `isBlank()`.** A field containing only spaces passes `isNotEmpty()`.
+* **`==` on strings assumed to be reference comparison** by developers coming from Java. In Kotlin `==` is `equals`; `===` is the reference check.
+* **`toUpperCase()` without a locale.** In Turkish, `"i".uppercase()` is not `"I"`. Use `uppercase(Locale.ROOT)` for machine-facing comparisons.
+
+---
+
+# 6. Control Flow
+
+## 6.1 `if` and `when` as Expressions
+
+### Definition
+* **Statement vs expression** — a *statement* performs an action and yields nothing; an *expression* evaluates to a value you can assign or return.
+* **`if` as an expression** — every branch produces a value, and the whole `if` evaluates to the chosen branch's value. This is why Kotlin has no ternary operator.
+* **`when` as an expression** — a multi-branch selection that also produces a value. Given a sealed type or enum, the compiler additionally verifies that **every** case is covered (*exhaustiveness*).
+
+### Why It Is Used
+An expression can initialize a `val`, which keeps values immutable and makes every branch's contribution explicit. Used with a sealed type, `when` is also **exhaustiveness-checked**, so adding a subtype becomes a compile error rather than a silent fall-through.
+
+### Code Example
+```kotlin
+// if as an expression — replaces the ternary operator
+val status = if (score >= 50) "pass" else "fail"
+
+// A block form returns its last expression
+val grade = if (score > 90) {
+    logger.debug("top band")
+    "A"
+} else "B"
+
+// when with subject
+val label = when (code) {
+    0 -> "ok"
+    in 1..99 -> "warning"            // Range
+    400, 401, 403 -> "client error"  // Multiple values
+    is Int -> "other int"            // Type check
+    else -> "unknown"
+}
+
+// when without subject replaces an if/else-if chain
+val category = when {
+    age < 13 -> "child"
+    age < 20 -> "teen"
+    else -> "adult"
+}
+
+// Exhaustive when over a sealed type: no `else` needed, and adding a
+// subtype breaks the build instead of silently falling through
+sealed interface Result
+data class Ok(val data: String) : Result
+data class Err(val cause: Throwable) : Result
+
+fun render(r: Result): String = when (r) {
+    is Ok -> r.data
+    is Err -> r.cause.message.orEmpty()
+}
+```
+
+### Common Pitfalls
+* **Adding `else` to a `when` over a sealed type.** It silences the exhaustiveness check, so a new subtype compiles and misbehaves at runtime. Omit `else` deliberately.
+* **Using `when` as a statement and losing exhaustiveness.** Only `when` used as an *expression* is checked. Assigning the result (or annotating the function's return) restores the check.
+* **Non-constant branches on a `when` with subject.** They are evaluated in order, top to bottom — order matters.
+
+---
+
+## 6.2 Loops, Ranges, and Progressions
+
+### Definition
+* **`for` loop** — iterates over anything providing an `iterator()`: collections, ranges, sequences, strings.
+* **`while` / `do-while`** — repeat while a condition holds; `do-while` always runs the body at least once.
+* **Range** — an object representing all values between two bounds: `1..5` (inclusive) or `1..<5` (end exclusive).
+* **Progression** — a range with a direction and step: `5 downTo 1`, `0..10 step 2`. A range is simply a progression with step 1.
+
+### How It Works Internally
+A `for` loop over an `IntRange` with a constant step is **compiled to an ordinary indexed loop** — no iterator object is allocated. That optimization is lost if the range is stored in a variable of type `Iterable<Int>`.
+
+### Code Example
+```kotlin
+for (i in 1..5) print(i)              // 12345  (inclusive)
+for (i in 1..<5) print(i)             // 1234   (exclusive end, Kotlin 1.9+; `until` before that)
+for (i in 5 downTo 1) print(i)        // 54321
+for (i in 0..10 step 2) print(i)      // 0246810
+for (c in 'a'..'e') print(c)          // abcde
+
+// Collections
+for (item in list) { }
+for ((index, item) in list.withIndex()) { }
+for ((key, value) in map) { }          // Destructuring in the loop header
+
+// Membership tests use the same ranges
+if (age in 18..64) { }
+if (status !in setOf(ACTIVE, PENDING)) { }
+
+// repeat for a fixed count
+repeat(3) { i -> println("attempt $i") }
+
+// while / do-while
+while (queue.isNotEmpty()) process(queue.removeFirst())
+do { attempt++ } while (attempt < 3 && !succeeded)
+```
+
+### Common Pitfalls
+* **`for (i in 0..list.size)`** — off by one. Use `list.indices` or `0..<list.size`.
+* **Mutating a collection while iterating it.** Throws `ConcurrentModificationException`; iterate a copy, or use `removeAll { }`.
+* **A descending range written as `10..1`.** It is empty, not descending. Use `downTo`.
+
+---
+
+## 6.3 Labels, Jumps, and Non-Local Return
+
+### Definition
+* **`break`** — stops the nearest enclosing loop entirely.
+* **`continue`** — skips the rest of the current iteration and starts the next one.
+* **Label (`outer@`)** — a name attached to a loop so `break@outer` / `continue@outer` can target *that* loop instead of the innermost one.
+* **Local return (`return@forEach`)** — returns from the **lambda** only, so the surrounding loop continues. Behaves like `continue`.
+* **Non-local return (bare `return`)** — returns from the **enclosing function**, exiting it completely. It is possible only inside an `inline` lambda, because the body is copied into the caller.
+
+### Why It Is Used
+This is one of the most commonly misunderstood parts of Kotlin, and a frequent interview question: a bare `return` inside `forEach` exits the **enclosing function**, not the lambda.
+
+### How It Works Internally
+`forEach` is an `inline` function, so its lambda body is copied into the caller. A `return` in that copied body is therefore a return from the caller — a **non-local return**. A labelled `return@forEach` returns only from the lambda, behaving like `continue`. Non-local return is impossible in a non-inline lambda, and the compiler rejects it.
+
+### Code Example
+```kotlin
+// Labelled break / continue for nested loops
+outer@ for (i in 1..3) {
+    for (j in 1..3) {
+        if (i == 2 && j == 2) break@outer     // Leaves BOTH loops
+        if (j == 3) continue@outer            // Next i
+        println("$i,$j")
+    }
+}
+
+// Non-local return: exits the whole function
+fun findFirstNegative(numbers: List<Int>): Int? {
+    numbers.forEach { if (it < 0) return it }   // Returns from findFirstNegative
+    return null
+}
+
+// Local return: acts like `continue`
+fun printPositives(numbers: List<Int>) {
+    numbers.forEach {
+        if (it < 0) return@forEach              // Skips this element only
         println(it)
     }
-    println("Done")
+    println("done")                             // Always reached
 }
 
-doWork()
+// Usually the idiomatic answer is neither — use the right operator
+val firstNegative = numbers.firstOrNull { it < 0 }
+numbers.filter { it >= 0 }.forEach(::println)
 ```
 
-Use labeled returns when you want to exit only the lambda.
-```kotlin
-fun doWorkSafely() {
-    listOf(1, 2, 3).forEach {
-        if (it == 2) return@forEach
-        println(it)
-    }
-    println("Done")
-}
-
-doWorkSafely()
-```
+### Common Pitfalls
+* **A bare `return` in `forEach` when you meant `continue`.** The function exits early and the code after the loop never runs — and it looks correct at a glance.
+* **Expecting `break`/`continue` to work inside `forEach`.** They are not allowed; the compiler rejects them. Use a real `for` loop, or `firstOrNull`/`takeWhile`/`filter`.
+* **Labelled returns in deeply nested lambdas.** If you need them, the code is usually asking for extraction into a named function.
 
 ---
+# 7. Functions
 
+> This section is the single place functions are covered. Lambdas, higher-order functions, extension functions, `inline`, `infix`, and operator functions all live here rather than being repeated elsewhere.
 
-## 7. Functions
+## 7.1 Declaring Functions
 
-### Regular Functions
+### Definition
+* **Function** — a named, reusable block of code that optionally takes parameters and optionally returns a value. Declared with `fun`.
+* **Block body** — `fun add(a: Int, b: Int): Int { return a + b }`. The return type must be written explicitly (unless it is `Unit`).
+* **Expression body** — `fun add(a: Int, b: Int) = a + b`. The body is a single expression, and the return type is inferred from it.
+* **First-class function** — Kotlin treats functions as **values**: they can be stored in variables, passed as arguments, and returned from other functions.
+* **Local function** — a function declared inside another function's body, visible only there, able to read the enclosing scope's variables.
+
+### How It Works Internally
+A top-level function compiles to a `static` method on a synthetic class named after the file (`Utils.kt` → `UtilsKt`), which is why Java callers write `UtilsKt.foo()` unless `@JvmName` renames it.
+
+### Code Example
 ```kotlin
+// Block body: explicit return type required (unless Unit)
 fun add(a: Int, b: Int): Int {
     return a + b
 }
 
-// Single-expression function
-fun add(a: Int, b: Int): Int = a + b
-```
+// Expression body: return type inferred
+fun multiply(a: Int, b: Int) = a * b
 
-### Default Arguments
-```kotlin
-fun greet(name: String, greeting: String = "Hello") {
-    println("$greeting, $name!")
+// Unit return: the type can be omitted
+fun log(message: String) { println(message) }
+
+// Local function — closes over the enclosing scope, keeps helpers private
+fun validate(username: String, email: String) {
+    fun tooShort(s: String) = s.length < 4      // Sees `username` and `email` if needed
+    require(!tooShort(username)) { "username too short" }
+    require(email.contains('@')) { "invalid email" }
 }
-greet("Raj")           // Hello, Raj!
-greet("Raj", "Hi")     // Hi, Raj!
 ```
 
-### Named Arguments
-```kotlin
-greet(greeting = "Hey", name = "Raj")  // Order doesn't matter
-```
+### Common Pitfalls
+* **Omitting the return type on a public expression-bodied function.** A body change silently changes the published signature.
+* **Deeply nested local functions.** Beyond one level they hurt readability more than a private top-level function would.
 
-### Variable Number of Arguments (`vararg`)
+---
+
+## 7.2 Default, Named, and `vararg` Parameters
+
+### Definition
+* **Default argument** — a value written in the parameter list (`greeting: String = "Hello"`) that is used when the caller omits that argument. One function replaces a family of overloads.
+* **Named argument** — passing an argument by writing its parameter name at the call site (`greet(name = "Raj")`). Because the name identifies the parameter, order no longer matters and you can skip any parameter that has a default.
+* **`vararg` parameter** — a parameter marked `vararg` that accepts **zero or more** arguments of its type. Inside the function it is an array; at the call site you write the values individually.
+* **Spread operator (`*`)** — passes an existing array *as* the individual `vararg` arguments: `sum(*existing)`.
+
+### Why It Is Used
+Default arguments remove the need for telescoping overloads. Named arguments make call sites self-documenting, which matters most for booleans and same-typed parameters.
+
+### How It Works Internally
+Kotlin generates **one** method plus a synthetic `$default` bridge that fills in missing arguments using a bitmask. Java sees only the full-arity method unless you add `@JvmOverloads`, which generates the overload chain.
+
+### Code Example
 ```kotlin
+fun createUser(
+    name: String,
+    role: Role = Role.MEMBER,
+    active: Boolean = true,
+    tags: List<String> = emptyList()
+) { /* ... */ }
+
+createUser("Ada")
+createUser("Ada", active = false)                   // Skip the middle parameter by name
+createUser(name = "Ada", role = Role.ADMIN)         // Order-independent
+
+// vararg: zero or more; spread an existing array with *
 fun sum(vararg numbers: Int): Int = numbers.sum()
-sum(1, 2, 3, 4)
+sum(1, 2, 3)
+val existing = intArrayOf(1, 2, 3)
+sum(*existing)                                       // Spread operator
+
+// Named arguments make boolean parameters readable at the call site
+setVisible(visible = true, animate = false)          // vs setVisible(true, false)
 ```
 
-### Lambda Functions
-Anonymous functions treated as values.
+### Common Pitfalls
+* **A default value that is evaluated per call.** `fun f(now: Long = System.currentTimeMillis())` is re-evaluated on each call — usually what you want, but surprising if you expected a constant.
+* **Default arguments in an `open` function.** Overrides may not specify their own defaults; the base declaration's are always used.
+* **Forgetting `@JvmOverloads` for Java callers.** They see only the full-arity signature.
+
+---
+
+## 7.3 Extension Functions and Properties
+
+### Definition
+* **Extension function** — a function declared *outside* a class but called *as if* it were a member: `fun String.slug(): String`. The type it extends is the **receiver**, referred to as `this` inside the body.
+* **Extension property** — the same idea for a property: `val String.wordCount: Int get() = ...`. It can have no backing field, so it must define a getter.
+* **Static resolution** — the key property of both: the compiler picks the extension by the **declared** type of the expression, not the runtime type, because they compile to ordinary static functions.
+
+### Why It Is Used
+It lets you extend types you do not own (`String`, `View`, a third-party model) with domain-specific behavior, keeping call sites readable (`"x".isEmailValid()` rather than `EmailUtils.isValid("x")`).
+
+### How It Works Internally
+Extensions are **resolved statically at compile time** and compile to static methods taking the receiver as the first parameter. Three consequences follow directly:
+1. They are **not polymorphic** — dispatch uses the *declared* type, not the runtime type.
+2. A member function always **wins** over an extension with the same signature.
+3. They cannot access `private` members of the receiver.
+
+### Code Example
 ```kotlin
+fun String.isEmailValid(): Boolean = contains('@') && contains('.')
+val String.wordCount: Int get() = trim().split(Regex("\\s+")).size
+
+"dev@kotlin.org".isEmailValid()      // true
+"hello there world".wordCount        // 3
+
+// Nullable receiver: the extension itself handles null
+fun String?.orPlaceholder(): String = if (isNullOrBlank()) "—" else this
+
+// Static dispatch — the classic interview trap
+open class Base
+class Derived : Base()
+fun Base.name() = "Base"
+fun Derived.name() = "Derived"
+
+val obj: Base = Derived()
+println(obj.name())      // "Base" — resolved by the DECLARED type, not the runtime type
+
+// Member always wins over extension
+class Repo { fun load() = "member" }
+fun Repo.load() = "extension"        // Never called; the compiler warns
+println(Repo().load())               // "member"
+
+// Scoped extensions: available only inside a class or a lambda receiver
+class Formatter(private val locale: Locale) {
+    fun Double.asCurrency(): String = NumberFormat.getCurrencyInstance(locale).format(this)
+    fun render(amount: Double) = amount.asCurrency()    // Visible only here
+}
+```
+
+### Common Pitfalls
+* **Expecting polymorphic behavior.** Extensions are static; if you need overriding, use a member function or an interface.
+* **Extending a type you own** when a member function would be clearer. Extensions are for types you cannot change, or for keeping a class's API small.
+* **Extension pollution.** A top-level `fun Any.debug()` appears on every type in autocomplete throughout the project.
+
+---
+
+## 7.4 Lambdas, Function Types, and Higher-Order Functions
+
+### Definition
+* **Function type** — a type describing a function's shape, written `(Int, Int) -> Int`: two `Int` parameters, returning `Int`. Variables and parameters can have this type.
+* **Lambda** — a function written as a literal value, with no name: `{ a, b -> a + b }`. It is an *instance* of a function type.
+* **Higher-order function** — a function that takes a function as a parameter, returns a function, or both. `list.filter { }` is one.
+* **`it`** — the automatic name for the single parameter of a one-parameter lambda, so `{ it * 2 }` needs no explicit declaration.
+* **Closure** — a lambda that captures variables from the scope where it was written, keeping them alive for as long as the lambda lives.
+
+### Why It Is Used
+Passing behavior as a value is what makes the collection API, coroutine builders, and Compose possible. It replaces the single-method interfaces (callbacks, listeners) that dominate Java.
+
+### How It Works Internally
+A lambda compiles to an instance of `FunctionN` (`Function0`, `Function1`, …). A **non-inlined** lambda therefore allocates an object; if it captures variables, it allocates a closure holding them. This is exactly the cost `inline` removes ([§7.6](#76-inline-noinline-and-crossinline)).
+
+### Code Example
+```kotlin
+// Declaring and calling
 val add: (Int, Int) -> Int = { a, b -> a + b }
-val result = add(9, 10)   // 19
+val square: (Int) -> Int = { it * it }              // `it` = the single implicit parameter
+val greet: (String) -> Unit = { println("hi $it") }
 
-// Single parameter shortcut using `it`
-val square: (Int) -> Int = { it * it }
-```
+// Higher-order: taking a function
+fun operate(a: Int, b: Int, op: (Int, Int) -> Int): Int = op(a, b)
+operate(5, 3) { x, y -> x + y }                      // Trailing lambda: outside the parentheses
 
-### Lambda Structure
-```kotlin
-{ parameters -> body }
-```
+// Higher-order: returning a function
+fun multiplier(factor: Int): (Int) -> Int = { it * factor }
+val double = multiplier(2)
+double(5)                                            // 10
 
-### Higher-Order Functions
-A function that takes another function as a parameter or returns a function.
-```kotlin
-fun operate(a: Int, b: Int, action: (Int, Int) -> Int): Int {
-    return action(a, b)
+// Trailing lambda + no other args: parentheses can be dropped entirely
+list.filter { it > 10 }
+
+// Anonymous function: needed when you want an explicit return type,
+// or a `return` that exits only the lambda
+val parse = fun(s: String): Int? {
+    if (s.isBlank()) return null                     // Returns from the anonymous function
+    return s.toIntOrNull()
 }
-val result = operate(5, 3) { x, y -> x + y }  // 8
+
+// Closures capture and can MUTATE enclosing variables (unlike Java's effectively-final rule)
+var counter = 0
+listOf(1, 2, 3).forEach { counter += it }
+println(counter)                                     // 6
 ```
 
-### Trailing Lambda Syntax
-When a lambda is the last parameter, it can be placed outside the parentheses.
+### Common Pitfalls
+* **`it` in nested lambdas.** The inner `it` shadows the outer one; name the parameters when nesting.
+* **A lambda in a hot loop that is not inlined.** Each iteration allocates. Prefer inline stdlib functions or hoist the lambda.
+* **Capturing a mutable variable in a lambda that outlives its scope.** The closure keeps the variable alive — a leak source in Android when the captured value is a `View` or `Context`.
+
+---
+
+## 7.5 Function References and Composition
+
+### Definition
+* **Function reference (`::`)** — a way to refer to an *existing* named function as a value, instead of wrapping it in a lambda: `list.map(::parse)` rather than `list.map { parse(it) }`.
+* **Unbound reference** — `String::toInt`, where the receiver is not yet chosen; it becomes the function's first argument.
+* **Bound reference** — `logger::log`, where the receiver is fixed at the point the reference is created and captured with it.
+* **Composition** — combining two functions into one that applies them in sequence, so `f then g` means "run `f`, feed its result to `g`".
+
+### Why It Is Used
+`.map(::transform)` is clearer than `.map { transform(it) }`, and avoids creating a wrapping lambda.
+
+### Code Example
 ```kotlin
-list.filter { it > 10 }     // Trailing lambda
-// Same as:
-list.filter({ it > 10 })
+fun isEven(n: Int) = n % 2 == 0
+
+listOf(1, 2, 3, 4).filter(::isEven)          // Top-level function reference
+listOf("1", "2").map(String::toInt)          // Unbound member reference — receiver is the argument
+
+val logger = Logger()
+listOf("a", "b").forEach(logger::log)        // Bound reference — receiver captured
+
+data class User(val name: String)
+listOf("Ada", "Alan").map(::User)            // Constructor reference
+
+// Property references
+val nameGetter = User::name
+println(nameGetter(User("Ada")))             // Ada
+
+// Composition
+infix fun <A, B, C> ((A) -> B).then(next: (B) -> C): (A) -> C = { a -> next(this(a)) }
+val slugify = String::trim then String::lowercase then { s: String -> s.replace(' ', '-') }
+println(slugify("  Hello World  "))          // hello-world
 ```
 
-### `it` Keyword
-Default name for a single lambda parameter.
-```kotlin
-val square: (Int) -> Int = { it * it }
-```
+### Common Pitfalls
+* **Ambiguous references when overloads exist.** `::println` is ambiguous; annotate the expected type or use a lambda.
+* **Bound references capture the receiver.** `logger::log` holds `logger` for as long as the reference lives — relevant when the receiver is an Activity.
 
-### Inline Functions
-Instructs the compiler to insert the function body at the call site — eliminates lambda overhead.
+---
+
+## 7.6 `inline`, `noinline`, and `crossinline`
+
+### Definition
+* **`inline`** — instructs the compiler to **copy the function's body, and the bodies of its lambda arguments, into every call site**, so no lambda object is allocated and no virtual call is made.
+* **`noinline`** — applied to one lambda parameter of an inline function to **exclude it** from that copying, so it remains a real object. Required when the lambda must be stored in a variable or passed on.
+* **`crossinline`** — applied to a lambda parameter that **will be inlined but must not contain a non-local `return`**. Required when the lambda is invoked from a different execution context, such as inside another lambda or an anonymous object.
+
+### Why It Is Used
+Inlining removes the `Function` object allocation and the virtual call for each lambda. It is also what makes `reified` type parameters and non-local returns possible.
+
+### How It Works Internally
+Because the body is copied, the lambda never becomes an object. But copying means **code size grows** with each call site, so inlining a large function is a net loss. `noinline` is needed when a lambda must be *stored* or *passed on* (an inlined lambda is not an object and cannot be). `crossinline` is needed when the lambda will be invoked from another context (inside another lambda or an object), where a non-local return would be unsound.
+
+### Code Example
 ```kotlin
-inline fun execute(block: () -> Unit) {
+// Inline: no Function object, no virtual call
+inline fun measure(block: () -> Unit): Long {
+    val start = System.nanoTime()
     block()
+    return System.nanoTime() - start
+}
+
+// reified requires inline — this is the main reason to inline a small function
+inline fun <reified T> Gson.fromJson(json: String): T =
+    fromJson(json, T::class.java)
+
+// noinline: the lambda must be stored, so it has to remain an object
+inline fun register(onStart: () -> Unit, noinline onFinish: () -> Unit) {
+    onStart()
+    pendingCallbacks += onFinish        // Storing requires a real object
+}
+
+// crossinline: invoked from another context, so a non-local return would be unsound
+inline fun runOnBackground(crossinline block: () -> Unit) {
+    executor.submit { block() }         // Without crossinline this does not compile
 }
 ```
 
-### `noinline`
-Prevents a specific lambda parameter from being inlined.
+### When NOT to inline
+
+| Situation | Why |
+|---|---|
+| The function has no lambda parameters | No allocation to remove; the compiler warns |
+| The function body is large | Code size multiplies per call site |
+| It is called from many places | Same reason — DEX size grows measurably |
+
+### Common Pitfalls
+* **Inlining every function "for performance".** For a function without lambda parameters, there is nothing to gain and code size to lose.
+* **Inline functions and `private` members.** A public inline function cannot access non-public members, because the body is copied into other modules. `@PublishedApi internal` is the escape hatch.
+* **Forgetting that inlining is why `forEach` allows non-local return.** That behavior is a consequence of inlining, not a special case.
+
+---
+
+## 7.7 `infix`, `operator`, and `tailrec`
+
+### Definition
+* **`infix`** — allows dot-free, parenthesis-free calls. Must be a member or extension with exactly one non-default, non-`vararg` parameter.
+* **`operator`** — implements a built-in operator (`+`, `[]`, `in`, `()`, comparison).
+* **`tailrec`** — converts a tail-recursive function into a loop at compile time, eliminating stack growth.
+
+### Code Example
 ```kotlin
-inline fun doSomething(abc: () -> Unit, noinline xyz: () -> Unit) {
-    abc()
-    xyz()
+// infix — most valuable for DSLs and readable assertions
+infix fun Int.pow(exp: Int): Int = (1..exp).fold(1) { acc, _ -> acc * this }
+val eight = 2 pow 3
+val pair = "key" to 1                                // `to` is an infix function, not syntax
+
+// operator — the conventional names matter
+data class Vec(val x: Int, val y: Int) {
+    operator fun plus(o: Vec) = Vec(x + o.x, y + o.y)      // a + b
+    operator fun times(k: Int) = Vec(x * k, y * k)         // a * k
+    operator fun unaryMinus() = Vec(-x, -y)                // -a
+    operator fun get(i: Int) = if (i == 0) x else y        // a[i]
+    operator fun contains(v: Int) = v == x || v == y       // v in a
+    operator fun compareTo(o: Vec) = (x * x + y * y).compareTo(o.x * o.x + o.y * o.y)
+    operator fun invoke() = "($x, $y)"                     // a()
 }
+
+val v = Vec(1, 2) + Vec(3, 4)     // Vec(4, 6)
+val scaled = v * 2                // Vec(8, 12)
+val first = v[0]                  // 4
+val has = 4 in v                  // true
+
+// tailrec — the recursive call must be the LAST operation
+tailrec fun factorial(n: Long, acc: Long = 1): Long =
+    if (n <= 1) acc else factorial(n - 1, acc * n)         // Compiles to a loop
+
+// NOT tail-recursive: the multiplication happens after the call returns
+fun badFactorial(n: Long): Long = if (n <= 1) 1 else n * badFactorial(n - 1)
 ```
 
-### Infix Functions
-Called without parentheses or dot notation.
+### Common Pitfalls
+* **`tailrec` on a call that is not in tail position.** The compiler warns and does **not** optimize — you still get a `StackOverflowError`.
+* **Overloading operators with non-obvious meaning.** `user + order` is unreadable; operators should preserve their conventional semantics.
+* **`infix` overuse.** It reads well for a small DSL and badly for ordinary business logic.
+
+---
+# 8. Object-Oriented Kotlin
+
+## 8.1 The Four Pillars, in Kotlin Terms
+
+### Definition
+* **Encapsulation** — keeping an object's internal state private and exposing only a controlled surface, so invariants cannot be broken from outside.
+* **Abstraction** — describing *what* a type can do without committing to *how*, so callers depend on a contract rather than an implementation.
+* **Inheritance** — deriving a type from another so it reuses and specialises its behavior.
+* **Polymorphism** — one declared type standing for many concrete implementations, with the correct one chosen at runtime.
+
+| Pillar | What it means | Kotlin mechanism |
+|---|---|---|
+| **Encapsulation** | Hide internal state behind a controlled surface | Visibility modifiers, custom getters/setters, `private set` |
+| **Abstraction** | Expose *what*, hide *how* | `interface`, `abstract class` |
+| **Inheritance** | Reuse and specialize behavior | `open class`, `: Base()`, `override` |
+| **Polymorphism** | One interface, many implementations | Virtual dispatch on `open`/`abstract` members |
+
 ```kotlin
-class Operations {
-    var x = 10
-    infix fun minus(num: Int) {
-        this.x = this.x - num
-    }
+// Encapsulation: the setter is private, so mutation is controlled
+class Cart {
+    var total: Int = 0
+        private set                      // Readable everywhere, writable only inside Cart
+
+    private val items = mutableListOf<Item>()
+    val contents: List<Item> get() = items.toList()   // Defensive copy; callers cannot mutate
+
+    fun add(item: Item) { items += item; total += item.price }
 }
-val opr = Operations()
-opr minus 8   // Infix call — no parentheses needed
-```
 
-### Reified Types
-Access the actual type parameter inside an inline generic function.
-```kotlin
-inline fun <reified T> isInstance(value: Any): Boolean {
-    return value is T
-}
-println(isInstance<String>("Hello"))   // true
-```
+// Abstraction + polymorphism
+interface PaymentMethod { fun charge(cents: Long): Result<Receipt> }
+class Card(private val token: String) : PaymentMethod { override fun charge(cents: Long) = ... }
+class Wallet(private val id: String) : PaymentMethod { override fun charge(cents: Long) = ... }
 
-### Pairs and Triples
-Return two or three values from a function.
-```kotlin
-val pair = Pair("Name", 25)
-println(pair.first)    // Name
-println(pair.second)   // 25
-
-val triple = Triple("A", 1, true)
-println(triple.first)  // A
+fun checkout(method: PaymentMethod, cents: Long) = method.charge(cents)   // Any implementation
 ```
 
 ---
 
-## 8. OOP in Kotlin
+## 8.2 Classes and Constructors
 
-### Class
+### Definition
+* **Class** — a blueprint describing state (properties) and behavior (functions). In Kotlin a class is **final and public by default**, so it cannot be subclassed unless marked `open`.
+* **Primary constructor** — the parameter list in the class *header*. Parameters declared `val`/`var` there automatically become properties.
+* **`init` block** — a block of code that runs as part of the primary constructor. Several are allowed, and they execute in declaration order, interleaved with property initializers.
+* **Secondary constructor** — an additional constructor declared in the class body with the `constructor` keyword. It **must** delegate to the primary constructor using `this(...)`.
+
+### Why It Is Used
+Final-by-default forces inheritance to be a deliberate decision (`open`), which prevents fragile base classes. The primary constructor collapses field declaration, assignment, and parameter list into one line.
+
+### How It Works Internally
+Primary-constructor parameters declared with `val`/`var` become properties with generated backing fields, getters, and setters. `init` blocks and property initializers run **in declaration order**, interleaved, as part of the primary constructor.
+
+### Code Example
 ```kotlin
-class Person(val name: String, var age: Int) {
-    fun greet() = println("Hi, I'm $name")
-}
+class User(
+    val id: Long,                       // Property: field + getter
+    var name: String,                   // Property: field + getter + setter
+    email: String                       // Constructor parameter only — no field kept
+) {
+    // Initializers and init blocks execute top-to-bottom as one constructor body
+    val domain: String = email.substringAfter('@')
 
-val person = Person("Raj", 25)   // No `new` keyword needed
-person.greet()
-```
-
-### `new` Keyword
-> ❌ Kotlin does **NOT** use the `new` keyword. Objects are created as: `val obj = ClassName()`
-
-### Constructors
-
-**Primary Constructor** — defined in the class header.
-```kotlin
-class Person(val name: String, var age: Int)
-```
-
-**Secondary Constructor** — declared inside the body, must call primary constructor.
-```kotlin
-class Person(val name: String) {
-    var age: Int = 0
-
-    constructor(name: String, age: Int) : this(name) {
-        this.age = age
-    }
-}
-```
-
-> 💡 Default type for constructor arguments is `val`. You can explicitly use `var`.
-
-### `init` Block
-Executed right after the primary constructor. Use it when you need to perform logic during construction.
-```kotlin
-class Person(val name: String) {
     init {
-        println("Person created: $name")   // Runs on object creation
+        require(name.isNotBlank()) { "name must not be blank" }
+        require('@' in email) { "invalid email" }
+    }
+
+    // Secondary constructor MUST delegate to the primary one
+    constructor(id: Long) : this(id, "Anonymous", "anon@example.com")
+}
+
+// No `new` keyword
+val u = User(1, "Ada", "ada@example.com")
+
+// Custom accessors — no backing field is generated when you never use `field`
+class Rect(val w: Int, val h: Int) {
+    val area: Int get() = w * h                    // Computed on each read
+
+    var label: String = ""
+        set(value) { field = value.trim() }        // `field` is the backing field
+}
+```
+
+### Common Pitfalls
+* **Calling an `open` member from a constructor or `init`.** The subclass override runs before the subclass's own properties are initialized, so it sees uninitialized state. This is a genuine, hard-to-find bug.
+* **Assuming secondary constructors can skip the primary.** They cannot — they must delegate with `this(...)`.
+* **Forgetting that a plain constructor parameter (no `val`/`var`) is not a property.** It is usable only in initializers and `init` blocks.
+
+---
+
+## 8.3 Data Classes
+
+### Definition
+* **Data class** — a class whose purpose is to *hold values* rather than to perform behavior. Declaring it `data` asks the compiler to generate the members such a type always needs, from the properties in its **primary constructor**.
+* **`equals()` / `hashCode()`** — give the type **structural equality**: two instances are equal when their property values are equal, rather than only when they are the same object. This is what makes a data class usable as a `Map` key or in a `Set`.
+* **`toString()`** — produces a readable form (`User(id=1, name=Ada)`) instead of the default identity hash, which is what makes logs and test failures legible.
+* **`copy()`** — creates a new instance with the same values except the ones you name: `user.copy(name = "Ada L")`. It is the standard way to "modify" an immutable object.
+* **`componentN()`** — one function per constructor property (`component1()`, `component2()`, …), which is what enables **destructuring**: `val (id, name) = user`.
+* **The boundary that causes most bugs** — only properties in the **primary constructor** take part. A property declared in the class body is invisible to every generated member.
+
+### Why It Is Used
+Value-holding types need structural equality and readable printing. Writing those by hand is boilerplate that goes stale the moment a field is added.
+
+### How It Works Internally
+Only properties **declared in the primary constructor** participate. A property declared in the body is excluded from `equals`, `hashCode`, `toString`, and `copy` — a subtle and frequently-hit trap.
+
+### Code Example
+```kotlin
+data class User(val id: Long, val name: String) {
+    var lastSeen: Long = 0            // NOT in equals/hashCode/toString/copy
+}
+
+val a = User(1, "Ada").apply { lastSeen = 100 }
+val b = User(1, "Ada").apply { lastSeen = 999 }
+println(a == b)          // true  — lastSeen is ignored
+println(a.copy())        // lastSeen resets to 0, NOT copied
+
+// copy for immutable updates
+val updated = a.copy(name = "Ada Lovelace")
+
+// Destructuring uses componentN, which is POSITIONAL
+val (id, name) = a
+// Reordering the constructor properties silently changes every destructuring site.
+
+// Requirements and restrictions
+// - At least one primary constructor parameter
+// - All primary constructor parameters must be val/var
+// - Cannot be open, abstract, sealed, or inner
+```
+
+### Common Pitfalls
+* **Body properties excluded from `equals`.** Two "different" objects compare equal, and `copy()` silently drops the value. Put everything meaningful in the primary constructor.
+* **A `data class` with a mutable collection property.** `hashCode` changes when the collection mutates, corrupting any `HashMap` or `HashSet` holding it.
+* **Destructuring by position.** Renaming is safe; **reordering** is not, and the compiler cannot warn you.
+* **Using a data class as a domain entity with identity.** Structural equality says two users with the same fields are the same user — often wrong for entities.
+
+---
+
+## 8.4 Sealed Classes and Interfaces
+
+### Definition
+* **Sealed type** — a type whose set of direct subtypes is **closed**: every subtype must be declared in the same package and module, so the compiler knows them all.
+* **Why that matters** — because the set is complete, a `when` over a sealed type is checked for **exhaustiveness**: if you fail to handle a case, the code does not compile.
+* **`sealed class`** — can hold state and declare constructors; use it when the shared cases need common data.
+* **`sealed interface`** — carries no state and no constructor, but a single type may implement several of them, so a class can belong to more than one closed hierarchy.
+
+### Why It Is Used
+It makes `when` **exhaustive**, so adding a new case becomes a compile error at every site that must handle it. This is the single most valuable modelling tool in Kotlin for UI state, results, and events.
+
+### How It Works Internally
+Subtypes must be declared in the same **package and module** (same file, before Kotlin 1.5). The compiler therefore knows the full set and can verify exhaustiveness. At runtime they are ordinary classes.
+
+| | `sealed` | `enum` |
+|---|---|---|
+| Instances | Many per subtype, each with its own state | One per constant |
+| Per-case data | Yes — different fields per subtype | Only fields shared by all |
+| Exhaustive `when` | Yes | Yes |
+| Use for | States/results carrying different payloads | A fixed set of simple constants |
+
+### Code Example
+```kotlin
+sealed interface UiState {
+    data object Loading : UiState                         // `data object` gives a nice toString
+    data class Content(val items: List<Item>, val refreshing: Boolean = false) : UiState
+    data class Error(val message: String, val retryable: Boolean) : UiState
+}
+
+// Exhaustive: no `else`, so a new subtype breaks the build here
+fun render(state: UiState) = when (state) {
+    UiState.Loading -> showSpinner()
+    is UiState.Content -> showList(state.items, state.refreshing)
+    is UiState.Error -> showError(state.message, state.retryable)
+}
+
+// A sealed interface can be implemented by types in other hierarchies
+sealed interface Cacheable
+sealed interface Syncable
+data class Note(val id: Long) : Cacheable, Syncable
+```
+
+### Common Pitfalls
+* **Adding `else` to an exhaustive `when`.** It disables the check that is the whole point. Leave it out and let the compiler find every site when the hierarchy grows.
+* **Using a sealed class where an enum suffices.** If no case carries data, an enum is simpler and cheaper.
+* **`object` instead of `data object` for a stateless case.** `data object` gives a readable `toString` and correct `equals` semantics for free (Kotlin 1.9+).
+
+---
+
+## 8.5 Enum Classes
+
+### Definition
+* **Enum class** — a type whose set of possible values is a **fixed list of named constants** written at declaration. A variable of that type can hold nothing else.
+* **Constant** — each name in the list (`OK`, `ERROR`) is a **singleton instance** of the enum type, created once by the runtime. Comparing with `==` therefore behaves like identity comparison.
+* **Constructor parameters** — an enum may carry data, so each constant supplies its own values: `OK(200, retryable = false)`.
+* **Per-constant behavior** — declaring an `abstract` member on the enum forces each constant to provide its own implementation, giving different behavior per case.
+* **`ordinal`** — the constant's zero-based **position** in the declaration list. It is positional, so reordering the declarations changes it.
+* **`entries`** — the cached, immutable list of all constants (Kotlin 1.9+), replacing `values()`, which returned a freshly allocated array on every call.
+
+### Code Example
+```kotlin
+enum class HttpStatus(val code: Int, val retryable: Boolean) {
+    OK(200, false),
+    TOO_MANY_REQUESTS(429, true),
+    SERVER_ERROR(500, true);
+
+    val isSuccess: Boolean get() = code in 200..299
+
+    companion object {
+        fun fromCode(code: Int): HttpStatus? = entries.firstOrNull { it.code == code }
     }
 }
-```
-> A class can have **multiple** `init` blocks — they execute in order.
 
-### Data Classes
-Designed to hold data. The compiler automatically generates `toString()`, `equals()`, `hashCode()`, and `copy()`.
-```kotlin
-data class Developer(val name: String, val age: Int)
+// Per-constant behavior via an abstract member
+enum class Operation {
+    PLUS  { override fun apply(a: Int, b: Int) = a + b },
+    TIMES { override fun apply(a: Int, b: Int) = a * b };
 
-val dev1 = Developer("Raj", 25)
-val dev2 = dev1.copy(age = 26)   // Creates a copy with modified age
-```
-> Requirements: At least one parameter in the primary constructor.
-
-### Sealed Classes
-Restricts class hierarchy — all subclasses must be in the same file. Great for representing states.
-```kotlin
-sealed class Result {
-    data class Success(val data: String) : Result()
-    data class Error(val message: String) : Result()
-    object Loading : Result()
+    abstract fun apply(a: Int, b: Int): Int
 }
 
-// Exhaustive when — no else needed
-when (result) {
-    is Result.Success -> println(result.data)
-    is Result.Error -> println(result.message)
-    is Result.Loading -> println("Loading...")
-}
+// entries (Kotlin 1.9+) replaces values() — no array allocation per call
+HttpStatus.entries.forEach { println(it.code) }
+val parsed = enumValueOf<HttpStatus>("OK")
+println(HttpStatus.OK.ordinal)      // 0 — position, not the code
 ```
 
-### Enum Classes
-Represents a fixed set of constants.
+### Common Pitfalls
+* **`values()` in a loop.** It allocates a fresh array on every call. Use `entries` (1.9+) or cache it.
+* **Persisting `ordinal`.** Reordering the constants silently changes stored data. Persist `name` or an explicit, stable `code`.
+* **`valueOf` on unvalidated input.** Throws `IllegalArgumentException`; use `entries.firstOrNull { it.name == input }`.
+
+---
+
+## 8.6 `object`, `companion object`, and Nested vs Inner Classes
+
+### Definition
+* **Singleton** — a type with exactly **one** instance for the whole process. Kotlin gives it first-class syntax rather than requiring the hand-written pattern Java needs.
+* **`object` declaration** — declares that singleton: `object Tracker { }`. The instance is created the first time it is touched (**lazily**) and the JVM's class-loading rules make that creation **thread-safe** without any locking you write.
+* **`object` expression** — an *anonymous* object created on the spot to implement an interface or extend a class: `object : OnClickListener { }`. It replaces Java's anonymous inner classes, and unlike a declaration a **new instance is created each time** the expression is evaluated.
+* **`companion object`** — a single object bound to a class, so its members are reached through the class name (`User.create()`). It is where Kotlin puts what Java would declare `static`, including factory functions and constants.
+* **Nested class** — a class declared inside another purely for **namespacing**. It holds **no reference** to the outer instance and can be created without one. This is Kotlin's default.
+* **`inner` class** — a nested class marked `inner`, which **does** hold a reference to the outer instance (so it can read the outer object's properties) and can only be created from one. That hidden reference is what makes `inner` a memory-leak risk.
+
+### How It Works Internally
+An `object` compiles to a class with a static `INSTANCE` field, initialized in a static initializer — so it is thread-safe and lazy by JVM class-loading rules. An `inner` class keeps a synthetic `this$0` field pointing at the outer instance, which is why non-static inner classes leak their outer object on Android.
+
+### Code Example
 ```kotlin
-enum class Status {
-    SUCCESS, ERROR, LOADING
+// Singleton
+object AnalyticsTracker {
+    private val queue = mutableListOf<Event>()
+    fun track(e: Event) { queue += e }
+}
+AnalyticsTracker.track(event)
+
+// Anonymous object
+val listener = object : OnClickListener {
+    override fun onClick(v: View) { /* ... */ }
 }
 
-enum class Direction(val degree: Int) {
-    NORTH(0), EAST(90), SOUTH(180), WEST(270)
-}
-```
-
-### Sealed Class vs Enum
-
-| Feature | Sealed Class | Enum |
-|---|---|---|
-| State/data per type | ✅ Different data per subclass | ❌ Limited |
-| Multiple instances | ✅ Yes | ❌ Only one per constant |
-| `when` exhaustiveness | ✅ Compiler enforced | ✅ Yes |
-| Flexibility | ✅ Very flexible | Less flexible |
-| Best for | Complex states (API responses, UI states) | Simple constants |
-
-### Object Declaration (Singleton)
-Creates a single instance automatically — thread-safe.
-```kotlin
-object DatabaseManager {
-    fun connect() { println("Connected") }
-}
-DatabaseManager.connect()   // Access directly — no instantiation
-```
-> **Note:** You cannot use a constructor with `object`, but you can use `init`.
-
-### Companion Object
-Allows defining static-like members inside a class.
-```kotlin
-class MyClass {
+// Companion: factory functions and constants
+class User private constructor(val id: Long, val name: String) {
     companion object Factory {
-        fun create(): MyClass = MyClass()
-        const val TAG = "MyClass"
+        const val ANONYMOUS_ID = -1L                 // Truly static, inlined
+        fun anonymous() = User(ANONYMOUS_ID, "Guest")
+        fun fromDto(dto: UserDto) = User(dto.id, dto.name)
     }
 }
-MyClass.create()    // Called using class name
-MyClass.TAG
-```
-> Only **one** companion object is allowed per class.
+val guest = User.anonymous()
 
-### Equivalent of Java `static` in Kotlin
-- `companion object`
-- Package-level functions
-- `object` declaration
-
-### Inheritance
-All Kotlin classes are **final by default** — use `open` to allow inheritance.
-```kotlin
-open class Animal {
-    open fun sound() {
-        println("Some sound")
-    }
+// Nested (default): no outer reference — prefer this
+class Outer(val value: Int) {
+    class Nested { fun describe() = "no access to Outer" }
+    inner class Inner { fun describe() = "outer value is $value" }   // Holds Outer
 }
-
-class Dog : Animal() {
-    override fun sound() {
-        println("Bark")
-    }
-}
+Outer.Nested()                 // No outer instance needed
+Outer(1).Inner()               // Requires an outer instance
 ```
 
-### Types of Inheritance in Kotlin
-
-```kotlin
-// Single Inheritance
-open class Animal
-class Dog : Animal()
-
-// Multilevel Inheritance
-open class Animal
-open class Mammal : Animal()
-class Dog : Mammal()
-
-// Hierarchical Inheritance
-open class Animal
-class Dog : Animal()
-class Cat : Animal()
-
-// Multiple Inheritance via Interfaces
-class Bird : Flyable, Swimmable  // Multiple interfaces allowed
-```
-> Kotlin does **NOT** support multiple class inheritance. Use interfaces instead.
-
-### Abstract Class
-Cannot be instantiated. Can have both abstract and implemented methods.
-```kotlin
-abstract class Animal {
-    abstract fun sound()     // No implementation — must be overridden
-
-    fun sleep() {            // Implemented — inherited as-is
-        println("Sleeping...")
-    }
-}
-
-class Dog : Animal() {
-    override fun sound() {
-        println("Bark")
-    }
-}
-```
-
-### Interface
-A contract that classes must implement. Supports multiple inheritance and can have default implementations.
-```kotlin
-interface Flyable {
-    fun fly()
-    fun land() {              // Default implementation
-        println("Landing...")
-    }
-}
-
-class Bird : Flyable {
-    override fun fly() {
-        println("Flying!")
-    }
-}
-```
-
-### Abstract Class vs Interface
-
-| Feature | Interface | Abstract Class |
-|---|---|---|
-| Methods | Abstract + default | Abstract + fully implemented |
-| State (properties) | ❌ No backing fields | ✅ Can have properties |
-| Constructor | ❌ Not allowed | ✅ Allowed |
-| Multiple inheritance | ✅ Supported | ❌ Single only |
-| Access modifiers | Public by default | All modifiers |
-| Instantiation | ❌ No | ❌ No |
-| Use case | Define behavior (capabilities) | Share common base logic |
-
-### Encapsulation
-Hiding internal data and exposing only what's needed.
-```kotlin
-class BankAccount(private var balance: Double) {
-    fun deposit(amount: Double) {
-        if (amount > 0) balance += amount
-    }
-    fun getBalance() = balance   // Controlled access
-}
-```
-
-### Polymorphism
-
-**Compile-time (Overloading)** — same function name, different parameters.
-```kotlin
-fun area(radius: Double): Double = Math.PI * radius * radius
-fun area(length: Double, width: Double): Double = length * width
-```
-
-**Runtime (Overriding)** — child class provides a specific implementation.
-```kotlin
-open class Animal { open fun sound() = println("...") }
-class Dog : Animal() { override fun sound() = println("Bark") }
-class Cat : Animal() { override fun sound() = println("Meow") }
-```
-
-### Operator Overloading
-Use the same operator with custom types.
-```kotlin
-data class Pen(val inkColor: String) {
-    fun showInkColor() = println(inkColor)
-}
-
-operator fun Pen.plus(other: Pen): Pen {
-    return Pen("${this.inkColor}, ${other.inkColor}")
-}
-
-val bluePen = Pen("Blue")
-val blackPen = Pen("Black")
-val combined = bluePen + blackPen   // Calls the plus operator
-combined.showInkColor()             // Blue, Black
-```
-
-### Delegation
-Delegate responsibilities to another class using the `by` keyword.
-```kotlin
-interface Printer {
-    fun print()
-}
-
-class RealPrinter : Printer {
-    override fun print() = println("Printing...")
-}
-
-class SmartPrinter(printer: Printer) : Printer by printer   // Delegates to printer
-```
-
-### `lateinit`
-Promise to initialize a non-null variable later.
-```kotlin
-class MyActivity {
-    lateinit var textView: TextView
-
-    fun setup() {
-        textView = TextView(context)   // Initialize later
-    }
-}
-```
-- Only for `var` (not `val`)
-- Only for non-primitive types
-- Throws `UninitializedPropertyAccessException` if accessed before init
-
-#### Checking `lateinit` initialization
-```kotlin
-if (::textView.isInitialized) {
-    textView.text = "Hello"
-}
-```
-
-### `lazy`
-Initialize a value **only when first accessed** — deferred initialization.
-```kotlin
-val expensiveObject: HeavyObject by lazy {
-    HeavyObject()   // Created only when first accessed
-}
-```
-- Only for `val`
-- Thread-safe by default
-- Computed once and cached
-
-### `lateinit` vs `lazy`
-
-| Feature | `lateinit` | `lazy` |
-|---|---|---|
-| Variable type | `var` only | `val` only |
-| Initialization | From outside / later | On first access |
-| Thread safety | Not guaranteed | Thread-safe by default |
-| Null check | `isInitialized` | N/A |
-| Use case | Dependency injection, setup methods | Expensive computations, deferred init |
+### Common Pitfalls
+* **`inner` when `class` would do.** The outer reference is a leak source; Kotlin defaults to nested precisely for this reason.
+* **Expecting `companion object` members to be Java statics.** Java sees `User.Companion.anonymous()` unless the member is `@JvmStatic` or `const`.
+* **Mutable state in an `object`.** It is process-wide and shared across every caller and thread — a global variable with better syntax.
 
 ---
 
-## 9. Visibility Modifiers
+## 8.7 Inheritance, Abstract Classes, and Interfaces
 
-| Modifier | Same Class | Subclass | Same Module | Outside Module |
-|---|---|---|---|---|
-| `private` | ✅ | ❌ | ❌ | ❌ |
-| `protected` | ✅ | ✅ | ❌ | ❌ |
-| `internal` | ✅ | ✅ | ✅ | ❌ |
-| `public` | ✅ | ✅ | ✅ | ✅ |
+### Definition
+* **Inheritance** — a class taking on the members of another class. Kotlin classes and members are **final by default**; `open` is required on both the class and each member you intend to override.
+* **`override`** — the mandatory keyword on a member that replaces an inherited one. Kotlin will not let you override accidentally.
+* **Abstract class** — a class that cannot be instantiated and may declare members without a body. It **can hold state** (backing fields) and have a constructor, but a class may extend only one.
+* **Interface** — a contract that may provide default method bodies but **cannot hold state**. A class may implement any number of them.
 
-> 💡 **Default visibility in Kotlin is `public`** (unlike Java where package-private is default).
+### How It Works Internally
+Interface default methods compile to a static method on a synthetic `DefaultImpls` class (or to a JVM default method with `-Xjvm-default=all`), which is why an interface cannot have backing fields — there is nowhere to put them.
+
+| | Abstract class | Interface |
+|---|---|---|
+| Multiple inheritance | No — one only | **Yes** |
+| State (backing fields) | **Yes** | No (properties must be abstract or have getters) |
+| Constructor | Yes | No |
+| Use when | Sharing state and implementation among close relatives | Defining a capability many unrelated types can have |
+
+### Code Example
+```kotlin
+open class Animal(val name: String) {
+    open fun speak() = "..."                 // Must be open to override
+    fun sleep() = "$name sleeps"             // final: cannot be overridden
+}
+
+class Dog(name: String) : Animal(name) {
+    override fun speak() = "Woof"
+    final override fun toString() = "Dog($name)"    // Block further overriding
+}
+
+abstract class Repository<T> {
+    abstract suspend fun load(id: Long): T           // No body: subclass must implement
+    protected open val cacheTtlMs: Long = 60_000     // Shared state and a sensible default
+}
+
+interface Clickable {
+    val id: String                                   // Abstract property — no backing field
+    fun onClick()
+    fun onLongClick(): Boolean = false               // Default implementation
+}
+
+// Resolving a diamond: explicit super qualification is required
+interface A { fun greet() = "A" }
+interface B { fun greet() = "B" }
+class C : A, B {
+    override fun greet() = super<A>.greet() + super<B>.greet()   // Compiler forces this
+}
+```
+
+### Common Pitfalls
+* **Forgetting `open`.** "This type is final, so it cannot be inherited from" is usually this.
+* **Calling an `open` member from `init`.** The override runs against a partially-constructed subclass.
+* **Putting state in an interface.** `var count = 0` in an interface does not compile; interfaces have no backing fields.
+* **Reaching for inheritance where composition or delegation fits better.** See [§8.8](#88-delegation).
 
 ---
 
-## 10. Collections
+## 8.8 Delegation
 
-### Overview
-Collections are data structures used to store and manage groups of objects.
+### Definition
+* **Delegation** — an object fulfilling an interface by **handing the work to another object** that already implements it, instead of inheriting the implementation.
+* **`by` (class delegation)** — the syntax that automates it: in `class Logging(d: Repo) : Repo by d`, the compiler generates every `Repo` method on `Logging` as a call that forwards straight to `d`.
+* **What you gain over inheritance** — you reuse an implementation without extending it, so there is no fragile base class, and you can override only the members you actually want to change.
+* **The one-way rule** — forwarding goes *out* to the delegate and never comes back. If the delegate's own methods call each other internally, they invoke **its** implementations, never your overrides.
 
-### Three Main Types
+### Why It Is Used
+It gives composition the ergonomics of inheritance: reuse an implementation without extending it, and override only what you need — with none of the fragile-base-class risk.
 
-| Type | Description | Allows Duplicates | Ordered |
-|---|---|---|---|
-| `List` | Ordered collection with index access | ✅ Yes | ✅ Yes |
-| `Set` | Unique elements only | ❌ No | ❌ Usually no |
-| `Map` | Key-value pairs | ❌ No (keys) | ❌ Usually no |
-
-### Mutable vs Immutable
-
+### Code Example
 ```kotlin
-// Immutable — read-only
-val names = listOf("Raj", "Sam", "John")
-val ids = setOf(1, 2, 3)
-val map = mapOf("name" to "Raj", "age" to 25)
+interface Repository { fun load(id: Long): User?; fun save(user: User) }
 
-// Mutable — can add/remove elements
-val names = mutableListOf("Raj", "Sam")
-names.add("John")
-names.remove("Sam")
+class NetworkRepository : Repository { /* real implementation */ }
 
-val ids = mutableSetOf(1, 2, 3)
-ids.add(4)
+// All Repository methods are forwarded to `delegate` automatically
+class LoggingRepository(
+    private val delegate: Repository
+) : Repository by delegate {
 
-val map = mutableMapOf<String, Int>()
-map["score"] = 100
+    // Override only what needs to change
+    override fun save(user: User) {
+        println("saving ${user.id}")
+        delegate.save(user)
+    }
+}
+
+// Delegating a collection interface
+class CountingList<T>(
+    private val inner: MutableList<T> = mutableListOf()
+) : MutableList<T> by inner {
+    var additions = 0; private set
+    override fun add(element: T): Boolean { additions++; return inner.add(element) }
+}
 ```
 
-### List
+### Common Pitfalls
+* **Assuming the delegate calls your overrides.** It does not. `delegate.save()` inside `NetworkRepository` calls *its own* method, never the decorator's — the forwarding is one-way.
+* **Delegating a large interface to hide one change.** The generated surface is still the whole interface; make sure that is genuinely the contract you want.
+
+---
+
+# 9. Visibility Modifiers
+
+### Definition
+
+| Modifier | Top-level declaration | Class member |
+|---|---|---|
+| `public` (default) | Visible everywhere | Visible everywhere the class is |
+| `internal` | Visible within the **module** | Visible within the module |
+| `private` | Visible within the **file** | Visible within the class |
+| `protected` | *Not allowed* | Visible in the class and its subclasses |
+
+### Why It Is Used
+`internal` is the one without a Java equivalent and the reason modularized Kotlin projects can have real boundaries: a class can be visible across a whole Gradle module while remaining invisible to every consumer of that module.
+
+### Code Example
 ```kotlin
-val numbers = listOf(1, 2, 3, 2, 1)  // Allows duplicates
-println(numbers[0])                    // Access by index
-println(numbers.size)
+// A module's public surface is deliberately small
+class PaymentProcessor internal constructor(       // Only this module can construct it
+    private val gateway: Gateway                    // Invisible outside the class
+) {
+    fun charge(cents: Long): Result<Receipt> = gateway.charge(cents)
+    internal fun debugState(): String = gateway.toString()   // Module-only helper
+}
+
+open class Base {
+    protected open fun hook() {}                    // Subclasses only
+    private fun internalDetail() {}                 // This class only
+}
 ```
 
-### Set
+### Common Pitfalls
+* **Expecting `internal` to be enforced from Java.** It compiles to `public` with a mangled name, so Java code in the same project can technically call it.
+* **`protected` on a top-level declaration.** Not allowed — there is no class to be protected within.
+* **Leaving everything public.** In a library or a multi-module app, the public surface is the contract you must keep working.
+
+---
+
+# 10. Delegated Properties
+
+### Definition
+`by` on a property routes its `get` and `set` through a delegate object implementing `getValue`/`setValue`.
+
+### Why It Is Used
+It factors out repeated property behavior — lazy initialization, change notification, validation, reading from a map or from `SharedPreferences` — into one reusable place.
+
+### How It Works Internally
+The compiler generates a hidden field holding the delegate and rewrites every access into `delegate.getValue(thisRef, property)`. The `property` argument is a `KProperty` carrying the property's name, which is what lets a delegate use the name as a storage key.
+
+### The Standard Delegates
+
+| Delegate | Purpose |
+|---|---|
+| `lazy { }` | Compute once on first read, then cache |
+| `Delegates.observable(initial) { p, old, new -> }` | Callback **after** each change |
+| `Delegates.vetoable(initial) { p, old, new -> Boolean }` | Callback **before**; return `false` to reject |
+| `Delegates.notNull<T>()` | Like `lateinit`, but works for primitives |
+| A `Map` / `MutableMap` | Read the property from a map by its name |
+
+### Code Example
 ```kotlin
-val numbers = setOf(1, 2, 3, 3, 2)   // Duplicates removed
-// Output: [1, 2, 3]
+class Settings {
+    // lazy: expensive, computed at most once
+    val config: Config by lazy { parseConfig(file) }
+
+    // observable: react to every change
+    var theme: Theme by Delegates.observable(Theme.LIGHT) { _, old, new ->
+        if (old != new) applyTheme(new)
+    }
+
+    // vetoable: reject invalid values before they are stored
+    var volume: Int by Delegates.vetoable(50) { _, _, new -> new in 0..100 }
+
+    // notNull: lateinit for a primitive
+    var startedAt: Long by Delegates.notNull()
+}
+
+// Map delegation: property names become keys — handy for JSON-shaped data
+class Payload(private val map: Map<String, Any?>) {
+    val id: Long by map
+    val name: String by map
+}
+val p = Payload(mapOf("id" to 1L, "name" to "Ada"))
+
+// A custom delegate: type-safe preferences with no repetition
+class PreferenceDelegate<T>(
+    private val prefs: SharedPreferences,
+    private val default: T
+) : ReadWriteProperty<Any?, T> {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getValue(thisRef: Any?, property: KProperty<*>): T =
+        when (default) {
+            is String -> prefs.getString(property.name, default) as T
+            is Int -> prefs.getInt(property.name, default) as T
+            is Boolean -> prefs.getBoolean(property.name, default) as T
+            else -> error("Unsupported type")
+        }
+
+    override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        prefs.edit {
+            when (value) {
+                is String -> putString(property.name, value)
+                is Int -> putInt(property.name, value)
+                is Boolean -> putBoolean(property.name, value)
+            }
+        }
+    }
+}
+
+class UserPrefs(prefs: SharedPreferences) {
+    var username: String by PreferenceDelegate(prefs, "")
+    var loginCount: Int by PreferenceDelegate(prefs, 0)
+}
 ```
 
-### Map
+### Common Pitfalls
+* **Map delegation with a missing key.** Throws `NoSuchElementException` at access time, not at construction — validate up front or use a nullable type.
+* **A delegate that does IO on every access.** `by PreferenceDelegate` reads from disk on every `get`; that is main-thread IO if the property is read in a layout pass.
+* **`observable` firing on equal values.** It fires on every assignment, not only on genuine changes — compare `old != new` yourself.
+
+---
+# 11. Generics
+
+## 11.1 Type Parameters and Constraints
+
+### Definition
+* **Generic type parameter** — a placeholder type (conventionally `T`) supplied by the caller, letting one class or function work over many types while keeping full type checking.
+* **Type argument** — the concrete type substituted for the parameter at a use site: in `Box<String>`, `String` is the argument.
+* **Upper bound / constraint** — a restriction on what the caller may supply, written `<T : Comparable<T>>`. Without one, `T` is only known to be `Any?`, so you can call almost nothing on it.
+* **`where` clause** — the syntax for expressing more than one constraint on the same parameter.
+
+### Why It Is Used
+Without them you fall back to `Any` and casting, which moves errors to runtime and loses IDE support.
+
+### Code Example
 ```kotlin
-val user = mapOf("name" to "Raj", "age" to 22)
-println(user["name"])    // Raj
+class Box<T>(private var value: T) {
+    fun get(): T = value
+    fun set(v: T) { value = v }
+}
+
+// Upper bound: T must be Comparable
+fun <T : Comparable<T>> maxOf(a: T, b: T): T = if (a > b) a else b
+
+// Multiple bounds require a `where` clause
+fun <T> process(item: T) where T : Serializable, T : Comparable<T> { /* ... */ }
+
+// Nullable vs non-null type parameters
+fun <T> firstOrNull(list: List<T>): T? = list.firstOrNull()
+fun <T : Any> requireFirst(list: List<T>): T = list.first()   // T cannot be nullable
 ```
 
-### Collection Operations (Very Important)
+### Common Pitfalls
+* **Forgetting `T : Any` when you need non-null.** A bare `T` may be inferred as a nullable type.
+* **Over-generifying.** A function generic in a type parameter used exactly once is usually just a concrete function.
 
+---
+
+## 11.2 Variance: `in`, `out`, and Star Projection
+
+### Definition
+* **`out T` (covariant)** — the type is only ever **produced**. `List<Dog>` is then a `List<Animal>`.
+* **`in T` (contravariant)** — the type is only ever **consumed**. `Comparator<Animal>` is then a `Comparator<Dog>`.
+* **`*` (star projection)** — "some type, but I do not know which".
+
+### Why It Is Used
+Without variance, `List<Dog>` would not be usable where `List<Animal>` is expected, even though every dog is an animal. Java solves this with wildcards at each *use site*; Kotlin lets you declare it once at the *declaration site*.
+
+### How It Works Internally
+The rule is memorable as **PECS — Producer `out`, Consumer `in`**. The compiler enforces it: a type marked `out` may not appear in a parameter position, and `in` may not appear in a return position. This is what makes the substitution safe.
+
+### Code Example
 ```kotlin
-val numbers = listOf(1, 2, 3, 4, 5)
+// Covariant producer: T appears only in return positions
+interface Source<out T> {
+    fun next(): T
+    // fun add(item: T)     // Compile error: T is in an `in` position
+}
+val dogs: Source<Dog> = DogSource()
+val animals: Source<Animal> = dogs           // Safe: reading a Dog is reading an Animal
 
-// filter — returns elements matching condition
-val evens = numbers.filter { it % 2 == 0 }   // [2, 4]
+// Contravariant consumer: T appears only in parameter positions
+interface Sink<in T> {
+    fun accept(item: T)
+    // fun last(): T        // Compile error: T is in an `out` position
+}
+val animalSink: Sink<Animal> = AnimalSink()
+val dogSink: Sink<Dog> = animalSink          // Safe: anything accepting Animals accepts Dogs
 
-// map — transforms each element
-val doubled = numbers.map { it * 2 }          // [2, 4, 6, 8, 10]
+// Standard library uses exactly this
+// List<out E>          — read-only, covariant
+// MutableList<E>       — invariant, because it both produces and consumes
+// Comparable<in T>     — contravariant
 
-// find — returns first matching element
-val first = numbers.find { it > 3 }           // 4
+// Use-site variance when the declaration is invariant
+fun copy(from: MutableList<out Any>, to: MutableList<Any>) { to.addAll(from) }
 
-// any — returns true if any element matches
-val hasLarge = numbers.any { it > 4 }         // true
+// Star projection: unknown type argument
+fun describe(items: List<*>) = "size=${items.size}"      // Elements are Any?
+fun clear(box: Box<*>) {
+    // box.set(anything)   // Not allowed: the real type is unknown
+    println(box.get())     // Allowed: reads as Any?
+}
+```
 
-// all — returns true if all elements match
-val allPositive = numbers.all { it > 0 }      // true
+### Common Pitfalls
+* **Trying to mark a type parameter `out` when the class also consumes it.** The compiler rejects it, and the rejection is correct — allowing it would let you put a `Cat` into a `List<Dog>`.
+* **Confusing `List<*>` with `List<Any?>`.** The former is "some specific unknown type" and cannot be written to; the latter genuinely accepts anything.
+* **Assuming Kotlin's `List` is Java's `List`.** Kotlin's is read-only and covariant; Java's is mutable and invariant.
 
-// count — counts elements matching condition
-val evenCount = numbers.count { it % 2 == 0 } // 2
+---
 
-// reduce — aggregates all elements into one
-val sum = numbers.reduce { acc, x -> acc + x } // 15
+## 11.3 Type Erasure and `reified`
 
-// forEach — loop through each element
-numbers.forEach { println(it) }
+### Definition
+* **Type erasure** — the JVM discards generic type arguments after compilation, so at runtime `List<String>` and `List<Int>` are both just `List`. Nothing can recover which was written.
+* **What erasure forbids** — `value is T`, `T::class`, and two overloads that differ only by type argument, because none of them are distinguishable once the type is gone.
+* **`reified`** — a modifier on a type parameter of an `inline` function that makes the compiler substitute the **concrete type at each call site**, restoring the ability to write `is T` and `T::class`.
 
-// sorted / sortedBy
-val sorted = numbers.sorted()
-val sortedDesc = numbers.sortedDescending()
+### Code Example
+```kotlin
+// Erased: these checks are impossible
+fun <T> isType(value: Any): Boolean {
+    // return value is T          // Compile error: cannot check for an erased type
+    return false
+}
 
-// groupBy — groups elements by a key
-val grouped = numbers.groupBy { if (it % 2 == 0) "even" else "odd" }
+// reified: the compiler substitutes the real type where the function is called
+inline fun <reified T> isType(value: Any): Boolean = value is T
+inline fun <reified T> List<*>.ofType(): List<T> = filterIsInstance<T>()
+inline fun <reified T> Bundle.get(key: String): T? = get(key) as? T
 
-// partition — splits into two lists
-val (evens2, odds) = numbers.partition { it % 2 == 0 }
+isType<String>("hi")                        // true
+listOf(1, "a", 2).ofType<Int>()             // [1, 2]
 
-// flatMap — flatten nested collections
-val nested = listOf(listOf(1, 2), listOf(3, 4))
-val flat = nested.flatMap { it }   // [1, 2, 3, 4]
+// Erasure also means overloads differing only by type argument do not compile
+// fun handle(items: List<String>) { }
+// fun handle(items: List<Int>) { }         // Error: same JVM signature
+```
 
-// zip — combine two lists into pairs
-val zipped = listOf(1, 2, 3).zip(listOf("A", "B", "C"))  // [(1,A), (2,B), (3,C)]
+### Common Pitfalls
+* **Expecting `reified` without `inline`.** It requires the body to be copied to the call site; the compiler enforces this.
+* **Unchecked casts hidden behind reified helpers.** `as? T` inside a reified function is checked, but `as T` is not — the failure surfaces later.
+* **Two overloads differing only in generic arguments.** They collide after erasure.
 
-// distinct — removes duplicates
-val distinct = listOf(1, 2, 2, 3).distinct()  // [1, 2, 3]
+---
+
+# 12. Collections
+
+## 12.1 Read-Only vs Mutable
+
+### Definition
+* **Read-only interface (`List`, `Set`, `Map`)** — a view that exposes **no mutating methods**. You cannot add or remove through this reference.
+* **Mutable interface (`MutableList`, …)** — the same collection with `add`, `remove`, and `clear` available.
+* **Read-only is not immutable** — the crucial distinction. A `List` may be backed by an `ArrayList` that some other reference still holds and can change underneath you.
+* **Genuine immutability** — requires a defensive copy (`toList()`) or a truly immutable type from `kotlinx.collections.immutable`.
+
+### Why It Is Used
+Returning a read-only type documents and enforces that callers must not modify the result — the most common source of accidental shared-state bugs.
+
+### How It Works Internally
+Read-only is **not immutable**. `List<T>` is a view without mutating methods; the underlying object may still be an `ArrayList` someone else can change. Only `kotlinx.collections.immutable` or a defensive copy gives a real guarantee.
+
+### Code Example
+```kotlin
+val readOnly: List<Int> = listOf(1, 2, 3)
+val mutable: MutableList<Int> = mutableListOf(1, 2, 3)
+
+// The trap: a read-only reference to a mutable object
+val backing = mutableListOf(1, 2)
+val view: List<Int> = backing        // Read-only VIEW
+backing.add(3)
+println(view)                        // [1, 2, 3] — the "read-only" list changed
+
+// Correct encapsulation: hand out a copy, or an immutable type
+class Cart {
+    private val items = mutableListOf<Item>()
+    val contents: List<Item> get() = items.toList()      // Defensive copy
+}
+```
+
+### Common Pitfalls
+* **Treating `List` as immutable.** It is read-only, which is a different guarantee.
+* **Exposing the mutable backing field via a `List` property without copying.** Callers cannot mutate it directly, but anything else holding the mutable reference can.
+
+---
+
+## 12.2 Collection Operations
+
+### Definition
+* **Collection operation** — an extension function on `Iterable` that produces a new collection or a single value from an existing one, replacing a hand-written loop.
+* **Transformation** (`map`, `flatMap`, `associateBy`) — produces a new collection of a different shape.
+* **Filtering** (`filter`, `filterNot`, `filterIsInstance`) — produces a subset.
+* **Aggregation** (`sumOf`, `count`, `fold`, `reduce`, `maxByOrNull`) — collapses the collection to one value.
+* **Grouping** (`groupBy`, `groupingBy`, `partition`) — splits it into buckets.
+* **They are eager** — each step immediately builds a complete intermediate collection, which is what [§12.3](#123-sequences) exists to avoid.
+
+### Code Example
+```kotlin
+val users = listOf(User(1, "Ada", 36), User(2, "Alan", 41), User(3, "Grace", 45))
+
+// Transform
+users.map { it.name }                              // [Ada, Alan, Grace]
+users.mapNotNull { it.nickname }                   // Transform and drop nulls in one pass
+users.flatMap { it.roles }                         // Flatten nested collections
+users.associateBy { it.id }                        // Map<Long, User>
+users.associateWith { it.age }                     // Map<User, Int>
+
+// Filter and search
+users.filter { it.age > 40 }
+users.filterNot { it.isActive }
+users.filterIsInstance<Admin>()                    // Type-safe element filtering
+users.first { it.age > 40 }                        // Throws if none
+users.firstOrNull { it.age > 100 }                 // null if none
+users.find { it.name == "Ada" }                    // Alias for firstOrNull
+users.any { it.age > 40 }; users.all { it.age > 18 }; users.none { it.age < 0 }
+
+// Aggregate
+users.sumOf { it.age }
+users.maxByOrNull { it.age }                       // The element with the largest age
+users.maxOfOrNull { it.age }                       // The largest age itself
+users.count { it.isActive }
+users.fold(0) { acc, u -> acc + u.age }            // With an initial value
+users.reduce { a, b -> if (a.age > b.age) a else b } // Throws on an empty list
+
+// Group and partition
+users.groupBy { it.age / 10 }                      // Map<Int, List<User>>
+users.groupingBy { it.role }.eachCount()           // Map<Role, Int>, one pass
+val (adults, minors) = users.partition { it.age >= 18 }
+
+// Order
+users.sortedBy { it.age }
+users.sortedByDescending { it.age }
+users.sortedWith(compareBy({ it.role }, { it.name }))   // Multi-key comparator
+
+// Window and chunk
+listOf(1, 2, 3, 4).chunked(2)                      // [[1,2],[3,4]]
+listOf(1, 2, 3, 4).windowed(2)                     // [[1,2],[2,3],[3,4]]
+listOf(1, 2, 3).zip(listOf("a", "b"))              // [(1,a), (2,b)] — stops at the shorter
+
+// Build without an intermediate mutable variable
+val ids = buildList { users.forEach { add(it.id) }; add(-1L) }
 ```
 
 ### `map` vs `flatMap`
-
-| Operation | `map` | `flatMap` |
-|---|---|---|
-| Purpose | Transform each element | Flatten nested collections |
-| Input | `List<T>` | `List<List<T>>` |
-| Output | `List<R>` | `List<R>` (flat) |
-
-### List vs Array
-
-| Feature | Array | List |
-|---|---|---|
-| Size | Fixed | Dynamic (MutableList) |
-| Flexibility | Less flexible | More flexible |
-| Operations | Fewer built-in ops | Rich functional API |
-
-### Sequences (Lazy Collections)
-Process data lazily — values are computed one by one, only when needed. More memory-efficient for large datasets.
 ```kotlin
-val result = (1..1_000_000)
-    .asSequence()
-    .filter { it % 2 == 0 }
-    .map { it * 3 }
+val nested = listOf(listOf(1, 2), listOf(3, 4))
+nested.map { it }        // [[1, 2], [3, 4]]  — still nested
+nested.flatMap { it }    // [1, 2, 3, 4]      — flattened one level
+```
+
+### Common Pitfalls
+* **Chaining many operators over a large list.** Each step allocates a new list. Use a `Sequence` ([§12.3](#123-sequences)).
+* **`first()`/`reduce()` on a possibly-empty collection.** Both throw. Use `firstOrNull()`/`fold()`.
+* **`sortedBy` when you wanted `sortBy`.** `sortedBy` returns a new list; `sortBy` sorts a `MutableList` in place.
+* **`groupBy` when `groupingBy().eachCount()` would do.** The former builds intermediate lists you immediately discard.
+
+---
+
+## 12.3 Sequences
+
+### Definition
+* **Sequence** — a collection-like type whose operations are **lazy**: calling `map` or `filter` only records the intent, and nothing runs until a terminal operation asks for a result.
+* **Intermediate operation** — `map`, `filter`, `take`. Returns another `Sequence` and performs no work.
+* **Terminal operation** — `toList`, `first`, `sum`, `forEach`. This is what actually drives the evaluation.
+* **Horizontal vs vertical** — an eager `List` chain processes **every element through one operator, then every element through the next**. A sequence passes **one element through the whole chain** before starting the next, which is why a short-circuiting terminal like `first()` can stop almost immediately.
+
+### Why It Is Used
+For a large collection with several chained operations, or when a terminal operation short-circuits (`first`, `take`, `any`), a sequence does dramatically less work.
+
+### How It Works Internally
+Eager collection operators are **horizontal**: `map` processes every element, producing a list, then `filter` processes every element again. A sequence is **vertical**: each element passes through `map` then `filter` before the next element starts — so `first()` stops after the first match.
+
+### Code Example
+```kotlin
+val users = List(1_000_000) { User(it.toLong(), "user$it", it % 80) }
+
+// Eager: builds a 1,000,000-element list, then filters it, then takes 10
+val eager = users
+    .map { it.name.uppercase() }        // 1,000,000 transformations + a new list
+    .filter { it.startsWith("USER1") }  // 1,000,000 tests + another new list
     .take(10)
-    .toList()
+
+// Lazy: stops as soon as 10 elements have passed the whole chain
+val lazy = users.asSequence()
+    .map { it.name.uppercase() }
+    .filter { it.startsWith("USER1") }
+    .take(10)
+    .toList()                            // Terminal operation triggers evaluation
+
+// Generating sequences
+val fibonacci = generateSequence(0 to 1) { (a, b) -> b to (a + b) }.map { it.first }
+fibonacci.take(10).toList()              // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+
+val lines = generateSequence(::readLine)  // Until readLine returns null
 ```
 
-### Collection Time Complexity
+### When a sequence is NOT worth it
 
-| Operation | List | Set | Map |
-|---|---|---|---|
-| Access | O(1) | O(1) avg | O(1) avg |
-| Search | O(n) | O(1) avg | O(1) avg |
-| Insert | O(1) avg | O(1) avg | O(1) avg |
-
-### Best Practices
-- ✅ Use **immutable** collections whenever possible
-- ✅ Use `Set` for **unique values**
-- ✅ Use `Map` for **lookup data**
-- ✅ Use `Sequence` for **large datasets**
-
----
-
-## 11. Lambdas & Higher-Order Functions
-
-### Lambda
-An anonymous function used as a value or parameter.
-```kotlin
-val sum = { a: Int, b: Int -> a + b }
-println(sum(5, 3))   // 8
-
-// Single parameter — use `it`
-val square: (Int) -> Int = { it * it }
-```
-
-### Higher-Order Function
-Takes a function as parameter or returns a function.
-```kotlin
-// Takes function as parameter
-fun operate(a: Int, b: Int, action: (Int, Int) -> Int): Int = action(a, b)
-
-// Returns a function
-fun getMultiplier(factor: Int): (Int) -> Int = { it * factor }
-val double = getMultiplier(2)
-println(double(5))   // 10
-```
-
-### Function vs Lambda
-
-| Feature | Function | Lambda |
-|---|---|---|
-| Name | Has a name | Anonymous |
-| Declaration | `fun` keyword | `{ }` braces |
-| Return type | Explicit | Inferred |
-| Usage | Traditional | Functional programming |
-
-### `it` — Default Single Parameter Name
-```kotlin
-val doubled = listOf(1, 2, 3).map { it * 2 }
-```
-
-### Trailing Lambda
-When a lambda is the last parameter, write it outside the parentheses.
-```kotlin
-button.setOnClickListener {
-    println("Clicked!")
-}
-```
-
----
-
-## 12. Extension Functions
-
-Add new functionality to an existing class **without modifying or inheriting it**.
-```kotlin
-fun String.addExclamation(): String = this + "!"
-fun String.isPalindrome(): Boolean = this == this.reversed()
-
-println("Hello".addExclamation())     // Hello!
-println("racecar".isPalindrome())     // true
-
-// Android example
-fun View.show() { this.visibility = View.VISIBLE }
-fun View.hide() { this.visibility = View.GONE }
-toolbar.hide()
-```
-
-> 💡 Extension functions are **statically resolved** — they don't actually modify the class.
-
-### Extension Properties
-```kotlin
-val String.wordCount: Int get() = this.split(" ").size
-println("Hello World".wordCount)   // 2
-```
-
----
-
-## 13. Scope Functions — `let`, `run`, `with`, `also`, `apply`
-
-These functions allow executing a block of code in the context of an object.
-
-### Quick Reference Table
-
-| Function | Context object | Return value | Use case |
-|---|---|---|---|
-| `let` | `it` | Lambda result | Null safety, transform |
-| `run` | `this` | Lambda result | Compute using object |
-| `with` | `this` | Lambda result | Multiple operations on object |
-| `also` | `it` | Same object | Side effects (logging) |
-| `apply` | `this` | Same object | Object initialization |
-
-### `let` — Null safety and transformation
-```kotlin
-val name: String? = "Raj"
-name?.let {
-    println(it.length)   // Only runs if name is not null
-}
-val upper = name?.let { it.uppercase() }   // Returns uppercase or null
-```
-
-### `run` — Compute result using object context
-```kotlin
-val result = "Hello".run {
-    length + 10   // `this` is the String
-}   // result = 15
-```
-
-### `with` — Multiple operations on same object
-```kotlin
-val result = with(StringBuilder()) {
-    append("Hello ")
-    append("World")
-    toString()   // Returns the result
-}
-```
-
-### `also` — Side effects (logging, debugging)
-```kotlin
-val list = mutableListOf(1, 2, 3)
-    .also { println("Before: $it") }
-    .apply { add(4) }
-    .also { println("After: $it") }
-// also returns the same object, uses `it`
-```
-
-### `apply` — Object initialization and configuration
-```kotlin
-val user = User().apply {
-    name = "Raj"    // `this` is the User object
-    age = 25
-}
-// Returns the same object (User)
-```
-
-> 💡 **Memory trick:** `apply` & `also` return **same object**. `let`, `run`, `with` return **lambda result**. `apply` & `run` use **`this`**. `let` & `also` use **`it`**.
-
----
-
-## 14. Coroutines
-
-### What are Coroutines?
-Coroutines are a framework to manage **concurrency in a lightweight, non-blocking way**. A coroutine is like a lightweight thread that can **pause (suspend) and resume** without blocking an actual thread.
-
-### Why Coroutines?
-- No callback hell
-- Cleaner, sequential-looking async code
-- Lightweight — thousands of coroutines can run on a few threads
-- Built-in cancellation and error handling
-
-### `suspend` Function
-A function that can **pause execution** without blocking the thread and resume later.
-```kotlin
-suspend fun fetchData(): String {
-    delay(1000)   // Suspends (not blocks) for 1 second
-    return "Data fetched"
-}
-```
-> `suspend` functions can only be called from other `suspend` functions or coroutine builders.
-
-### Coroutine Builders
-
-#### `launch` — Fire and Forget
-Starts a coroutine that does not return a result.
-```kotlin
-val job = CoroutineScope(Dispatchers.Main).launch {
-    println("Running task")
-}
-// Returns: Job
-```
-
-#### `async` — Returns a Result
-Starts a coroutine and returns a `Deferred<T>` — use `.await()` to get the result.
-```kotlin
-val deferred = CoroutineScope(Dispatchers.IO).async {
-    fetchData()
-}
-val result = deferred.await()   // Waits for result
-```
-
-#### `runBlocking` — Bridges Blocking and Non-blocking Code
-Blocks the current thread until all coroutines inside complete. Used mainly in tests or `main()`.
-```kotlin
-runBlocking {
-    delay(1000)
-    println("Done")
-}
-// ⚠️ Avoid on Android UI thread — freezes the app
-```
-
-#### `withContext` — Switch Thread and Return Result
-Suspends the coroutine, switches to a different dispatcher, executes, and returns.
-```kotlin
-val result = withContext(Dispatchers.IO) {
-    fetchDataFromNetwork()   // Runs on IO thread
-}
-// result available on original thread
-```
-
-#### `coroutineScope` — Wait for All Children
-Creates a scope and waits for all launched coroutines to complete.
-```kotlin
-coroutineScope {
-    launch { work1() }
-    launch { work2() }
-}   // All children must complete before continuing
-```
-
-### `launch` vs `async`
-
-| Feature | `launch` | `async` |
-|---|---|---|
-| Returns | `Job` | `Deferred<T>` |
-| Result | ❌ No | ✅ Yes (via `.await()`) |
-| Use case | Fire-and-forget | Parallel work with result |
-
-### Dispatchers
-Determines **which thread** a coroutine runs on.
-
-| Dispatcher | Thread | Use For |
-|---|---|---|
-| `Dispatchers.Main` | UI/Main thread | UI updates, View changes |
-| `Dispatchers.IO` | Background thread pool | Network calls, DB, File I/O |
-| `Dispatchers.Default` | CPU thread pool | Heavy computation, sorting, image processing |
-| `Dispatchers.Unconfined` | Current thread (unpredictable) | Testing, advanced use — avoid in production |
-
-```kotlin
-viewModelScope.launch {
-    val users = withContext(Dispatchers.IO) {
-        api.getUsers()          // Fetch on IO thread
-    }
-    _uiState.value = users      // Update on Main thread
-}
-```
-
-### Structured Concurrency
-Coroutines are organized in a **parent-child hierarchy**. When a parent is cancelled, all children are cancelled automatically.
-
-```kotlin
-val job = CoroutineScope(Dispatchers.Main).launch {
-    launch { child1() }    // Child 1
-    launch { child2() }    // Child 2
-}
-job.cancel()   // Cancels job + child1 + child2
-```
-
-### Job and Cancellation
-```kotlin
-val job = launch { /* long task */ }
-job.cancel()       // Cancel the coroutine
-job.join()         // Wait for cancellation to complete
-
-// Check if still active inside a coroutine
-while (isActive) {
-    // cooperative work
-}
-```
-
-### Cooperative Cancellation
-Coroutines **only stop at suspension points** (like `delay()`, `yield()`, `await()`).
-
-```kotlin
-val job = launch {
-    while (isActive) {     // Check cancellation manually
-        doWork()
-        yield()            // Allow cancellation to happen
-    }
-}
-```
-
-### `ensureActive()`
-Throws `CancellationException` if the coroutine is cancelled.
-```kotlin
-ensureActive()   // Stops execution immediately if cancelled
-```
-
-### `NonCancellable`
-Use to ensure critical cleanup runs even if the coroutine is cancelled.
-```kotlin
-withContext(NonCancellable) {
-    db.saveData()   // Always runs, even during cancellation
-}
-```
-
-### Timeout
-```kotlin
-withTimeoutOrNull(3000L) {
-    // Automatically cancelled after 3 seconds
-    fetchData()
-}
-```
-
-### Sequential vs Concurrent Execution
-```kotlin
-// Sequential — total time = time1 + time2
-val one = fetchOne()   // Waits for this to complete
-val two = fetchTwo()   // Then runs this
-
-// Concurrent — total time = max(time1, time2)
-val one = async { fetchOne() }
-val two = async { fetchTwo() }
-val result = one.await() + two.await()
-```
-
-### Coroutine Context
-The `CoroutineContext` defines the execution environment of a coroutine.
-```kotlin
-launch(Dispatchers.Default + CoroutineName("MyTask") + exceptionHandler) {
-    // Multiple context elements combined with +
-}
-```
-
-### Exception Handling
-```kotlin
-val handler = CoroutineExceptionHandler { _, exception ->
-    println("Caught: $exception")
-}
-
-CoroutineScope(Dispatchers.Main + handler).launch {
-    throw RuntimeException("Error!")
-}
-
-// try-catch inside coroutine
-launch {
-    try {
-        riskyOperation()
-    } catch (e: Exception) {
-        println("Handled: $e")
-    }
-}
-```
-
-### `delay()` vs `Thread.sleep()`
-
-| Feature | `delay()` | `Thread.sleep()` |
-|---|---|---|
-| Blocking | ❌ Non-blocking | ✅ Blocks the thread |
-| Use inside | Coroutines only | Anywhere |
-| Performance | ✅ Efficient | ❌ Wastes thread resources |
-
-### Android Coroutine Scopes
-
-| Scope | Lifecycle | Use case |
-|---|---|---|
-| `viewModelScope` | ViewModel lifecycle | ViewModel operations |
-| `lifecycleScope` | Activity/Fragment lifecycle | UI-bound operations |
-| `GlobalScope` | App lifetime | ⚠️ Avoid — not lifecycle-aware |
-
----
-
-## 15. Flow & Channels
-
-### What is Flow?
-`Flow` is a **cold, asynchronous stream** that emits multiple values over time. It's part of Kotlin Coroutines.
-
-```kotlin
-fun simple(): Flow<Int> = flow {
-    emit(1)
-    delay(100)
-    emit(2)
-    emit(3)
-}
-
-runBlocking {
-    simple().collect { value -> println(value) }
-}
-// Output: 1, 2, 3
-```
-
-### Flow is COLD
-Nothing runs until `collect()` is called. Each `collect()` starts a fresh execution.
-```kotlin
-val flow = simple()   // Nothing happens yet
-flow.collect()         // NOW it runs
-flow.collect()         // Runs AGAIN — fresh execution
-```
-
-### Flow vs List vs Sequence
-
-| Type | Sync/Async | Blocking | Use case |
-|---|---|---|---|
-| `List` | Sync | No delay | All data at once |
-| `Sequence` | Sync | Blocking | Lazy CPU work |
-| `Flow` | Async | Non-blocking | Streams, APIs, real-time data |
-
-### Flow Builders
-```kotlin
-flow { emit(1); emit(2) }      // Custom flow
-flowOf(1, 2, 3)                // From values
-(1..5).asFlow()                // From range
-listOf(1,2,3).asFlow()         // From collection
-```
-
-### Flow Operators
-
-**Intermediate operators** — transform data (don't start execution):
-```kotlin
-flow
-    .filter { it % 2 == 0 }         // Filter elements
-    .map { it * 2 }                  // Transform elements
-    .take(3)                         // Take only 3 elements
-    .onEach { println("Got: $it") }  // Side effect without consuming
-```
-
-**Terminal operators** — start execution:
-```kotlin
-flow.collect { println(it) }    // Collect values
-flow.toList()                   // Collect as List
-flow.reduce { a, b -> a + b }  // Aggregate
-flow.first()                    // First value
-flow.count()                    // Count values
-```
-
-### Thread Context in Flow — `flowOn`
-```kotlin
-// ❌ Wrong — don't use withContext inside flow
-flow {
-    withContext(Dispatchers.Default) {
-        emit(heavyComputation())   // Crash!
-    }
-}
-
-// ✅ Correct — use flowOn
-flow {
-    emit(heavyComputation())
-}.flowOn(Dispatchers.Default)   // Changes upstream thread
-```
-
-### Performance Operators
-```kotlin
-// buffer — emitter and collector run concurrently
-flow.buffer()
-
-// conflate — skip intermediate values, only latest matters
-flow.conflate()
-
-// collectLatest — cancel previous collection if new value arrives
-flow.collectLatest { value ->
-    delay(300)    // Previous work is cancelled when new value arrives
-    process(value)
-}
-```
-
-### Combining Flows
-```kotlin
-// zip — pairs values one-to-one
-flow1.zip(flow2) { a, b -> "$a - $b" }
-
-// combine — emits whenever either flow changes (uses latest values)
-flow1.combine(flow2) { a, b -> "$a - $b" }
-```
-
-### Flattening Flows
-```kotlin
-// flatMapConcat — sequential, waits for previous to complete
-// flatMapMerge — parallel, all run at same time
-// flatMapLatest — cancels previous when new value arrives (most common in UI)
-searchQuery.flatMapLatest { query ->
-    searchApi(query)
-}
-```
-
-### StateFlow & SharedFlow (Android-specific)
-
-| Feature | `StateFlow` | `SharedFlow` |
-|---|---|---|
-| Cold/Hot | Hot | Hot |
-| Replay | Last value (1) | Configurable |
-| Initial value | Required | Not required |
-| Use case | UI state | Events, one-time actions |
-
-```kotlin
-// StateFlow — always has a current value
-private val _uiState = MutableStateFlow(UiState.Loading)
-val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-
-// SharedFlow — for events
-private val _events = MutableSharedFlow<Event>()
-val events: SharedFlow<Event> = _events.asSharedFlow()
-```
-
-### What is a Channel?
-A `Channel` is a **hot** communication mechanism that allows coroutines to send and receive values — like a pipe between coroutines.
-
-```kotlin
-val channel = Channel<Int>()
-
-launch { channel.send(1) }      // Producer
-launch { println(channel.receive()) }  // Consumer
-```
-
-### Channel vs Flow
-
-| Aspect | Flow | Channel |
-|---|---|---|
-| Level | High-level | Low-level |
-| Execution | Cold | Hot |
-| Style | Declarative | Imperative |
-| Use case | Data streams | Coroutine communication |
-
-### Channel Types
-```kotlin
-Channel<Int>()                    // Rendezvous (default) — suspends until receiver ready
-Channel<Int>(capacity = 4)        // Buffered — can store up to 4 items
-Channel<Int>(Channel.UNLIMITED)   // Unlimited buffer
-Channel<Int>(Channel.CONFLATED)   // Only latest value kept
-```
-
----
-
-## 16. Annotations & Processing
-
-### What are Annotations?
-Metadata added to code that provides instructions to the compiler, framework, or libraries.
-
-```kotlin
-@Entity
-data class User(@PrimaryKey val id: Int, val name: String)
-```
-
-### Common JVM Interop Annotations
-
-| Annotation | Purpose |
+| Situation | Better choice |
 |---|---|
-| `@JvmStatic` | Makes a method callable as a static method from Java |
-| `@JvmOverloads` | Generates overloaded methods for default parameters in Java |
-| `@JvmField` | Exposes a Kotlin property as a Java field (no getters/setters) |
+| Small collection (tens of elements) | Eager — sequence setup costs more than it saves |
+| A single operation | Eager — there is no intermediate list to avoid |
+| The terminal operation needs everything anyway (`sorted`, `groupBy`) | Eager |
 
-```kotlin
-class MyClass {
-    companion object {
-        @JvmStatic fun create() = MyClass()   // Java: MyClass.create()
-    }
-
-    @JvmField val name = "Raj"                // Java: obj.name (no getter)
-
-    @JvmOverloads fun greet(name: String = "World") = println("Hello $name")
-    // Java gets: greet() and greet(String)
-}
-```
-
-### Kotlin vs Java Annotation Usage
-- Kotlin has simplified syntax — no `@Override` (uses `override` keyword instead)
-- Kotlin supports **use-site targets** for precise annotation placement:
-
-```kotlin
-@field:Inject lateinit var service: Service     // Targets the backing field
-@get:JvmName("getName") val name: String = ""   // Targets the getter
-@param:Named("userId") val id: String           // Targets constructor param
-```
-
-### KAPT vs KSP
-
-| Feature | KAPT | KSP |
-|---|---|---|
-| Speed | Slower | Faster |
-| Approach | Java-based (converts Kotlin → Java stubs) | Kotlin-native processing |
-| Recommended | Older projects | Modern Android projects |
+### Common Pitfalls
+* **Forgetting the terminal operation.** Without `toList()`, `first()`, `sum()`, and so on, nothing is evaluated at all.
+* **Reusing a sequence built from an iterator.** Many sequences can be consumed only once; a second terminal operation throws.
+* **Using sequences everywhere "for performance".** On small collections they are measurably slower.
 
 ---
 
-## 17. Advanced Kotlin Concepts
+## 12.4 Arrays and Primitive Arrays
 
-### Generics
+### Definition
+* **`Array<T>`** — a fixed-size, ordered container of object references. It is *invariant*, so `Array<Dog>` is not an `Array<Animal>`.
+* **Primitive array (`IntArray`, `LongArray`, `DoubleArray`, …)** — a specialised array compiled to a JVM primitive array (`int[]`), storing values directly with **no boxing** and no per-element object.
+* **The distinction that matters** — `Array<Int>` holds a heap object per element; `IntArray` holds a contiguous block of raw values.
+
+### Code Example
 ```kotlin
-fun <T> printItem(item: T) = println(item)
+val objects = arrayOf(1, 2, 3)          // Array<Int>  — boxed Integer objects
+val primitives = intArrayOf(1, 2, 3)    // IntArray    — JVM int[], no boxing
+val sized = IntArray(5) { it * it }     // [0, 1, 4, 9, 16]
 
-class Box<T>(val content: T)
-val stringBox = Box("Hello")
-val intBox = Box(42)
+// Conversion
+primitives.toTypedArray()               // IntArray -> Array<Int>  (boxes)
+objects.toIntArray()                    // Array<Int> -> IntArray  (unboxes)
 ```
 
-### Variance — `in` and `out`
+| | `Array<T>` / `List<T>` | `IntArray` etc. |
+|---|---|---|
+| Boxing | Yes for primitives | **No** |
+| Size | Fixed (`Array`) / dynamic (`List`) | Fixed |
+| Use for | General code | Numeric hot paths, large numeric data, interop |
+
+### Common Pitfalls
+* **`Array<Int>` in performance-sensitive numeric code.** Every element is a heap object; `IntArray` is a contiguous primitive block.
+* **Using an `Array` where a `List` is meant.** Arrays are invariant and lack the rich operator set; `List` is the idiomatic default.
+
+---
+
+## 12.5 Complexity and Choosing a Collection
+
+### Definition
+* **Time complexity** — how an operation's cost grows with the number of elements `n`. `O(1)` is constant regardless of size; `O(n)` grows in proportion to it.
+* **Why it decides the collection** — the same logical operation costs wildly different amounts depending on the structure: finding an element is `O(n)` in a `List` and `O(1)` in a `Set` or `Map`.
+* **The practical question** — for each collection you declare, ask which operation dominates: index access, membership testing, key lookup, or insertion at the front.
+
+| Operation | `ArrayList` | `LinkedList` | `HashSet` | `HashMap` |
+|---|---|---|---|---|
+| Access by index | O(1) | O(n) | — | — |
+| Search | O(n) | O(n) | O(1) | O(1) |
+| Insert at end | O(1) amortized | O(1) | O(1) | O(1) |
+| Insert at front/middle | O(n) | O(1) at a known node | — | — |
+| Delete | O(n) | O(1) at a known node | O(1) | O(1) |
+
+**Choosing:** `listOf`/`mutableListOf` (backed by `ArrayList`) for almost everything; `Set` when membership tests dominate or duplicates must be excluded; `Map` for key lookup; `LinkedHashMap`/`LinkedHashSet` (Kotlin's defaults) when insertion order matters.
+
+### Common Pitfalls
+* **`list.contains(x)` in a loop.** O(n) per call; convert to a `Set` first for O(1).
+* **A mutable object as a `HashMap` key or `HashSet` element.** Mutating it changes its `hashCode`, and it becomes unfindable in its own collection.
+
+---
+
+# 13. Scope Functions
+
+## 13.1 The Five, and How to Choose
+
+### Definition
+Five standard functions that execute a block in the context of an object, differing in **how the object is referenced** and **what is returned**.
+
+| Function | Object referenced as | Returns | Extension? | Typical use |
+|---|---|---|---|---|
+| `let` | `it` | Lambda result | Yes | Null-safe transformation |
+| `run` | `this` | Lambda result | Yes | Compute a value using the object |
+| `with` | `this` | Lambda result | **No** (takes an argument) | Several calls on one object |
+| `also` | `it` | **The object** | Yes | Side effects: logging, validation |
+| `apply` | `this` | **The object** | Yes | Configuration and initialization |
+
+**The decision rule:** need the object back → `apply` / `also`; need the lambda's result → `let` / `run` / `with`. Then pick `it` (clearer when nesting or when the receiver is nullable) or `this` (less noise when calling many members).
+
+### Code Example
 ```kotlin
-// out (covariant) — can only produce T (return)
-class Producer<out T>(private val value: T) {
-    fun get(): T = value
+// let — null safety and transformation
+val length = name?.let { it.trim().length } ?: 0
+user?.let { sendWelcomeEmail(it) }
+
+// run — compute a result using the object's members
+val summary = user.run { "$name <$email>, age $age" }
+
+// run without a receiver — scope a block and return a value
+val config = run {
+    val raw = loadFile()
+    parse(raw)
 }
 
-// in (contravariant) — can only consume T (parameter)
-class Consumer<in T> {
-    fun process(value: T) { }
+// with — several operations on one object, no chaining needed
+with(canvas) {
+    drawRect(bounds, paint)
+    drawText(label, x, y, paint)
+    save()
+}
+
+// apply — configure and return the same object
+val intent = Intent(context, DetailActivity::class.java).apply {
+    putExtra("id", id)
+    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+}
+
+// also — side effect in the middle of a chain, object passes through unchanged
+val result = fetchUsers()
+    .also { Log.d(TAG, "fetched ${it.size} users") }
+    .filter { it.isActive }
+    .also { Log.d(TAG, "${it.size} active") }
+```
+
+### `let` vs `run` vs `also` — the distinction that gets asked
+```kotlin
+data class Config(var host: String = "", var port: Int = 0)
+
+val a = Config().let { it.host = "api"; "configured ${it.host}" }   // it, returns String
+val b = Config().run { host = "api"; "configured $host" }           // this, returns String
+val c = Config().also { it.host = "api" }                           // it, returns Config
+val d = Config().apply { host = "api" }                             // this, returns Config
+```
+
+### Common Pitfalls
+* **`?.let { } ?: else` as an if/else.** If the `let` block itself returns `null`, the `else` branch runs too. Use a real `if`.
+* **Nested scope functions with `it`.** The inner `it` shadows the outer one; name the parameter (`user?.let { u -> ... }`).
+* **`apply` for computing a value.** It returns the receiver, so the block's result is discarded — a silent bug.
+* **Long `apply` blocks.** They read like a constructor and hide how much work is happening.
+
+---
+
+## 13.2 `takeIf` and `takeUnless`
+
+### Definition
+* **`takeIf { predicate }`** — returns the receiver **unchanged** when the predicate is `true`, and `null` when it is `false`. It converts a condition into a nullable value.
+* **`takeUnless { predicate }`** — the exact inverse: returns the receiver when the predicate is `false`.
+* **Why they exist** — they let a validity check join a `?.` / `?:` chain instead of interrupting it with an `if` statement.
+
+### Code Example
+```kotlin
+// Turn a validity check into a nullable value that composes with ?: and ?.let
+val validEmail = input.takeIf { it.contains('@') } ?: return null
+val nonBlank = text.takeUnless { it.isBlank() }
+
+// Reads well in a chain
+val cached = readCache()
+    .takeIf { it.isFresh() }
+    ?: fetchFromNetwork()
+```
+
+### Common Pitfalls
+* **`takeIf` on a `Boolean` receiver.** `flag.takeIf { it }` returns `true` or `null`, which is rarely what is meant.
+* **Overusing it for simple conditions.** `if (x > 0) x else null` is clearer than `x.takeIf { it > 0 }` when there is no chain.
+
+---
+# 14. Coroutines
+
+## 14.1 What a Coroutine Is
+
+### Definition
+* **Simple:** A coroutine is a task that can pause and resume without blocking the thread it runs on.
+* **Advanced:** A coroutine is a compiler-generated state machine driven by a `Continuation`. Suspending frees the underlying thread; blocking holds it.
+
+### Why It Is Used
+Thousands of coroutines share a small thread pool. A thread costs roughly 1 MB of stack and an OS context switch; a coroutine is a small heap object. This is what makes structured, cancellable asynchrony affordable.
+
+### How It Works Internally — CPS and the State Machine
+The compiler rewrites every `suspend` function into Continuation-Passing Style: it gains a hidden `Continuation` parameter, and its body becomes a state machine with a `label` marking the current suspension point.
+
+```kotlin
+suspend fun load(): User {
+    val id = fetchId()          // suspension point 0
+    return fetchUser(id)        // suspension point 1
+}
+
+// Conceptually compiles to a class with:
+//   label = 0 -> call fetchId(this); if it returns COROUTINE_SUSPENDED, return and free the thread
+//   label = 1 -> resume here with fetchId's result; call fetchUser(id, this)
+// Local variables become fields on the state machine so they survive suspension.
+```
+When a suspension point actually suspends, the function saves its locals, returns `COROUTINE_SUSPENDED`, and releases the thread. When the awaited work completes, `resumeWith` re-enters at the saved label.
+
+If the callee completes **without** suspending, it returns the value directly and execution falls through to the next label — which is why a `suspend` call that hits a cache costs essentially nothing.
+
+### Common Pitfalls
+* **Marking a function `suspend` that never suspends.** It adds a continuation parameter and forces callers into a coroutine for no benefit.
+* **Calling a blocking API inside a coroutine.** `Thread.sleep`, a blocking JDBC call, or `File.readText` blocks the thread, defeating the entire model. Wrap it in `withContext(Dispatchers.IO)`.
+
+---
+
+## 14.2 Builders: `launch`, `async`, `runBlocking`
+
+### Definition
+* **Coroutine builder** — a function that *starts* a new coroutine. Because a coroutine must have a parent, a builder is always called on a `CoroutineScope` (or blocks a thread, in `runBlocking`'s case).
+* **`launch`** — starts a coroutine that produces **no result**. It returns a `Job`, the handle used to cancel or join it. An uncaught exception is thrown immediately.
+* **`async`** — starts a coroutine that **produces a value**. It returns a `Deferred<T>`, and `await()` suspends until the value is ready. An exception is stored inside the `Deferred` until `await()` is called.
+* **`runBlocking`** — **blocks the calling thread** until the coroutine finishes, bridging blocking code and suspending code. Correct in `main()` and tests; a bug in application code.
+
+### Code Example
+```kotlin
+// launch: no result needed
+viewModelScope.launch { repository.refresh() }
+
+// async: parallel decomposition — both start immediately, both awaited together
+val page = coroutineScope {
+    val user = async { repo.user() }
+    val feed = async { repo.feed() }
+    Page(user.await(), feed.await())
+}
+
+// runBlocking: bridges blocking and suspending worlds.
+// Correct in main() and in tests; a bug in application code — it blocks a thread.
+fun main() = runBlocking {
+    val data = fetchData()
+    println(data)
 }
 ```
 
-### Labels
-A way to name a loop or expression for use with `break`, `continue`, or `return`.
+### Common Pitfalls
+* **`async` whose result is never awaited.** Its exception disappears silently. If you do not need the value, use `launch`.
+* **`runBlocking` in production code**, especially on the main thread — it defeats the purpose and can ANR on Android.
+* **Sequential `await` written as parallel.** `async { a() }.await()` followed by `async { b() }.await()` is sequential; start both, then await both.
+
+---
+
+## 14.3 Dispatchers and Context
+
+### Definition
+A `CoroutineDispatcher` decides which thread or pool a coroutine runs on. It is one element of the `CoroutineContext`, alongside the `Job`, a name, and an exception handler.
+
+| Dispatcher | Backing | Use for |
+|---|---|---|
+| `Main` | UI thread | Touching UI |
+| `Main.immediate` | UI thread, no re-dispatch if already there | Avoiding an unnecessary post |
+| `IO` | Elastic pool, 64 threads by default | Network, disk, database |
+| `Default` | Pool sized to CPU cores | Parsing, sorting, image work |
+| `Unconfined` | Caller's thread until first suspension | Tests and advanced cases only |
+
+### Code Example
 ```kotlin
-loop@ for (i in 1..10) {
-    for (j in 1..10) {
-        if (j == 5) break@loop    // Break out of the outer loop
+// Context elements combine with +
+val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("sync"))
+
+// withContext switches dispatcher and returns a value
+suspend fun loadAndRender() {
+    val data = withContext(Dispatchers.IO) { api.fetch() }   // Off the main thread
+    render(data)                                              // Back on the caller's context
+}
+
+// Inject dispatchers so tests can substitute a TestDispatcher
+class Repository(private val io: CoroutineDispatcher = Dispatchers.IO) {
+    suspend fun load() = withContext(io) { /* ... */ }
+}
+```
+
+### Common Pitfalls
+* **`withContext(Dispatchers.IO)` around Retrofit or a Room `suspend` DAO.** Both are already main-safe; the extra switch costs a dispatch for nothing.
+* **`withContext` inside a loop.** Each iteration is a context switch. Wrap the loop, not the body.
+* **Hardcoding `Dispatchers.IO` instead of injecting it.** The class becomes untestable without real threading.
+
+---
+
+## 14.4 Structured Concurrency, `Job`, and Cancellation
+
+### Definition
+* **Structured concurrency** — the rule that every coroutine has a parent, so cancelling the parent cancels all descendants and no parent completes before its children do. This makes leaked background work impossible by construction.
+* **`Job`** — the handle representing a coroutine's lifecycle. It can be cancelled, joined, and queried (`isActive`), and it is what links parent to child.
+* **`SupervisorJob`** — a `Job` variant in which a **child's failure does not cancel its siblings or its parent**, used when tasks are genuinely independent.
+* **Cancellation** — *cooperative*: `cancel()` only marks the job inactive and arranges for `CancellationException` to be thrown at the **next suspension point**. Code with no suspension point never notices.
+
+### Why It Is Used
+It makes leaked background work structurally impossible. `viewModelScope` cancellation is total — no coroutine can outlive the screen that started it.
+
+### `Job` vs `SupervisorJob`
+
+| | `Job` (default) | `SupervisorJob` |
+|---|---|---|
+| A child fails | Cancels the parent **and all siblings** | Only that child fails |
+| Used by | `coroutineScope { }`, plain `launch` | `viewModelScope`, `supervisorScope { }` |
+| Right for | All-or-nothing work | Independent tasks |
+
+### Cancellation is cooperative
+`cancel()` only sets `isActive = false` and arranges for `CancellationException` at the **next suspension point**. A tight CPU loop with no suspension point ignores cancellation entirely.
+
+### Code Example
+```kotlin
+// Cooperating with cancellation in CPU-bound work
+suspend fun compress(frames: List<Frame>) = withContext(Dispatchers.Default) {
+    frames.map { frame ->
+        ensureActive()              // Throws CancellationException if cancelled
+        encode(frame)               // Without this, cancel() has no effect until the loop ends
     }
 }
+
+// Cleanup that must run even after cancellation
+suspend fun upload(data: ByteArray) {
+    try {
+        api.upload(data)
+    } finally {
+        // A suspending call in `finally` after cancellation throws immediately
+        // unless it is shielded by NonCancellable.
+        withContext(NonCancellable) { releaseLock() }
+    }
+}
+
+// All-or-nothing vs independent
+suspend fun loadAll() = coroutineScope {         // One failure cancels the rest
+    val a = async { repo.a() }
+    val b = async { repo.b() }
+    Combined(a.await(), b.await())
+}
+
+suspend fun loadIndependently() = supervisorScope {   // Failures are isolated
+    launch { runCatching { repo.header() }.onSuccess(::setHeader) }
+    launch { runCatching { repo.feed() }.onSuccess(::setFeed) }
+}
+
+// Timeouts
+val result = withTimeoutOrNull(5_000) { api.fetch() }   // null on timeout
+withTimeout(5_000) { api.fetch() }                       // Throws TimeoutCancellationException
 ```
 
-### Idioms — Writing Idiomatic Kotlin
+### Common Pitfalls
+* **Catching `Exception` around a suspending call.** `CancellationException` is an `Exception`; swallowing it breaks cancellation. Rethrow it explicitly, or catch specific types.
+* **`GlobalScope.launch`.** No parent, never cancelled — a leak by construction. Inject a scope built from `SupervisorJob()` if you need app-lifetime work.
+* **`launch(SupervisorJob())`.** Supervision is a property of the scope's parent job; passing one to a child detaches it from the real scope instead.
 
-Idiomatic Kotlin means following the **recommended patterns** that make code clean, concise, and expressive.
+---
 
+## 14.5 Exception Handling
+
+### Definition
+* **The rule that governs everything here** — how an exception behaves depends on **which builder started the coroutine** and **what kind of `Job` its scope has**.
+* **`launch`** — throws the exception immediately, upward, to a `CoroutineExceptionHandler` or to the thread's default handler (which crashes the app).
+* **`async`** — *stores* the exception in the `Deferred` and rethrows it only when `await()` is called. Never awaiting means never seeing it.
+* **`CoroutineExceptionHandler`** — a context element that receives exceptions reaching a **root** coroutine. Attached to a child it does nothing, because the exception has already been handled by the parent.
+* **`CancellationException`** — a special case: it signals normal cancellation, not failure, so it must always be rethrown rather than caught and swallowed.
+
+### How It Works Internally
+* `launch` throws immediately to the `CoroutineExceptionHandler`, or to the thread's default handler (a crash) if none is installed.
+* `async` stores the exception in the `Deferred`; it surfaces only at `await()`.
+* `CoroutineExceptionHandler` works **only on a root coroutine's context**. Installing it on a child is a no-op, because the exception has already gone up to the parent.
+
+### Code Example
 ```kotlin
-// ✅ Idiomatic — use data class instead of POJO
-data class User(val name: String, val age: Int)
+class DashboardViewModel : ViewModel() {
 
-// ✅ Idiomatic — use when instead of if-else chains
-val message = when (status) {
-    200 -> "OK"
-    404 -> "Not Found"
-    else -> "Unknown"
+    // On the ROOT coroutine's context — a handler on a child would never fire
+    private val handler = CoroutineExceptionHandler { _, e ->
+        _state.update { it.copy(error = e.message) }
+    }
+
+    fun load() = viewModelScope.launch(handler) {
+        val page = coroutineScope {
+            val user = async { repo.user() }
+            val feed = async { repo.feed() }
+            Page(user.await(), feed.await())      // A failure here propagates to `handler`
+        }
+        _state.update { it.copy(page = page) }
+    }
 }
 
-// ✅ Idiomatic — use ?: for null defaults
-val name = user?.name ?: "Anonymous"
-
-// ✅ Idiomatic — use apply for object setup
-val dialog = AlertDialog.Builder(context).apply {
-    setTitle("Confirm")
-    setMessage("Are you sure?")
-}.create()
-
-// ✅ Idiomatic — use with for multiple method calls
-with(sharedPreferences.edit()) {
-    putString("key", "value")
-    apply()
+// Safe wrapping that respects cancellation
+suspend fun <T> safely(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: CancellationException) {
+    throw e                                        // ALWAYS rethrow
+} catch (e: Throwable) {
+    Result.failure(e)
 }
 ```
 
-### Exception Handling in Kotlin
+### Common Pitfalls
+* **`runCatching` around suspending code.** It catches `Throwable`, including `CancellationException`. Rethrow it, or use a helper like the one above.
+* **A handler installed on a child coroutine.** It silently never fires.
+* **Expecting `try/catch` around `launch` to catch the body's exception.** `launch` returns immediately; the exception happens later, elsewhere.
+
+---
+
+## 14.6 Bridging Callback APIs
+
+### Definition
+* **Callback API** — an interface whose method is invoked later, when a result is ready, instead of the value being returned from the call.
+* **Bridging** — wrapping such an API so it becomes a `suspend` function, letting callers `await` the result with ordinary sequential code.
+* **`suspendCancellableCoroutine`** — the standard-library builder that performs the bridge. It hands you a `Continuation` to resume with a value or an exception, plus a hook to cancel the underlying work.
+
+### Code Example
 ```kotlin
-// try-catch as expression
-val result = try {
-    parseInt(input)
-} catch (e: NumberFormatException) {
-    -1   // Returns -1 on error
-} finally {
-    println("Always runs")
+// One-shot callback -> suspend function, with cancellation support
+suspend fun LegacySdk.token(): String = suspendCancellableCoroutine { cont ->
+    val call = requestToken(object : Callback {
+        override fun onSuccess(t: String) = cont.resume(t)
+        override fun onError(e: Throwable) = cont.resumeWithException(e)
+    })
+    // Without this, cancelling the coroutine leaves the SDK call running
+    cont.invokeOnCancellation { call.cancel() }
 }
-
-// Precondition functions
-require(age >= 18) { "Must be 18+" }          // IllegalArgumentException
-check(isLoggedIn) { "User not logged in" }    // IllegalStateException
-error("Impossible state reached")             // IllegalStateException
 ```
 
-### Exception Hierarchy
+### Common Pitfalls
+* **Omitting `invokeOnCancellation`.** The coroutine cancels but the underlying work continues.
+* **Resuming twice.** Throws `IllegalStateException: Already resumed`. Guard with `cont.isActive` when the callback can fire more than once.
+
+---
+
+# 15. Flow & Channels
+
+## 15.1 Flow Fundamentals
+
+### Definition
+* **Flow** — an asynchronous stream of values produced over time, which a collector consumes one at a time. Think of it as a suspending `Sequence`.
+* **Cold** — a `flow { }` does **nothing** until collected, and its builder re-runs independently for **each** collector. Two collectors mean two executions.
+* **Hot** — a `StateFlow`, `SharedFlow`, or `Channel` exists and can produce values whether or not anyone is collecting, and all collectors share one stream.
+* **Emission and collection** — the producer calls `emit(value)`; the consumer calls a terminal operator such as `collect { }`, which is what starts the whole pipeline.
+
+### Cold vs Hot
+
+| | Cold (`flow { }`) | Hot (`StateFlow`, `SharedFlow`, `Channel`) |
+|---|---|---|
+| Runs without a collector | No | Yes |
+| Per-collector execution | Independent | Shared |
+| Has a current value | No | `StateFlow` yes |
+
+### Code Example
+```kotlin
+// Builders
+flow { emit(1); delay(100); emit(2) }        // Can suspend inside
+flowOf(1, 2, 3)
+listOf(1, 2, 3).asFlow()
+
+// Cold: the builder re-runs per collector
+val numbers = flow { println("producing"); emit(1) }
+numbers.collect { }      // prints "producing"
+numbers.collect { }      // prints "producing" again
+```
+
+---
+
+## 15.2 Operators
+
+### Definition
+* **Flow operator** — a function that takes a flow and returns a new flow with modified behavior. Chaining them describes a pipeline.
+* **Intermediate operator** — `map`, `filter`, `debounce`, `flatMapLatest`. It is **lazy**: it only describes work, and nothing runs until collection begins.
+* **Terminal operator** — `collect`, `first`, `toList`. It starts the pipeline and is the only thing that causes any code to execute.
+
+| Need | Operator |
+|---|---|
+| Cancel the previous request when a new value arrives | `flatMapLatest` |
+| Run inner flows concurrently | `flatMapMerge` |
+| Run them strictly in order | `flatMapConcat` |
+| Wait for input to settle | `debounce` |
+| Drop consecutive duplicates | `distinctUntilChanged` |
+| Derive from several streams | `combine` |
+| Pair emissions one-to-one | `zip` |
+| Retry with backoff | `retryWhen` |
+| Move upstream work to another dispatcher | `flowOn` |
+| Emit a value before the stream starts | `onStart` |
+| Handle upstream errors without breaking the stream | `catch` |
+
+### Code Example — search as you type
+```kotlin
+val results: StateFlow<UiState> = query
+    .debounce(300)                       // Wait for typing to settle
+    .distinctUntilChanged()              // Ignore no-op re-emissions
+    .flatMapLatest { q ->                // Cancel the in-flight request
+        if (q.length < 2) flowOf(UiState.Idle)
+        else repo.search(q)
+            .map { UiState.Success(it) }
+            .onStart { emit(UiState.Loading) }
+            .retryWhen { cause, attempt ->
+                val retry = cause is IOException && attempt < 3
+                if (retry) delay(1000L shl attempt.toInt())
+                retry
+            }
+            .catch { emit(UiState.Error(it.message.orEmpty())) }   // Inside: outer stream survives
+    }
+    .flowOn(Dispatchers.IO)              // Applies to everything UPSTREAM
+    .stateIn(scope, SharingStarted.WhileSubscribed(5_000), UiState.Idle)
+```
+
+### Context preservation and `flowOn`
+A flow must emit in the context in which it was collected. `withContext` inside `flow { }` violates this and throws `IllegalStateException: Flow invariant is violated`. `flowOn` is the sanctioned mechanism, and it affects only operators **upstream** of it.
+
+### Backpressure
+```kotlin
+sourceFlow
+    .buffer(64)        // Emitter and collector run concurrently
+    .conflate()        // Buffer of 1; intermediate values dropped — right for UI state
+    .collectLatest { } // Cancels the collector block when a new value arrives
+```
+
+### Common Pitfalls
+* **`catch` placed after `stateIn`.** `catch` only sees upstream exceptions; place it before the conversion.
+* **`combine` never emitting.** It waits for **every** source to emit at least once; a source with no initial value stalls the chain.
+* **`withContext` inside `flow { }`.** Throws. Use `flowOn`.
+
+---
+
+## 15.3 `StateFlow`, `SharedFlow`, and One-Shot Events
+
+### Definition
+* **`StateFlow<T>`** — a hot flow that **always holds exactly one current value**, requires an initial value, and conflates: emitting a value equal to the current one produces nothing. It models **state**.
+* **`SharedFlow<T>`** — a hot flow with **no current value**, configurable `replay` and buffering, and no conflation by default. It models **events shared by several collectors**.
+* **One-shot event** — an action that must happen exactly once (navigate, show a snackbar). It is *not* state, because re-reading state after a configuration change would fire it again.
+* **`Channel` + `receiveAsFlow()`** — the correct carrier for one-shot events: each element is delivered to exactly one collector and is buffered while none is attached.
+
+### Code Example
+```kotlin
+private val _state = MutableStateFlow(UiState())
+val state: StateFlow<UiState> = _state.asStateFlow()      // Expose read-only
+
+_state.update { it.copy(loading = true) }                 // Atomic read-modify-write
+
+// Converting a cold flow into a hot one
+val users: StateFlow<List<User>> = repo.observeUsers()
+    .stateIn(
+        scope = viewModelScope,
+        // Survives a rotation, tears down when genuinely gone
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
+// One-shot events must NOT be StateFlow — replay would re-fire them after rotation
+private val _events = Channel<UiEvent>(Channel.BUFFERED)
+val events: Flow<UiEvent> = _events.receiveAsFlow()
+```
+
+### Common Pitfalls
+* **Modelling navigation or a snackbar as `StateFlow`.** After a configuration change the collector re-reads the value and the event fires again. Use a `Channel`.
+* **`SharingStarted.Eagerly` on an expensive upstream.** It runs with no collectors for the ViewModel's whole life.
+* **Exposing `MutableStateFlow` publicly.** Any caller can then write state, breaking the single-writer rule.
+
+---
+
+## 15.4 `callbackFlow` and `channelFlow`
+
+### Definition
+* **`callbackFlow`** — a flow builder for wrapping a **callback or listener API** as a flow. It gives you a channel to emit into from outside the coroutine, and requires an `awaitClose` block that unregisters the listener when collection stops.
+* **`channelFlow`** — a flow builder that permits emission **from several coroutines concurrently**, which the plain `flow { }` builder forbids.
+* **`awaitClose`** — the suspending call that keeps the builder alive until the collector cancels, then runs your cleanup. Omitting it is a runtime error precisely because the listener would leak.
+
+### Code Example
+```kotlin
+// callbackFlow: bridge a listener API into a Flow
+fun ConnectivityManager.status(): Flow<Boolean> = callbackFlow {
+    val cb = object : NetworkCallback() {
+        override fun onAvailable(n: Network) { trySend(true) }
+        override fun onLost(n: Network) { trySend(false) }
+    }
+    registerDefaultNetworkCallback(cb)
+    // MANDATORY: without awaitClose the builder throws, and the callback would leak
+    awaitClose { unregisterNetworkCallback(cb) }
+}.distinctUntilChanged()
+
+// channelFlow: emit from multiple coroutines (plain `flow` forbids concurrent emission)
+fun merged(): Flow<Item> = channelFlow {
+    launch { sourceA().collect { send(it) } }
+    launch { sourceB().collect { send(it) } }
+}
+```
+
+### Common Pitfalls
+* **Omitting `awaitClose`.** Runtime error, and the callback is never unregistered.
+* **`send` from a callback.** Callbacks are not suspending contexts; use `trySend`.
+
+---
+
+## 15.5 Channels
+
+### Definition
+A `Channel` is a hot, **single-consumer** queue with backpressure. Each element goes to exactly one receiver, unlike a `SharedFlow`, which broadcasts to all.
+
+| Buffer | Behavior |
+|---|---|
+| `RENDEZVOUS` (default) | `send` suspends until a receiver takes the element |
+| `BUFFERED` (64) | Suspends only when the buffer fills |
+| `UNLIMITED` | Never suspends; can grow without bound |
+| `CONFLATED` | Keeps only the latest element |
+
+### Code Example
+```kotlin
+val channel = Channel<Task>(Channel.BUFFERED)
+
+// Producer
+scope.launch {
+    tasks.forEach { channel.send(it) }
+    channel.close()
+}
+
+// Consumers compete for elements — a natural worker pool
+repeat(4) {
+    scope.launch { for (task in channel) process(task) }
+}
+```
+
+### Common Pitfalls
+* **Forgetting `close()`.** Consumers iterating the channel never finish.
+* **`UNLIMITED` on an unbounded producer.** Memory grows until the process dies.
+* **Using a `Channel` where a `SharedFlow` is meant.** Only one collector receives each element.
+
+---
+# 16. Exceptions & Result
+
+## 16.1 Exceptions in Kotlin
+
+### Definition
+* **Exception** — an object thrown to signal that execution cannot continue normally, unwinding the call stack until something catches it.
+* **No checked exceptions** — unlike Java, Kotlin never forces a caller to declare or handle an exception. Every exception is effectively unchecked.
+* **`try` is an expression** — it produces a value, so `val x = try { parse() } catch (e: Exception) { default }` is valid. The `finally` block's value is **not** the result.
+* **The hierarchy** — `Throwable` splits into `Error` (JVM-level failures you should not catch) and `Exception`, which further splits into `RuntimeException` (programming mistakes) and everything else (recoverable environmental failures).
+
+### Why It Is Used
+Checked exceptions in Java produced two failure modes: `throws Exception` on every signature, and empty `catch` blocks that swallowed real errors. Kotlin removes the compiler mandate and relies on explicit result modelling instead.
+
+### How It Works Internally
+`try` is an **expression** in Kotlin, so it produces a value. Every exception descends from `Throwable`; there is no compile-time distinction between checked and unchecked.
+
 ```
 Throwable
-├── Error (system-level — usually not handled)
-│   ├── OutOfMemoryError
-│   └── StackOverflowError
-└── Exception (recoverable — should be handled)
-    ├── IOException
-    ├── NullPointerException
-    ├── ArithmeticException
-    └── IndexOutOfBoundsException
+├── Error              — JVM-level, do not catch (OutOfMemoryError, StackOverflowError)
+└── Exception
+    ├── RuntimeException  — programming errors (NullPointerException, IllegalArgumentException,
+    │                       IllegalStateException, IndexOutOfBoundsException, ClassCastException)
+    └── IOException etc.  — recoverable environmental failures
 ```
+
+### Code Example
+```kotlin
+// try as an expression
+val port: Int = try {
+    config.getString("port").toInt()
+} catch (e: NumberFormatException) {
+    8080                                     // The catch block's value is the result
+} finally {
+    logger.debug("port resolved")            // Runs regardless; its value is NOT the result
+}
+
+// Multiple catch blocks are evaluated top to bottom — most specific first
+try {
+    parse(input)
+} catch (e: NumberFormatException) {
+    handleBadNumber(e)
+} catch (e: IllegalArgumentException) {      // NumberFormatException is a subclass, so order matters
+    handleBadArgument(e)
+}
+
+// Custom exceptions carry domain context
+class InsufficientFundsException(
+    val required: Long,
+    val available: Long
+) : Exception("Need $required but only $available available")
+
+// @Throws makes the exception visible to Java callers
+@Throws(IOException::class)
+fun readConfig(): Config = File("config.json").readText().let(::parse)
+```
+
+### Common Pitfalls
+* **`catch (e: Exception)` around suspending code.** `CancellationException` is an `Exception`; swallowing it breaks structured concurrency. Rethrow it explicitly.
+* **Catching `Throwable`.** That includes `OutOfMemoryError` and `StackOverflowError`, which you cannot meaningfully recover from.
+* **An empty catch block.** The error is gone and so is any chance of diagnosing it. At minimum, log with the cause.
+* **`finally` that returns.** A `return` in `finally` discards the exception entirely — it silently disappears.
 
 ---
 
-## 18. Kotlin vs Java Interop
+## 16.2 Preconditions: `require`, `check`, `error`, `assert`
 
-### Calling Kotlin from Java
+### Definition
+Standard-library functions that express *which kind* of failure occurred, throwing the appropriate exception with a lazily-built message.
+
+| Function | Throws | Use for |
+|---|---|---|
+| `require(cond) { msg }` | `IllegalArgumentException` | Validating **arguments** |
+| `requireNotNull(x) { msg }` | `IllegalArgumentException` | A required argument is null |
+| `check(cond) { msg }` | `IllegalStateException` | Validating **object state** |
+| `checkNotNull(x) { msg }` | `IllegalStateException` | Required state is null |
+| `error(msg)` | `IllegalStateException` | An unreachable branch; returns `Nothing` |
+| `assert(cond) { msg }` | `AssertionError` | Debug-only; disabled unless `-ea` is set |
+
+### Why It Is Used
+The exception type tells the reader who is at fault: `require` means the **caller** passed something invalid; `check` means the **object** is in the wrong state. The message lambda is inline, so building it costs nothing when the condition holds.
+
+### Code Example
 ```kotlin
-// Kotlin
-class Utils {
-    companion object {
-        @JvmStatic fun doSomething() { }
+class Account(private var balanceCents: Long) {
+
+    fun withdraw(amountCents: Long) {
+        // Argument validation — the caller made the mistake
+        require(amountCents > 0) { "amount must be positive, was $amountCents" }
+
+        // State validation — the object is not in a valid state for this call
+        check(!isFrozen) { "cannot withdraw from a frozen account" }
+
+        if (amountCents > balanceCents) {
+            throw InsufficientFundsException(amountCents, balanceCents)
+        }
+        balanceCents -= amountCents
+    }
+}
+
+// error() returns Nothing, so it works as an expression
+fun statusFor(code: Int): Status = when (code) {
+    in 200..299 -> Status.OK
+    in 400..499 -> Status.CLIENT_ERROR
+    else -> error("Unhandled status code $code")     // Nothing fits the Status return type
+}
+
+// requireNotNull returns the non-null value, so it doubles as a smart-cast
+val id = requireNotNull(intent.getStringExtra("id")) { "launch intent must carry an id" }
+```
+
+### Common Pitfalls
+* **String concatenation instead of the lambda.** `require(x > 0, "bad: " + x)` builds the string on every call; `require(x > 0) { "bad: $x" }` builds it only on failure.
+* **`assert` for real validation.** JVM assertions are disabled by default, so the check simply does not run in production.
+* **`require` for state and `check` for arguments.** Swapping them makes the thrown type mislead whoever reads the crash.
+
+---
+
+## 16.3 `runCatching` and `Result`
+
+### Definition
+* **`Result<T>`** — a value that holds **either** a successful result of type `T` **or** the `Throwable` that was raised. It turns exception-based control flow into an ordinary value.
+* **`runCatching { }`** — runs a block and packages its outcome into a `Result`, catching anything thrown.
+* **The catch** — it catches `Throwable`, which includes `CancellationException`, so used unguarded inside coroutines it silently breaks cancellation.
+
+### Why It Is Used
+It converts exception-based control flow into a value you can pass, map, and pattern-match, without a `try` block at every call site.
+
+### How It Works Internally
+`Result<T>` is a `value class` wrapping either the value or a `Failure` holder, so a success costs no allocation. It has a genuine limitation: it catches **`Throwable`**, including `CancellationException`.
+
+### Code Example
+```kotlin
+// Basic use
+val outcome: Result<User> = runCatching { api.getUser(id) }
+
+outcome
+    .onSuccess { user -> render(user) }
+    .onFailure { e -> logger.error("load failed", e) }
+
+// Transforming
+val name: String = runCatching { api.getUser(id) }
+    .map { it.name }
+    .getOrDefault("Unknown")
+
+val user: User = runCatching { api.getUser(id) }
+    .recover { cache.getUser(id) }          // Fall back on failure
+    .getOrThrow()
+
+// The coroutine trap, and the fix
+suspend fun <T> safely(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: CancellationException) {
+    throw e                                  // MUST rethrow, or cancellation silently breaks
+} catch (e: Throwable) {
+    Result.failure(e)
+}
+```
+
+### A domain result type is usually better across layers
+```kotlin
+// Result<T> carries only a Throwable, so the UI ends up matching on exception types.
+// A sealed domain type makes the `when` exhaustive and carries structured payloads.
+sealed interface DataResult<out T> {
+    data class Success<T>(val data: T) : DataResult<T>
+    data class Failure(val error: AppError) : DataResult<Nothing>
+}
+
+sealed interface AppError {
+    data object Offline : AppError
+    data object Unauthorized : AppError
+    data class Server(val code: Int) : AppError
+    data class Validation(val fields: Map<String, String>) : AppError
+}
+```
+
+### Common Pitfalls
+* **`runCatching` in suspending code.** It swallows `CancellationException`; use an explicit `try/catch` that rethrows it.
+* **`Result<T>` as a public API return type across modules.** It has restrictions in some suspending positions and carries no domain typing. Prefer a sealed type.
+* **`getOrNull()` that discards the error.** The failure reason is lost and the user gets a generic message.
+
+---
+
+## 16.4 Contracts
+
+### Definition
+* **Contract** — a declaration that tells the compiler something about a function's behavior that it **cannot work out on its own**, so it can reason better about code that calls it.
+* **`returns(true) implies (x is String)`** — the most common form: it states that a `true` return proves something about an argument, which lets the **caller** get a smart cast.
+* **`callsInPlace(block, EXACTLY_ONCE)`** — states that a lambda parameter is invoked exactly once, which lets the caller assign a `val` inside it.
+* **The catch** — the compiler **trusts** a contract without verifying it. A contract that does not match the implementation produces unsound smart casts and runtime `ClassCastException`s.
+
+### Why It Is Used
+Without contracts, your own validation helpers do not enable smart casts, so callers must repeat the check or use `!!`.
+
+### Code Example
+```kotlin
+@OptIn(ExperimentalContracts::class)
+fun Any?.isNonEmptyString(): Boolean {
+    contract {
+        // Tells the compiler: a `true` return proves the receiver is a non-null String
+        returns(true) implies (this@isNonEmptyString is String)
+    }
+    return this is String && isNotEmpty()
+}
+
+fun use(value: Any?) {
+    if (value.isNonEmptyString()) {
+        println(value.length)        // Smart cast to String — only possible thanks to the contract
+    }
+}
+
+// callsInPlace lets the compiler prove a val is definitely assigned
+@OptIn(ExperimentalContracts::class)
+inline fun <R> measured(block: () -> R): R {
+    contract { callsInPlace(block, InvocationKind.EXACTLY_ONCE) }
+    val start = System.nanoTime()
+    return block().also { println(System.nanoTime() - start) }
+}
+
+fun demo() {
+    val result: String                // No initializer
+    measured { result = compute() }   // Compiles: the contract proves exactly-once assignment
+    println(result)
+}
+```
+This is how `require`, `checkNotNull`, and `isNullOrEmpty` in the standard library enable smart casts.
+
+### Common Pitfalls
+* **Writing a contract the function does not honor.** The compiler trusts it without verification, so a wrong contract produces unsound smart casts and `ClassCastException` at runtime.
+* **Forgetting that `contract { }` must be the very first statement** in the function body.
+
+---
+
+# 17. Annotations & Reflection
+
+## 17.1 Annotations
+
+### Definition
+* **Annotation** — metadata attached to a declaration. It changes nothing on its own; something else must read it — the compiler, an annotation processor, or reflection at runtime.
+* **`@Target`** — declares which kinds of declaration the annotation may be applied to (class, function, property, parameter).
+* **`@Retention`** — declares how long it survives: `SOURCE` (discarded after compilation), `BINARY` (kept in the class file but invisible to reflection), or `RUNTIME` (readable by reflection; the default).
+* **Use-site target** — a prefix such as `@field:` or `@get:` that says **which generated JVM element** the annotation belongs to, because one Kotlin property produces several.
+
+### How It Works Internally
+`@Retention` decides how long it survives:
+
+| Retention | Kept in | Readable by |
+|---|---|---|
+| `SOURCE` | Source only | The compiler and KSP/KAPT |
+| `BINARY` | The class file | Bytecode tools, not reflection |
+| `RUNTIME` (default) | The class file | **Reflection** |
+
+### Code Example
+```kotlin
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class Auditable(val category: String = "general")
+
+@Auditable("payments")
+class PaymentService {
+    @Auditable fun charge(cents: Long) { }
+}
+```
+
+### Use-site targets
+A Kotlin property generates several JVM elements — a field, a getter, a setter, a constructor parameter — so an annotation needs to say **which one** it applies to. Getting this wrong is a very common source of "the annotation seems to be ignored".
+
+```kotlin
+class User(
+    @field:Json(name = "user_id")  val id: Long,      // The backing FIELD (needed by Gson/Jackson)
+    @get:JsonProperty("full_name") val name: String,  // The GETTER
+    @param:Inject                  val service: Api   // The CONSTRUCTOR PARAMETER
+)
+```
+Available targets: `field`, `get`, `set`, `param`, `property`, `receiver`, `setparam`, `delegate`.
+
+### Common Pitfalls
+* **Omitting the use-site target for a JSON library.** Kotlin applies the annotation to the constructor parameter by default, while the library reads the field — so the annotation appears to do nothing.
+* **`SOURCE` retention with runtime reflection.** The annotation is not in the bytecode; reflection finds nothing.
+
+---
+
+## 17.2 KAPT vs KSP
+
+### Definition
+Both run annotation processors at build time. **KAPT** generates Java stubs for all Kotlin code first, then runs Java processors. **KSP** reads Kotlin symbols directly through a Kotlin-aware API.
+
+| | KAPT | KSP |
+|---|---|---|
+| Mechanism | Java stub generation + `javac` processors | Native Kotlin symbol processing |
+| Speed | Baseline | Roughly **2× faster** |
+| Kotlin awareness | Sees the Java view (nullability lost) | Full Kotlin type information |
+| Status | Maintenance mode | Recommended |
+
+### Code Example
+```kotlin
+plugins { id("com.google.devtools.ksp") }
+
+dependencies {
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)          // was: kapt(libs.room.compiler)
+}
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+```
+
+### Common Pitfalls
+* **A partial migration.** The stub-generation cost is paid as soon as **any** processor still uses KAPT, so the saving appears only when the last one is gone.
+* **Mismatched KSP and Kotlin versions.** The KSP version string embeds the Kotlin version (`2.0.21-1.0.25`) precisely because they must match.
+
+---
+
+## 17.3 Reflection
+
+### Definition
+* **Reflection** — inspecting and calling a program's own declarations at **runtime**, using types discovered then rather than names written in source.
+* **Kotlin reflection (`kotlin-reflect`)** — exposes Kotlin-level concepts Java reflection cannot see: properties, nullability, default arguments, and whether a class is a `data class`.
+* **`KClass`** — Kotlin's class handle, obtained with `User::class`; `.java` converts it to a Java `Class` for interop.
+* **Callable reference (`::`)** — a lightweight, compile-time-resolved pointer to a function or property. It is **not** reflection and needs no extra dependency, which is why it should be preferred wherever it suffices.
+
+### Why It Is Used
+Sparingly. It is the mechanism behind serialization libraries and DI containers, but it is slow, defeats R8 shrinking, and moves errors to runtime.
+
+### Code Example
+```kotlin
+val kClass: KClass<User> = User::class          // Kotlin reflection
+val jClass: Class<User> = User::class.java      // Java interop
+
+kClass.simpleName                                // "User"
+kClass.isData                                    // true for a data class
+kClass.memberProperties.forEach { println("${it.name}: ${it.returnType}") }
+
+// Callable references do NOT require kotlin-reflect and are the cheap alternative
+val getName: (User) -> String = User::name
+val make: (Long, String) -> User = ::User
+listOf("1", "2").map(String::toInt)
+
+// Reading a property reflectively
+val prop = User::class.memberProperties.first { it.name == "name" }
+println(prop.get(user))
+```
+
+### Common Pitfalls
+* **Reflection in a hot path.** It is orders of magnitude slower than a direct call.
+* **Forgetting R8 keep rules.** Shrinking removes or renames anything reached only reflectively, producing crashes that appear only in release builds.
+* **Adding `kotlin-reflect` for something callable references already do.** The library is roughly 3 MB before shrinking.
+
+---
+
+# 18. DSLs & Idiomatic Kotlin
+
+## 18.1 Type-Safe Builders
+
+### Definition
+* **Lambda with receiver** — a function type written `Type.() -> Unit`. Inside such a lambda, `this` is an instance of `Type`, so its members can be called **without any qualifier**. This one feature is what makes Kotlin DSLs possible.
+* **Type-safe builder (DSL)** — nested lambdas-with-receiver that read like a declarative configuration language while remaining ordinary, fully type-checked Kotlin code.
+* **`@DslMarker`** — an annotation that stops an inner lambda from accidentally seeing an **outer** receiver's members, which would otherwise compile and silently produce the wrong structure.
+* **Where you already use it** — `apply` is exactly a lambda with receiver, as are Gradle's Kotlin DSL, Ktor routing, and `buildString`.
+
+### Why It Is Used
+This is the mechanism behind Gradle Kotlin DSL, Compose, Ktor routing, and `buildString`. It produces configuration code that is fully type-checked and autocompleted.
+
+### How It Works Internally
+Inside a `Type.() -> Unit` lambda, `this` is the receiver, so its members resolve without a qualifier. `apply` is exactly this: `inline fun <T> T.apply(block: T.() -> Unit): T`.
+
+### Code Example
+```kotlin
+// A small HTML DSL
+@DslMarker
+annotation class HtmlDsl                 // Prevents accidentally calling an OUTER receiver
+
+@HtmlDsl
+class Tag(private val name: String) {
+    private val children = mutableListOf<Tag>()
+    private var text: String = ""
+
+    fun body(block: Tag.() -> Unit) = Tag("body").apply(block).also { children += it }
+    fun p(block: Tag.() -> Unit) = Tag("p").apply(block).also { children += it }
+    operator fun String.unaryPlus() { text = this }        // +"content"
+
+    override fun toString(): String =
+        "<$name>$text${children.joinToString("")}</$name>"
+}
+
+fun html(block: Tag.() -> Unit): Tag = Tag("html").apply(block)
+
+val page = html {
+    body {
+        p { +"Hello" }
+        p { +"World" }
     }
 }
 ```
+
+**What `@DslMarker` does:** without it, an inner lambda can still see the outer receiver's members, so `p { p { } }` compiles and silently nests wrongly. With it, calling an outer receiver's member from an inner scope is a compile error.
+
+### Common Pitfalls
+* **Omitting `@DslMarker`.** Nested scopes leak, producing structurally wrong output that still compiles.
+* **A DSL where named arguments would do.** `createUser(name = "Ada", role = ADMIN)` is simpler than a builder for a flat configuration.
+
+---
+
+## 18.2 Idiomatic Kotlin
+
+### Definition
+* **Idiomatic code** — code written the way the language intends, using the constructs Kotlin provides rather than transliterating Java patterns into Kotlin syntax.
+* **Why it is worth naming** — idiomatic Kotlin is usually shorter, safer (immutability and exhaustiveness are the default path), and immediately readable to another Kotlin developer.
+* **The recurring themes** — prefer expressions over statements, `val` over `var`, collection operators over manual loops, and types that make illegal states unrepresentable.
+
+### Code Example
+```kotlin
+// Prefer expression bodies for single-expression functions
+fun double(x: Int) = x * 2
+
+// Prefer when over long if/else chains
+val label = when { x < 0 -> "neg"; x == 0 -> "zero"; else -> "pos" }
+
+// Prefer collection operators over manual loops
+val activeNames = users.filter { it.isActive }.map { it.name }
+
+// Prefer destructuring for multi-value returns
+data class Size(val width: Int, val height: Int)
+val (w, h) = measure()
+
+// Prefer the Elvis operator over if-null checks
+val name = user?.name ?: "Guest"
+
+// Prefer string templates over concatenation
+val msg = "User $name has ${orders.size} orders"
+
+// Prefer immutability: val, read-only collections, data classes with val properties
+data class Config(val host: String, val port: Int)
+
+// Prefer named arguments for booleans and same-typed parameters
+copyFile(source = from, target = to, overwrite = true)
+
+// Prefer requireNotNull with a message over !!
+val id = requireNotNull(args.id) { "id is required" }
+
+// Prefer sealed hierarchies over boolean/enum + nullable field combinations
+sealed interface State { data object Loading : State; data class Ready(val data: String) : State }
+```
+
+## 18.3 Performance Notes
+
+### Definition
+* **Boxing** — wrapping a primitive value in an object so it can be null or used as a generic argument. Each boxed value is a separate heap allocation.
+* **Allocation cost** — every object created adds pressure on the garbage collector; in a loop or a per-frame callback this is what turns into visible slowness.
+* **Code size cost** — `inline` trades a larger compiled output for fewer allocations, so it is a win for small functions with lambda parameters and a loss for large or widely-called ones.
+
+| Concern | Detail |
+|---|---|
+| **Boxing** | `Int?`, `List<Int>`, and generic `T` box to `java.lang.Integer`. Use `IntArray` in numeric hot paths. |
+| **Lambda allocation** | A non-inlined lambda allocates a `FunctionN` object; a capturing one allocates a closure. `inline` removes both. |
+| **`inline` code size** | Each call site duplicates the body. Inline small functions with lambda parameters, not large ones. |
+| **Sequences** | Win on large collections with several operations; lose on small ones. |
+| **`values()` on enums** | Allocates a fresh array per call. Use `entries` (1.9+). |
+| **String concatenation in loops** | Allocates per iteration. Use `buildString` or `joinToString`. |
+| **`data class` in a `HashSet`** | Mutating a property changes `hashCode` and the element becomes unfindable. |
+
+---
+
+# 19. Java Interoperability
+
+## 19.1 Platform Types and Null Safety at the Boundary
+
+### Definition
+* **Platform type** — the type Kotlin assigns to a value coming from Java that carries **no nullability annotation**. It is written `String!` in compiler messages and cannot be written in source.
+* **Its behavior** — the compiler applies **no null checks** to it. You may assign it to `String` or to `String?`, and it will accept either without complaint.
+* **Why it exists** — Kotlin cannot know whether unannotated Java may return null, so rather than reject all Java interop it defers the decision to you.
+
+### Why It Matters
+This is the single largest hole in Kotlin's null safety, and it is invisible: the code compiles, and the NPE surfaces later, far from the boundary.
+
+### Code Example
 ```java
-// Java
-Utils.doSomething();   // Works because of @JvmStatic
+// Java, unannotated
+public class LegacyRepo {
+    public User findUser(long id) { return null; }     // May return null
+}
 ```
-
-### Calling Java from Kotlin
 ```kotlin
-// Kotlin seamlessly calls Java
-val list = ArrayList<String>()   // Java class
-list.add("Hello")
+val user: User = legacyRepo.findUser(id)     // Compiles! NPE at THIS line if null
+val safe: User? = legacyRepo.findUser(id)    // Correct: treat unannotated Java as nullable
+```
+```java
+// The fix on the Java side — Kotlin then enforces it
+public class LegacyRepo {
+    @Nullable public User findUser(long id) { ... }    // Kotlin sees User?
+    @NonNull  public List<User> allUsers()  { ... }    // Kotlin sees List<User>
+}
 ```
 
-### `==` vs `===`
+### Common Pitfalls
+* **Trusting an unannotated Java return type.** Annotate the Java side, or declare the Kotlin variable nullable.
+* **Kotlin's `List<T>` handed to Java.** It is read-only *to Kotlin* but is an ordinary `java.util.List` at runtime — Java can mutate it.
 
-| Operator | Checks | Primitive types |
+---
+
+## 19.2 Making Kotlin Pleasant to Call from Java
+
+### Definition
+* **The problem** — several Kotlin features (default arguments, companion objects, top-level functions, properties, `suspend`) have no direct Java equivalent, so Java callers see awkward generated names and signatures.
+* **`@Jvm*` annotations** — a family of annotations that change **only what Java sees**, leaving Kotlin call sites untouched: `@JvmStatic`, `@JvmOverloads`, `@JvmField`, `@JvmName`, `@Throws`.
+* **When it matters** — only when Java code actually calls your Kotlin. In a pure-Kotlin module these annotations add nothing.
+
+| Kotlin feature | What Java sees | Fix |
 |---|---|---|
-| `==` | Value equality (`equals()`) | Value |
-| `===` | Reference equality | Value (no objects for primitives) |
+| Top-level function in `Utils.kt` | `UtilsKt.foo()` | `@file:JvmName("Utils")` |
+| `companion object` member | `Foo.Companion.bar()` | `@JvmStatic` |
+| Default parameter values | Only the full-arity overload | `@JvmOverloads` |
+| A property | `getX()` / `setX()` | `@JvmField` to expose the field directly |
+| `suspend fun` | A method taking a `Continuation` | Provide a callback wrapper |
+| Checked exceptions | None declared | `@Throws(IOException::class)` |
 
+### Code Example
 ```kotlin
-val str1 = "Hello"
-val str2 = "Hello"
-println(str1 == str2)    // true — same value
-println(str1 === str2)   // true — string interning (same reference)
+@file:JvmName("StringUtils")            // Java: StringUtils.slugify(...)
+package com.example.util
 
-val obj1 = User("Raj")
-val obj2 = User("Raj")
-println(obj1 == obj2)    // true — equals() (data class)
-println(obj1 === obj2)   // false — different references
+fun slugify(input: String): String = input.lowercase().replace(Regex("[^a-z0-9]+"), "-")
+
+class Analytics private constructor() {
+    companion object {
+        @JvmStatic fun getInstance(): Analytics = INSTANCE     // Java: Analytics.getInstance()
+        private val INSTANCE = Analytics()
+    }
+
+    @JvmOverloads                                              // Generates 3 Java overloads
+    fun track(event: String, params: Map<String, Any> = emptyMap(), immediate: Boolean = false) {}
+
+    @Throws(IOException::class)                                // Java can now catch it
+    fun flush() {}
+}
+
+class Config {
+    @JvmField val version = 1            // Java: config.version, not config.getVersion()
+}
 ```
 
----
+## 19.3 SAM Conversion and `==` vs `===`
 
-## 19. Top Interview Questions & Answers
+### Definition
+* **SAM interface** — a *Single Abstract Method* interface: one method to implement, so a lambda can stand in for an instance of it.
+* **SAM conversion** — the compiler automatically converting a lambda into such an instance. It applies to **Java** interfaces automatically, and to a Kotlin interface only when declared `fun interface`.
+* **`==` (structural)** — compares contents by calling `equals()`.
+* **`===` (referential)** — compares object identity. Java's `==` corresponds to Kotlin's `===`, which is the most common interop confusion.
 
-### Basics
+```kotlin
+// SAM conversion: a Java single-abstract-method interface accepts a lambda
+button.setOnClickListener { view -> handle(view) }
 
-**Q: How does Kotlin work on Android?**
-> Kotlin compiles to Java bytecode, which is executed by the JVM. A `Main.kt` file becomes `MainKt.class`.
+// For a KOTLIN interface, SAM conversion requires `fun interface`
+fun interface Validator { fun validate(input: String): Boolean }
+val notBlank = Validator { it.isNotBlank() }        // Works because of `fun interface`
 
-**Q: What is the difference between `var` and `val`?**
-> `var` is mutable (can be changed), `val` is immutable (read-only after assignment).
+// Equality
+val a = "kotlin"
+val b = StringBuilder("kot").append("lin").toString()
+a == b        // true  — structural, calls equals()
+a === b       // false — referential, same object?
 
-**Q: What is the difference between `val` and `const val`?**
-> Both are immutable. `val` is assigned at runtime and can hold any type. `const val` is a compile-time constant, only for primitives and String, and is faster because the value is inlined at compile time.
+// Java's == is Kotlin's ===; Java's .equals() is Kotlin's ==
+```
 
-**Q: What is the difference between compile-time and runtime in Kotlin?**
-> Compile-time is when the Kotlin compiler (`kotlinc`) analyzes source code, performs type checks, checks nullability, expands inline functions, and translates `.kt` files into bytecode/DEX. Errors result in compilation failures before the app runs. Runtime is when the compiled bytecode is executed by the JVM/ART, performing memory allocations, polymorphism, reflection, and coroutine execution. Errors result in runtime exceptions (`NullPointerException`, `ClassCastException`).
-
-**Q: Does Kotlin have a ternary operator?**
-> No. Use `if-else` as an expression: `val result = if (x > 0) "positive" else "negative"` or the Elvis operator `?:` for null checks.
-
-**Q: What is the Elvis operator?**
-> `?:` returns the left value if not null, otherwise returns the right value. `val name = user?.name ?: "Unknown"`
-
-**Q: What is the difference between `?.` and `!!`?**
-> `?.` (safe call) returns null if the object is null. `!!` (non-null assertion) throws `KotlinNullPointerException` if null — use carefully.
-
----
-
-### OOP
-
-**Q: Can we use `new` in Kotlin?**
-> No. Objects are created without `new`: `val obj = MyClass()`
-
-**Q: What is a data class?**
-> A class designed to hold data. The compiler auto-generates `equals()`, `hashCode()`, `toString()`, and `copy()`.
-
-**Q: What is the difference between `object` and `class`?**
-> `object` creates a singleton — only one instance exists. `class` can be instantiated multiple times.
-
-**Q: What is a companion object?**
-> It allows defining static-like members inside a class. Accessed using the class name: `MyClass.METHOD`.
-
-**Q: What is the equivalent of Java static methods in Kotlin?**
-> `companion object`, package-level functions, or `object` declarations.
-
-**Q: Why are classes `final` by default in Kotlin?**
-> To promote composition over inheritance and make code safer. Use `open` to allow inheritance.
-
-**Q: Difference between abstract class and interface?**
-> Abstract class can have state, constructor, and implemented methods. Interface has no constructor, no backing fields, but supports multiple inheritance and default implementations.
-
-**Q: What is a sealed class?**
-> A class with a restricted hierarchy — all subclasses must be in the same file. Used for representing a finite set of states with data (like API responses).
-
-**Q: Difference between sealed class and enum?**
-> Sealed class can hold different data per subclass and allows multiple instances. Enum is simpler — each constant is a single instance with no varying state.
+### Common Pitfalls
+* **Expecting SAM conversion for a normal Kotlin interface.** Only Java interfaces and Kotlin `fun interface` declarations support it.
+* **`===` on boxed numbers.** `Integer` caching makes `128 === 128` false while `127 === 127` is true. Always use `==` for value comparison.
 
 ---
 
-### Null Safety & Types
+# 20. Testing Kotlin
 
-**Q: What is the difference between `Any` and `Any?`?**
-> `Any` is the root of all non-null types. `Any?` can also be null.
+## 20.1 Unit Tests
 
-**Q: What is `Nothing` in Kotlin?**
-> A type that represents functions that never return (always throw or run forever). Helps the compiler detect unreachable code.
+### Definition
+* **Unit test** — a test that exercises one unit of behavior in isolation, with no framework, device, or network, so it runs in milliseconds.
+* **`kotlin.test`** — an assertion library (`assertEquals`, `assertTrue`, `assertFailsWith`) that maps to JUnit on the JVM and to each platform's runner elsewhere, so the same test can live in shared multiplatform code.
+* **Backtick test names** — Kotlin permits `` fun `rejects a blank name`() ``, which makes test reports read as sentences rather than as camelCase identifiers.
 
-**Q: What is `Unit` in Kotlin?**
-> Equivalent to Java's `void` — for functions that return no meaningful value. But unlike `void`, `Unit` is an actual object.
+### Code Example
+```kotlin
+class SlugifyTest {
+    @Test fun `replaces spaces with hyphens`() {
+        assertEquals("hello-world", slugify("Hello World"))
+    }
 
----
-
-### Functions & Lambdas
-
-**Q: What is a higher-order function?**
-> A function that takes another function as a parameter or returns a function.
-
-**Q: What is `it` in Kotlin?**
-> The implicit name for a single parameter in a lambda: `list.filter { it > 5 }`
-
-**Q: What is an inline function?**
-> Inline functions insert the function body at the call site, eliminating lambda object creation overhead.
-
-**Q: What is `noinline`?**
-> Prevents a specific lambda parameter from being inlined when the surrounding function is `inline`.
-
-**Q: What is `reified` in Kotlin?**
-> Allows accessing the actual type `T` at runtime inside an `inline` generic function.
+    @Test fun `rejects a blank name`() {
+        val e = assertFailsWith<IllegalArgumentException> { createUser("") }
+        assertTrue("blank" in e.message.orEmpty())
+    }
+}
+```
+Backtick-quoted function names are legal in Kotlin and make test reports readable.
 
 ---
 
-### Coroutines
+## 20.2 Testing Coroutines
 
-**Q: What is a coroutine?**
-> A lightweight, non-blocking unit of execution that can pause and resume without blocking a thread.
+### Definition
+* **The problem** — coroutine code involves real delays and background dispatchers, so a naive test either waits in real time or finishes before the work does.
+* **`runTest`** — a builder that runs the test body in a coroutine backed by a **test scheduler**, and fails if any child coroutine is still running at the end.
+* **Virtual time** — the scheduler *skips* `delay` rather than waiting, so a 30-second timeout is testable in microseconds. `advanceTimeBy` and `advanceUntilIdle` move it forward on demand.
+* **`TestDispatcher`** — a dispatcher you substitute for the real one. `StandardTestDispatcher` queues coroutines until you advance time (deterministic); `UnconfinedTestDispatcher` runs them eagerly (convenient, but hides ordering bugs).
 
-**Q: What is a `suspend` function?**
-> A function that can pause execution without blocking its thread and resume later. Must be called from a coroutine or another suspend function.
+### Code Example
+```kotlin
+@Test
+fun `retries three times then fails`() = runTest {
+    val repo = FakeRepo(failures = 3)
 
-**Q: Difference between `launch` and `async`?**
-> `launch` starts a coroutine and returns a `Job` (no result). `async` starts a coroutine and returns `Deferred<T>` — call `.await()` to get the result.
+    val result = repo.loadWithRetry()
 
-**Q: What is `withContext`?**
-> Switches the coroutine to a different thread (dispatcher), executes the block, and returns the result.
+    advanceUntilIdle()                       // Run everything queued
+    assertEquals(3, repo.attempts)
+}
 
-**Q: What is the difference between `Dispatchers.IO` and `Dispatchers.Default`?**
-> `IO` is for blocking tasks (network/database). `Default` is for CPU-intensive computation.
+@Test
+fun `debounce issues one request for three keystrokes`() = runTest {
+    viewModel.onQuery("ko"); viewModel.onQuery("kot"); viewModel.onQuery("kotlin")
+    advanceTimeBy(301)                       // Virtual: instant in real time
+    assertEquals(1, repo.searchCount)
+}
+```
 
-**Q: What is structured concurrency?**
-> A principle where coroutines are organized in a parent-child hierarchy. When a parent is cancelled, all children are cancelled automatically.
+| Dispatcher | Behavior |
+|---|---|
+| `StandardTestDispatcher` (default) | Queues coroutines; you advance time explicitly. Deterministic. |
+| `UnconfinedTestDispatcher` | Runs eagerly. Convenient, but hides ordering bugs. |
 
-**Q: What is cooperative cancellation?**
-> Coroutines only stop at suspension points. You must check `isActive` or use suspension functions for cancellation to work.
-
-**Q: Why avoid `GlobalScope`?**
-> It's not tied to any lifecycle — coroutines outlive the component and can cause memory leaks.
-
----
-
-### Collections
-
-**Q: Difference between `List` and `Set`?**
-> `List` allows duplicates and maintains order. `Set` only stores unique elements.
-
-**Q: Difference between mutable and immutable collections?**
-> Immutable collections are read-only. Mutable collections allow adding/removing elements.
-
-**Q: Difference between `map()` and `flatMap()`?**
-> `map` transforms each element. `flatMap` transforms and then flattens nested collections into a single list.
-
-**Q: Why use `Sequence`?**
-> For lazy evaluation — elements are processed one at a time, which is more memory-efficient for large datasets.
+### Common Pitfalls
+* **`Thread.sleep` in a coroutine test.** It burns real time without advancing the virtual scheduler, so the awaited coroutines still do not run.
+* **Forgetting `Dispatchers.setMain`** when the class under test uses `Dispatchers.Main` — the test fails at construction.
 
 ---
 
-### Flow
+## 20.3 Testing Flows
 
-**Q: What is Flow?**
-> A cold asynchronous stream that emits multiple values over time. Nothing runs until `collect()` is called.
+### Definition
+* **The difficulty** — a `StateFlow` never completes, so a test that simply collects it into a list hangs forever, and reading only `.value` hides the intermediate states that are usually the behavior under test.
+* **Turbine** — a test library that collects a flow into a queue with `awaitItem()`, and **fails the test if an emission is left unconsumed**, so unexpected extra emissions are caught rather than ignored.
 
-**Q: Flow vs LiveData?**
-> Flow is Kotlin-native, supports operators, is cancellable, and works outside Android. LiveData is lifecycle-aware and simpler for basic UI observation.
+### Code Example
+```kotlin
+// Turbine: fails the test if an emission is left unconsumed
+@Test fun `emits loading then content`() = runTest {
+    viewModel.state.test {
+        assertEquals(UiState.Loading, awaitItem())
+        assertTrue(awaitItem() is UiState.Content)
+        cancelAndIgnoreRemainingEvents()
+    }
+}
 
-**Q: What is `StateFlow`?**
-> A hot flow that always holds a current state value and replays it to new collectors. Replaces `LiveData` in modern Android.
+// Without Turbine, for a finite flow
+@Test fun `emits three values`() = runTest {
+    val values = numbersFlow().toList()
+    assertEquals(listOf(1, 2, 3), values)
+}
+```
 
-**Q: What is `SharedFlow`?**
-> A hot flow for broadcasting events to multiple collectors. Used for one-time events like navigation or Snackbar.
-
-**Q: What is `collectLatest`?**
-> Cancels the previous collection when a new value arrives. Ideal for search-as-you-type.
-
-**Q: What is `flowOn`?**
-> Changes the upstream coroutine context (thread) for the flow. Never use `withContext` inside a flow block.
-
----
-
-### Annotations
-
-**Q: What is KAPT vs KSP?**
-> KAPT is older and slower — converts Kotlin to Java stubs before processing. KSP is faster and Kotlin-native — recommended for modern Android.
-
-**Q: What does `@JvmStatic` do?**
-> Makes a companion object method accessible as a static method from Java code.
-
-**Q: What does `@JvmField` do?**
-> Exposes a Kotlin property as a Java field — no getter/setter generated.
+### Common Pitfalls
+* **`toList()` on a `StateFlow`.** It never completes, so the test hangs. Use Turbine or `take(n)`.
+* **Asserting only `stateFlow.value`.** Intermediate emissions — a Loading state, an error that was replaced — are invisible, and those transitions are usually the behavior under test.
 
 ---
 
-### Advanced
+## 20.4 Fakes over Mocks
 
-**Q: What is `==` vs `===` in Kotlin?**
-> `==` checks value equality (calls `equals()`). `===` checks reference equality.
+### Definition
+* **Mock** — an object generated to record which methods were called, so the test can assert on the *interaction*.
+* **Fake** — a real, lightweight, hand-written implementation of the same interface (an in-memory repository), so the test asserts on the *outcome*.
+* **Why fakes are the default choice** — a mock encodes *how* the code under test calls its collaborator, so a refactor that preserves behavior still breaks the test. A fake encodes the collaborator's contract once and survives.
 
-**Q: What is operator overloading?**
-> Redefining standard operators (`+`, `-`, `*`, etc.) for custom types using the `operator` keyword.
+### Code Example
+```kotlin
+// A fake encodes the collaborator's contract once and survives refactoring
+class FakeUserRepository : UserRepository {
+    private val users = mutableMapOf<Long, User>()
+    var loadCount = 0; private set
+    private var nextFailure: Throwable? = null
 
-**Q: What is a type alias?**
-> An alternative name for an existing type for better readability: `typealias StringList = List<String>`
+    fun seed(user: User) { users[user.id] = user }
+    fun failNext(t: Throwable) { nextFailure = t }
 
-**Q: What are Kotlin idioms?**
-> Recommended, idiomatic ways to write clean, concise Kotlin code — things like using `apply` for object setup, `?:` for null defaults, and `when` instead of if-else chains.
+    override suspend fun load(id: Long): User {
+        loadCount++
+        nextFailure?.let { nextFailure = null; throw it }
+        return users[id] ?: error("no user $id")
+    }
+}
+```
+A mock (`coEvery { repo.load(1) } returns user`) couples the test to *how* the subject calls the collaborator; renaming a method or adding a cache check breaks tests that should not care. Reach for a mock only when the **interaction itself** is the behavior under test.
+
+---
+# 21. Interview Questions & Answers
+
+> **150 questions** with answers, follow-up probes, and code where code clarifies.
+> Difficulty: `[Junior]` · `[Mid]` · `[Senior]`
 
 ---
 
+## 21.1 Fundamentals & Compilation
+
+### Q1. How does Kotlin run on Android? `[Junior]`
+**Answer:** `kotlinc` compiles `.kt` to standard JVM bytecode (`.class`), D8/R8 converts it to DEX, and ART executes it. There is no Kotlin interpreter — the output is ordinary bytecode plus the `kotlin-stdlib` dependency.
+**Follow-up:** *Does Kotlin add runtime overhead?* Not from the language itself; the bytecode is equivalent. Costs come from specific constructs — boxing of `Int?`, non-inlined lambda allocation — not from choosing Kotlin.
+
+### Q2. What is the difference between compile-time and runtime in Kotlin? `[Mid]`
+**Answer:** Compile-time is when `kotlinc` type-checks, verifies nullability, expands `inline` functions, folds `const val`, checks `when` exhaustiveness, and runs KSP. Errors fail the build. Runtime is when the JVM/ART executes the bytecode — allocation, dispatch, reflection, GC. Errors throw exceptions.
+**Follow-up:** *Which phase does `!!` belong to?* Both: it compiles unconditionally, and emits a runtime `Intrinsics.checkNotNull` that throws. It converts a compile-time question into a runtime crash.
+
+### Q3. What is the K2 compiler and what changed? `[Mid]`
+**Answer:** The rewritten frontend, default since Kotlin 2.0. It uses one shared intermediate representation (FIR) across all targets instead of per-target analysis, giving roughly 1.5–2× faster compilation, better smart casts, and consistent behavior across JVM/JS/Native.
+**Follow-up:** *Does it change runtime behavior?* No — it is a frontend change. Build speed and diagnostics improve; program semantics do not. But compiler plugins (Compose, serialization, KSP) must be version-matched to the Kotlin release.
+
+### Q4. Why does Kotlin have no ternary operator? `[Junior]`
+**Answer:** Because `if` is already an **expression** that returns a value: `val s = if (x > 0) "pos" else "neg"`. A separate ternary would be redundant.
+**Follow-up:** *What else is an expression in Kotlin that is a statement in Java?* `when`, `try/catch`, and `throw` — which is why `val user = find(id) ?: throw NotFound()` type-checks.
+
+### Q5. What are Kotlin's compilation targets? `[Junior]`
+**Answer:** JVM bytecode (Android, server), JavaScript, WebAssembly, and native binaries via LLVM (iOS, macOS, Linux, Windows). Kotlin Multiplatform shares one source set across them.
+**Follow-up:** *What cannot be shared?* Anything platform-intrinsic — the Android SDK, UIKit, JVM reflection. Those are bridged with `expect`/`actual` declarations.
+
+### Q6. What is `Unit` and how does it differ from `void`? `[Mid]`
+**Answer:** `Unit` is a real singleton object and a real type, so `List<Unit>` is legal and a generic `T` can be `Unit`. Java's `void` is a keyword with no value.
+**Follow-up:** *Where does that matter practically?* In generic code: `Deferred<Unit>` or `(Int) -> Unit` need a real type. A function type returning `void` cannot be expressed.
+
+### Q7. What is `Nothing` and why does it exist? `[Senior]`
+**Answer:** `Nothing` has **no values** and is a subtype of every type, so an expression of type `Nothing` fits anywhere. It marks code that never returns normally, which is what makes `throw` and `return` usable as expressions.
+```kotlin
+fun fail(msg: String): Nothing = throw IllegalStateException(msg)
+val user = find(id) ?: fail("not found")     // Nothing fits User
+```
+**Follow-up:** *What happens if you declare that helper as returning `Unit` instead?* The `?:` no longer type-checks, and the compiler can no longer prove code after the call is unreachable.
+
+### Q8. What is `Any` and what does it declare? `[Junior]`
+**Answer:** The root of the non-nullable type hierarchy, declaring `equals`, `hashCode`, and `toString`. `Any?` is the root of everything including nullables. It is Kotlin's analogue of `java.lang.Object`, but Java's `Object` maps to `Any!`.
+**Follow-up:** *Why prefer a generic over `Any`?* `Any` erases the caller's type information, forcing a cast back.
+
+### Q9. Why does Kotlin have no checked exceptions? `[Mid]`
+**Answer:** Java's checked exceptions produced two failure modes at scale: `throws Exception` propagating up every signature, and empty catch blocks that swallow real errors. Kotlin removes the compiler mandate and expects explicit result modelling instead.
+**Follow-up:** *How do Java callers catch a Kotlin function's exception?* Only if it is annotated `@Throws(IOException::class)` — otherwise Java does not know it can be thrown.
+
+### Q10. What is the entry point of a Kotlin program, and where does a top-level function live? `[Junior]`
+**Answer:** `fun main()`, optionally taking `args: Array<String>`. A top-level function compiles to a `static` method on a synthetic class named after the file — `Utils.kt` produces `UtilsKt`.
+**Follow-up:** *How do you give it a nicer Java name?* `@file:JvmName("Utils")` at the top of the file, before the package declaration.
+
+---
+
+## 21.2 Variables, Null Safety & Types
+
+### Q11. `var` vs `val` vs `const val`? `[Junior]`
+**Answer:** `var` is reassignable; `val` is assigned once; `const val` is a compile-time constant inlined into bytecode, restricted to primitives and `String` at top level or inside an `object`/`companion object`.
+**Follow-up:** *Does `val` mean immutable?* No — it is **reference** immutability. `val list = mutableListOf<Int>()` can still be mutated; only reassignment is forbidden.
+
+### Q12. Where does `const val` actually save anything? `[Mid]`
+**Answer:** It produces no field and no getter — every usage becomes a literal in the bytecode. A normal `val` in an `object` costs a static field access plus a getter call.
+**Follow-up:** *What is the cost of `const val`?* Changing it requires recompiling every consuming module, because the old value is baked into their bytecode.
+
+### Q13. Explain the safe call, Elvis, and not-null assertion operators. `[Junior]`
+**Answer:** `?.` invokes only if the receiver is non-null, otherwise yields `null`. `?:` supplies a fallback when the left side is `null`. `!!` asserts non-null and throws `NullPointerException` otherwise.
+```kotlin
+val len = name?.length ?: 0
+val forced = name!!.length     // Throws if null
+```
+**Follow-up:** *When is `!!` acceptable?* When you can state why null is impossible and the alternative is worse. Usually `requireNotNull(x) { "why" }` is better — it throws too, but explains what went wrong.
+
+### Q14. Why is `x?.let { a() } ?: b()` a bug? `[Senior]`
+**Answer:** It looks like if/else but is not. If `x` is non-null **and** `a()` returns `null`, the Elvis branch also runs, so `b()` executes for a non-null `x`.
+**Follow-up:** *What is the correct form?* A real `if (x != null) a() else b()`, or `x?.let { a() } ?: run { b() }` only when `a()` provably never returns null.
+
+### Q15. What is a smart cast and when does the compiler refuse one? `[Mid]`
+**Answer:** After `is` or a null check, the compiler treats the value as the narrowed type without an explicit cast. It refuses when it cannot prove the value is unchanged between check and use — a `var` property, a value with a custom getter, or an `open` property another module could override.
+```kotlin
+class Holder(var value: String?) {
+    fun show() {
+        val local = value ?: return       // Copy to a local val
+        println(local.length)             // Smart cast now works
+    }
+}
+```
+**Follow-up:** *Why does a local `var` smart-cast but a property `var` not?* The compiler can see every write to a local; another thread could write the property between the check and the use.
+
+### Q16. What is a platform type? `[Senior]`
+**Answer:** A type from unannotated Java, written `String!`. The compiler applies **no** null checks, so assigning it to a non-null Kotlin type compiles and can throw at that assignment.
+**Follow-up:** *How do you close the hole?* Annotate the Java side with `@Nullable`/`@NonNull`, or declare the Kotlin variable nullable. Never assume an unannotated Java return is non-null.
+
+### Q17. `lateinit` vs `lazy`? `[Mid]`
+**Answer:** `lateinit var` defers initialization of a non-null, non-primitive property that **you** assign; reading first throws `UninitializedPropertyAccessException`. `by lazy` is a `val` computed by its lambda on first read and cached, thread-safe by default.
+**Follow-up:** *Why can't `lateinit` be used on `Int`?* It needs a null sentinel in the backing field to detect "not yet assigned", and primitives have none. Use `Delegates.notNull<Int>()`.
+
+### Q18. How do you check whether a `lateinit` property was assigned? `[Mid]`
+**Answer:** `::propertyName.isInitialized`, available from inside the declaring class.
+**Follow-up:** *If you need that check often, what does it suggest?* That the property is genuinely optional, so it should be nullable — the check is working around the wrong type.
+
+### Q19. What does `as?` do that `as` does not? `[Junior]`
+**Answer:** `as?` yields `null` on a failed cast instead of throwing `ClassCastException`, so it composes with `?:` and `?.let`.
+**Follow-up:** *Why is `list as List<String>` dangerous even with `as`?* Erasure means the element type is unverifiable, so the cast succeeds and fails much later. Use `filterIsInstance<String>()`.
+
+### Q20. `typealias` vs `value class`? `[Senior]`
+**Answer:** `typealias` is a compile-time alias creating **no new type** — `typealias Meters = Double` still accepts seconds. A `@JvmInline value class` is a genuinely distinct type, erased to the wrapped value at runtime where possible, so it gives type safety at no allocation cost.
+```kotlin
+@JvmInline value class UserId(val value: Long)
+fun invite(id: UserId, email: Email)      // Argument order is now compiler-enforced
+```
+**Follow-up:** *When does a value class box?* When it must be an object — as a generic argument (`List<UserId>`), when nullable, or when used polymorphically through an interface.
+
+### Q21. Why does Kotlin forbid implicit numeric widening? `[Mid]`
+**Answer:** Because implicit conversion hides precision loss and surprising overload resolution. `val l: Long = anInt` does not compile; `anInt.toLong()` is required.
+**Follow-up:** *What about `Int` overflow?* It wraps silently, exactly as in Java. Use `Math.addExact` or `Long` when overflow matters.
+
+### Q22. Why does `Int?` cost more than `Int`? `[Mid]`
+**Answer:** `Int` maps to a JVM primitive. `Int?` needs a null reference, so it becomes `java.lang.Integer` — a heap object per value. The same applies inside generics: `List<Int>` stores boxed integers.
+**Follow-up:** *How do you avoid boxing in numeric code?* `IntArray`/`LongArray`/`DoubleArray`, which compile to JVM primitive arrays.
+
+### Q23. What is the difference between `==` and `===`? `[Junior]`
+**Answer:** `==` is structural — it calls `equals()`. `===` is referential — same object identity. Java's `==` corresponds to Kotlin's `===`.
+**Follow-up:** *Why is `===` unreliable on boxed numbers?* The JVM caches `Integer` values −128..127, so `127 === 127` is true and `128 === 128` is false.
+
+### Q24. What is destructuring and what is its hidden risk? `[Mid]`
+**Answer:** `val (a, b) = pair` calls `component1()`, `component2()`, generated automatically for data classes. The risk is that it is **positional**: reordering a data class's constructor properties silently changes every destructuring site with no compiler error.
+**Follow-up:** *How do you destructure a map entry?* `for ((key, value) in map)` — `Map.Entry` provides `component1`/`component2`.
+
+### Q25. `isEmpty()` vs `isBlank()`? `[Junior]`
+**Answer:** `isEmpty()` is length 0. `isBlank()` is empty **or only whitespace**. A field containing `"   "` passes `isNotEmpty()` — usually a validation bug.
+**Follow-up:** *What handles a nullable string?* `isNullOrEmpty()` and `isNullOrBlank()`, which are extensions on `String?`.
+
+### Q26. `trimIndent()` vs `trimMargin()`? `[Junior]`
+**Answer:** `trimIndent()` removes the common leading whitespace from every line. `trimMargin()` removes everything up to and including a prefix character, `|` by default.
+**Follow-up:** *How do you write a literal `$` in a raw string?* `${'$'}` — there is no backslash escaping inside `"""`.
+
+### Q27. Why is `"i".uppercase()` risky? `[Senior]`
+**Answer:** It is locale-sensitive. In Turkish, uppercase `i` is `İ`, not `I`, so machine-facing comparisons break for Turkish users. Use `uppercase(Locale.ROOT)` for identifiers and protocol values.
+**Follow-up:** *Where does this bite in practice?* Case-insensitive comparison of HTTP headers, enum names, or file extensions built with the default locale.
+
+### Q28. What is the `Nothing?` type? `[Senior]`
+**Answer:** The type inferred for a bare `null` literal — the only value it can hold is `null`. `val x = null` infers `Nothing?`, which is why you usually need an explicit type there.
+**Follow-up:** *Why is `Nothing` a subtype of everything?* So an expression that never produces a value (a `throw`) is usable in any position expecting any type.
+
+---
+
+## 21.3 Control Flow
+
+### Q29. Why is `when` over a sealed type exhaustive, and why should you omit `else`? `[Mid]`
+**Answer:** The compiler knows the complete set of subtypes, so it can verify every case is handled. Adding `else` disables that check, and a newly added subtype then compiles and misbehaves at runtime instead of breaking the build.
+**Follow-up:** *Does exhaustiveness apply to a `when` used as a statement?* Only when used as an **expression** (or when the function's return type forces it). Assigning the result restores the check.
+
+### Q30. What does a bare `return` inside `forEach` do? `[Senior]`
+**Answer:** It returns from the **enclosing function**, not the lambda — a non-local return. It is possible only because `forEach` is `inline`, so the lambda body is copied into the caller.
+```kotlin
+fun printPositives(nums: List<Int>) {
+    nums.forEach {
+        if (it < 0) return          // Exits printPositives entirely
+        println(it)
+    }
+    println("done")                 // Never reached if any value is negative
+}
+```
+**Follow-up:** *How do you get `continue` behavior?* `return@forEach`. Better still, use the right operator — `filter`, `firstOrNull`, `takeWhile`.
+
+### Q31. Can you use `break` or `continue` inside `forEach`? `[Mid]`
+**Answer:** No — the compiler rejects them, because `forEach` is a function call, not a loop. Use a real `for` loop, a labelled return, or a collection operator.
+**Follow-up:** *Why is non-local `return` allowed but `break` not?* `return` has a well-defined target (the enclosing function); `break` would need a loop that does not exist at that point.
+
+### Q32. How do labelled break and continue work? `[Mid]`
+**Answer:** A label (`outer@`) before a loop lets `break@outer` / `continue@outer` target that loop rather than the innermost one.
+**Follow-up:** *When is a label a smell?* When nesting is deep enough to need one, extracting the inner loop into a named function with an early return is usually clearer.
+
+### Q33. What is the difference between `..`, `until` / `..<`, and `downTo`? `[Junior]`
+**Answer:** `1..5` is inclusive of 5; `1..<5` (or `1 until 5`) excludes it; `5 downTo 1` counts down. `10..1` is an **empty** range, not a descending one.
+**Follow-up:** *Does a `for` loop over a range allocate an iterator?* Not for a constant-step `IntRange` — the compiler emits a plain indexed loop. Storing it as an `Iterable<Int>` loses that optimization.
+
+---
+
+## 21.4 Functions & Lambdas
+
+### Q34. What makes a function "first-class" in Kotlin? `[Junior]`
+**Answer:** Functions can be stored in variables, passed as arguments, and returned — expressed through function types like `(Int, Int) -> Int`.
+**Follow-up:** *What does a lambda compile to?* An instance of `FunctionN` (`Function0`, `Function1`, …), so a non-inlined lambda allocates an object, and a capturing one allocates a closure.
+
+### Q35. What does `inline` actually do, and when is it wrong? `[Mid]`
+**Answer:** It copies the function body and its lambda bodies into every call site, removing the `Function` object allocation and the virtual call. It is wrong when the function has no lambda parameters (nothing to gain) or is large and widely called (code size multiplies per call site).
+**Follow-up:** *What else does `inline` enable?* `reified` type parameters and non-local returns — both require the body to exist at the call site.
+
+### Q36. What are `noinline` and `crossinline` for? `[Senior]`
+**Answer:** `noinline` excludes one lambda from inlining, needed when it must be **stored** or passed on — an inlined lambda is not an object. `crossinline` inlines the lambda but forbids non-local return, needed when it will be invoked from another context (inside another lambda or an object), where a non-local return would be unsound.
+```kotlin
+inline fun run(crossinline block: () -> Unit) {
+    executor.submit { block() }        // Without crossinline this does not compile
+}
+```
+**Follow-up:** *Why can a public inline function not touch private members?* Its body is copied into other modules, which cannot see private declarations. `@PublishedApi internal` is the escape hatch.
+
+### Q37. What is `reified` and why does it require `inline`? `[Mid]`
+**Answer:** The JVM erases generic type arguments, so `T` is unavailable at runtime. `reified` makes the compiler substitute the concrete type at each call site — which is only possible because inlining puts the body there.
+```kotlin
+inline fun <reified T> Bundle.get(key: String): T? = get(key) as? T
+```
+**Follow-up:** *What can you do with a reified `T`?* `is T`, `T::class`, `T::class.java` — everything erasure normally forbids.
+
+### Q38. How are extension functions dispatched? `[Senior]`
+**Answer:** **Statically**, at compile time, based on the **declared** type. They compile to static methods taking the receiver as the first parameter, so they are not polymorphic.
+```kotlin
+open class Base; class Derived : Base()
+fun Base.name() = "Base"
+fun Derived.name() = "Derived"
+val obj: Base = Derived()
+obj.name()          // "Base" — declared type wins
+```
+**Follow-up:** *What happens when a member and an extension have the same signature?* The **member always wins**, and the compiler warns that the extension is shadowed.
+
+### Q39. Can an extension access private members of the receiver? `[Mid]`
+**Answer:** No. It is an external static function, so it sees only the receiver's public (or, if declared in the same file, `private`-to-file) surface.
+**Follow-up:** *When should you prefer a member function?* When you own the type and the behavior is intrinsic to it. Extensions are for types you cannot change, or for keeping a class's core API small.
+
+### Q40. What is the difference between a lambda and an anonymous function? `[Mid]`
+**Answer:** A lambda (`{ a -> b }`) infers its return type and its bare `return` is non-local (when inlined). An anonymous function (`fun(a: Int): Int { ... }`) declares an explicit return type and its `return` exits **only** that function.
+**Follow-up:** *When do you need an anonymous function?* When you want an explicit return type, or a local `return` from a non-inlined context.
+
+### Q41. What is `it` and when should you avoid it? `[Junior]`
+**Answer:** The implicit name for a single lambda parameter. Avoid it when lambdas nest — the inner `it` shadows the outer — or when the meaning is not obvious from context.
+**Follow-up:** *Does `it` exist for multi-parameter lambdas?* No; you must name them.
+
+### Q42. Explain trailing lambda syntax. `[Junior]`
+**Answer:** When a lambda is the **last** parameter it can be written outside the parentheses, and if it is the only argument the parentheses can be dropped entirely: `list.filter { it > 10 }`.
+**Follow-up:** *Why do library APIs put the lambda last?* Precisely to enable this, which is what makes `apply`, `launch`, and Compose read like language constructs.
+
+### Q43. What are default arguments compiled to? `[Senior]`
+**Answer:** One method plus a synthetic `$default` bridge that fills missing arguments using a bitmask — not a chain of overloads. Java therefore sees only the full-arity method unless you add `@JvmOverloads`.
+**Follow-up:** *Can an override declare its own defaults?* No. Overrides inherit the base declaration's defaults; specifying new ones is a compile error.
+
+### Q44. What is `vararg` and how do you forward an existing array? `[Junior]`
+**Answer:** `vararg numbers: Int` accepts zero or more arguments and is an `IntArray` inside the function. Forward an existing array with the spread operator: `sum(*existing)`.
+**Follow-up:** *Can a function have two `vararg` parameters?* No — only one, and any parameters after it must be passed by name.
+
+### Q45. What are function references and when do they help? `[Mid]`
+**Answer:** `::` creates a reference to a function, constructor, or property usable wherever a function type is expected — `list.map(String::toInt)` instead of `list.map { it.toInt() }`. It avoids a wrapping lambda and reads more directly.
+**Follow-up:** *What is the difference between a bound and an unbound reference?* `logger::log` is bound — it captures `logger` as the receiver. `String::toInt` is unbound — the receiver becomes the first argument.
+
+### Q46. What is a closure, and how does Kotlin differ from Java here? `[Mid]`
+**Answer:** A lambda capturing variables from its enclosing scope. Unlike Java, Kotlin allows capturing and **mutating** a `var` — Java requires captured locals to be effectively final.
+```kotlin
+var count = 0
+listOf(1, 2, 3).forEach { count += it }    // Legal in Kotlin
+```
+**Follow-up:** *What is the Android risk?* The closure keeps the captured variable alive. Capturing a `View` or `Activity` in a long-lived lambda leaks it.
+
+### Q47. What is an `infix` function and what are its constraints? `[Mid]`
+**Answer:** A member or extension function callable without a dot or parentheses. It must take exactly one parameter, which cannot be `vararg` or have a default. `to` in `"key" to 1` is an infix function, not syntax.
+**Follow-up:** *When is `infix` a bad idea?* For ordinary business logic — it reads well in a DSL and confusingly everywhere else.
+
+### Q48. How does operator overloading work? `[Mid]`
+**Answer:** Mark a function `operator` and give it a conventional name: `plus` for `+`, `times` for `*`, `get` for `[]`, `contains` for `in`, `invoke` for `()`, `compareTo` for `<`/`>`.
+**Follow-up:** *What is the rule for using it well?* Preserve the operator's conventional meaning. `vector + vector` is clear; `user + order` is not.
+
+### Q49. What does `tailrec` do, and when does it silently do nothing? `[Senior]`
+**Answer:** It converts a tail-recursive function into a loop at compile time, preventing stack overflow. It does nothing — with a compiler **warning** — when the recursive call is not the last operation.
+```kotlin
+tailrec fun fact(n: Long, acc: Long = 1): Long = if (n <= 1) acc else fact(n - 1, acc * n)  // Optimized
+fun bad(n: Long): Long = if (n <= 1) 1 else n * bad(n - 1)   // NOT tail position
+```
+**Follow-up:** *Why is the second not tail-recursive?* The multiplication happens **after** the recursive call returns, so the frame must be kept.
+
+### Q50. What is a local function good for? `[Junior]`
+**Answer:** Extracting a helper used only inside one function, with access to the enclosing scope's variables. It keeps the class's namespace clean.
+**Follow-up:** *When is it too much?* Beyond one nesting level, a private top-level or member function is clearer.
+
+---
+
+## 21.5 Object-Oriented Kotlin
+
+### Q51. Why are Kotlin classes final by default? `[Mid]`
+**Answer:** To make inheritance a deliberate decision. Accidentally-extensible classes produce fragile base classes, where a superclass change silently breaks subclasses. `open` opts in.
+**Follow-up:** *What is the Android-specific consequence?* Mocking frameworks need `open` classes, which is why the `all-open`/`mock-maker-inline` configurations exist for tests.
+
+### Q52. What does the primary constructor generate? `[Junior]`
+**Answer:** Parameters declared with `val`/`var` become properties with a backing field, a getter, and a setter for `var`. A parameter without `val`/`var` is only visible inside initializers and `init` blocks.
+**Follow-up:** *In what order do `init` blocks and property initializers run?* Top to bottom, interleaved, as a single constructor body.
+
+### Q53. Why is calling an `open` function from a constructor dangerous? `[Senior]`
+**Answer:** The subclass override runs **before** the subclass's own properties are initialized, so it observes uninitialized state — typically `null` for a `lateinit` or a default `0`.
+**Follow-up:** *How do you avoid it?* Do not call overridable members during construction; use an explicit `initialize()` called after construction, or make the member final.
+
+### Q54. What does a `data class` generate, and what does it exclude? `[Mid]`
+**Answer:** `equals`, `hashCode`, `toString`, `copy`, and `componentN` — from the **primary constructor properties only**. A property declared in the body is excluded from all of them.
+```kotlin
+data class User(val id: Long) { var lastSeen: Long = 0 }
+User(1).apply { lastSeen = 5 } == User(1)     // true — lastSeen ignored
+```
+**Follow-up:** *Why is a mutable collection property in a data class dangerous?* Mutating it changes `hashCode`, so the object becomes unfindable in any `HashMap` or `HashSet` holding it.
+
+### Q55. When is a data class the wrong choice? `[Senior]`
+**Answer:** For an entity with **identity**. Structural equality says two users with identical fields are the same user, which is wrong when identity is defined by a database ID and the fields can change.
+**Follow-up:** *What are its declaration restrictions?* At least one primary constructor parameter, all primary parameters `val`/`var`, and it cannot be `open`, `abstract`, `sealed`, or `inner`.
+
+### Q56. Sealed class vs sealed interface vs enum? `[Mid]`
+**Answer:** An `enum` has one instance per constant and only shared fields. A `sealed class`/`interface` has a closed set of subtypes, each able to carry different data and have many instances. A `sealed interface` additionally lets a type belong to several hierarchies.
+**Follow-up:** *What is the constraint on where subtypes are declared?* Same package and module (same file, before Kotlin 1.5) — that is how the compiler knows the set is complete.
+
+### Q57. What is a `data object` and why was it added? `[Mid]`
+**Answer:** Kotlin 1.9. It gives a stateless singleton a readable `toString` (`Loading` instead of `Loading@3f2a`) and proper `equals`/`hashCode` semantics — ideal for sealed hierarchy cases with no payload.
+**Follow-up:** *Why not just use `object`?* Its default `toString` prints the identity hash, which is noise in logs and in test failure messages.
+
+### Q58. `object` declaration vs `object` expression vs `companion object`? `[Mid]`
+**Answer:** A declaration is a named singleton compiled to a class with a static `INSTANCE`, initialized lazily and thread-safely by JVM class loading. An expression is an anonymous object — Kotlin's replacement for Java anonymous classes. A companion is an object tied to a class, holding what Java would make static.
+**Follow-up:** *Does Java see companion members as static?* No — `Foo.Companion.bar()` unless the member is `@JvmStatic` or `const`.
+
+### Q59. Nested class vs `inner` class? `[Mid]`
+**Answer:** A nested class (the default) has **no** reference to the outer instance. An `inner` class holds one, via a synthetic `this$0` field.
+**Follow-up:** *Why does Kotlin default to nested?* Because the outer reference is a leak source — the opposite of Java's default, which is a common source of Android memory leaks.
+
+### Q60. Abstract class vs interface — how do you choose? `[Junior]`
+**Answer:** An interface when you are defining a **capability** many unrelated types can have, and you need multiple inheritance. An abstract class when close relatives share **state** and implementation — interfaces cannot hold backing fields.
+**Follow-up:** *Can an interface declare a property?* Yes, but it must be abstract or have a custom getter; there is nowhere to store a field.
+
+### Q61. How do you resolve a diamond conflict between two interface defaults? `[Senior]`
+**Answer:** The compiler forces you to override and disambiguate explicitly with `super<A>.method()`.
+```kotlin
+interface A { fun greet() = "A" }
+interface B { fun greet() = "B" }
+class C : A, B { override fun greet() = super<A>.greet() }
+```
+**Follow-up:** *How do interface default methods compile?* To a static method on a synthetic `DefaultImpls` class, or to a JVM default method with `-Xjvm-default=all`.
+
+### Q62. What is class delegation and what is its one surprise? `[Senior]`
+**Answer:** `class Logging(d: Repo) : Repo by d` generates forwarding methods to `d`. The surprise is that forwarding is **one-way**: if `d`'s own methods call each other internally, they call `d`'s implementations, never your overrides.
+**Follow-up:** *When is that a problem?* Whenever you expect decorator behavior on internal calls — it does not happen, unlike with inheritance.
+
+### Q63. What is `internal` and is it enforced everywhere? `[Mid]`
+**Answer:** Module-level visibility — visible throughout the Gradle module, invisible to consumers. It compiles to `public` with a **name-mangled** JVM signature, so Java code in the same project can technically call it.
+**Follow-up:** *Why does that matter in a library?* `internal` is a Kotlin-level contract; it does not create a hard boundary against Java or reflection.
+
+### Q64. How do you make a property read-only from outside but writable inside? `[Junior]`
+**Answer:** `var total: Int = 0; private set`.
+**Follow-up:** *What is the equivalent for a collection?* Keep a `private val items = mutableListOf<T>()` and expose `val contents: List<T> get() = items.toList()` — the copy prevents callers holding a live mutable view.
+
+### Q65. What is a backing field and when is one generated? `[Mid]`
+**Answer:** The hidden storage behind a property, referenced as `field` inside a custom accessor. It is generated **only** if at least one accessor uses `field` or uses the default implementation.
+```kotlin
+val area: Int get() = w * h        // No backing field — computed each read
+var name: String = ""
+    set(v) { field = v.trim() }    // Backing field exists
+```
+**Follow-up:** *What does that mean for an interface property?* It can never have a backing field, so it must be abstract or computed.
+
+### Q66. Why does `enum.values()` matter for performance? `[Mid]`
+**Answer:** It returns a **defensive copy** — a new array on every call. In a loop that is an allocation per iteration. `entries` (Kotlin 1.9+) returns a cached immutable list.
+**Follow-up:** *Why should you never persist `ordinal`?* Reordering the constants silently changes the meaning of stored data. Persist `name` or an explicit stable code.
+
+### Q67. How do you give each enum constant its own behavior? `[Mid]`
+**Answer:** Declare an abstract member on the enum and override it per constant.
+```kotlin
+enum class Op {
+    PLUS { override fun apply(a: Int, b: Int) = a + b },
+    TIMES { override fun apply(a: Int, b: Int) = a * b };
+    abstract fun apply(a: Int, b: Int): Int
+}
+```
+**Follow-up:** *When is a sealed hierarchy better?* As soon as the cases need **different data**, not just different behavior.
+
+### Q68. What is the `by lazy` thread-safety default, and when do you change it? `[Mid]`
+**Answer:** `LazyThreadSafetyMode.SYNCHRONIZED` — double-checked locking, so the initializer runs at most once. Change to `NONE` only when access is provably single-threaded, and to `PUBLICATION` when running the initializer more than once is harmless but the result must be consistent.
+**Follow-up:** *What breaks with `NONE` under concurrency?* Two threads can both run the initializer and observe different instances.
+
+### Q69. What is `Delegates.observable` vs `vetoable`? `[Mid]`
+**Answer:** `observable` fires a callback **after** each assignment. `vetoable` fires **before** and returns a `Boolean` — returning `false` rejects the write.
+**Follow-up:** *Does `observable` fire when the new value equals the old?* Yes — on every assignment. Compare `old != new` inside the callback yourself.
+
+### Q70. How does a custom property delegate work? `[Senior]`
+**Answer:** Implement `getValue`/`setValue` (or `ReadOnlyProperty`/`ReadWriteProperty`). The compiler rewrites each access into `delegate.getValue(thisRef, property)`, passing a `KProperty` that carries the property's **name** — which is what lets a delegate use the name as a storage key.
+```kotlin
+class Pref<T>(private val prefs: SharedPreferences, private val default: T) : ReadWriteProperty<Any?, T> {
+    override fun getValue(thisRef: Any?, property: KProperty<*>): T = read(property.name)
+    override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) = write(property.name, value)
+}
+```
+**Follow-up:** *What is the hidden cost?* Every access runs the delegate. A preferences delegate does disk IO on **every read**, which is main-thread IO if the property is read during layout.
+
+---
+## 21.6 Generics
+
+### Q71. What is type erasure and what does it prevent? `[Mid]`
+**Answer:** The JVM removes generic type arguments at runtime, so `List<String>` and `List<Int>` are the same class. It prevents `value is T`, `T::class`, and two overloads differing only in type arguments.
+**Follow-up:** *What is the one escape?* `inline fun <reified T>` — the compiler substitutes the concrete type at each call site.
+
+### Q72. Explain `out` and `in`. `[Senior]`
+**Answer:** `out T` (covariant) means T only appears in **return** positions, so `Source<Dog>` is a `Source<Animal>`. `in T` (contravariant) means T only appears in **parameter** positions, so `Sink<Animal>` is a `Sink<Dog>`. The mnemonic is PECS — Producer `out`, Consumer `in`.
+**Follow-up:** *Why is `MutableList<T>` invariant?* It both produces and consumes T. Allowing `MutableList<Dog>` as a `MutableList<Animal>` would let you add a `Cat` to a list of dogs.
+
+### Q73. What is declaration-site vs use-site variance? `[Senior]`
+**Answer:** Kotlin declares variance once on the type (`interface Source<out T>`). Java has no such mechanism, so it repeats a wildcard at every use site (`List<? extends Animal>`). Kotlin also supports use-site variance when the declaration is invariant: `MutableList<out Any>`.
+**Follow-up:** *What does that correspond to in Java?* `MutableList<out Any>` is exactly `List<? extends Object>`.
+
+### Q74. What is a star projection? `[Senior]`
+**Answer:** `List<*>` means "a list of some specific unknown type". You can read from it (as `Any?`) but not write to it, because the real element type is unknown.
+**Follow-up:** *How does it differ from `List<Any?>`?* `List<Any?>` genuinely accepts anything; `List<*>` might really be a `List<String>`, so writing would be unsound.
+
+### Q75. How do you require multiple bounds on a type parameter? `[Mid]`
+**Answer:** A `where` clause: `fun <T> f(x: T) where T : Serializable, T : Comparable<T>`.
+**Follow-up:** *How do you require non-null?* `<T : Any>` — a bare `T` can be inferred as a nullable type.
+
+### Q76. Why can't you have `fun f(x: List<String>)` and `fun f(x: List<Int>)`? `[Mid]`
+**Answer:** After erasure both have the JVM signature `f(List)`, so they collide. Rename one, or use `@JvmName` to differentiate the JVM-level names.
+**Follow-up:** *Does `@JvmName` fix it for Kotlin callers too?* No — it changes only the JVM name. The Kotlin-level ambiguity remains, so renaming is usually the better fix.
+
+### Q77. What is an unchecked cast and why is it dangerous? `[Mid]`
+**Answer:** `anyList as List<String>` compiles with a warning because erasure makes element verification impossible. The cast succeeds regardless, and a `ClassCastException` surfaces much later at the first element access — far from the cause.
+**Follow-up:** *What is the safe alternative?* `filterIsInstance<String>()`, which checks every element.
+
+---
+
+## 21.7 Collections
+
+### Q78. `List` vs `MutableList` — is `List` immutable? `[Mid]`
+**Answer:** No. `List` is **read-only**: it lacks mutating methods, but the underlying object may be an `ArrayList` that something else still holds and mutates.
+```kotlin
+val backing = mutableListOf(1, 2)
+val view: List<Int> = backing
+backing.add(3)
+println(view)      // [1, 2, 3] — the "read-only" list changed
+```
+**Follow-up:** *How do you get real immutability?* A defensive copy (`toList()`) or `kotlinx.collections.immutable`.
+
+### Q79. `map` vs `flatMap`? `[Junior]`
+**Answer:** `map` transforms each element one-to-one. `flatMap` transforms each element into a collection and flattens the result one level.
+```kotlin
+listOf(listOf(1,2), listOf(3,4)).map { it }       // [[1,2],[3,4]]
+listOf(listOf(1,2), listOf(3,4)).flatMap { it }   // [1,2,3,4]
+```
+**Follow-up:** *What is `mapNotNull` for?* Transform and drop nulls in a single pass — cheaper than `map { }.filterNotNull()`.
+
+### Q80. What is a `Sequence` and when does it win? `[Mid]`
+**Answer:** A lazily-evaluated stream: each element passes through the whole operator chain before the next starts, so no intermediate collections are created and short-circuiting terminals stop early. It wins on **large** collections with **several** operations, especially with `first`/`take`/`any`.
+**Follow-up:** *When does it lose?* On small collections (setup cost dominates), with a single operation, or when the terminal needs everything anyway (`sorted`, `groupBy`).
+
+### Q81. Why does a sequence sometimes produce nothing? `[Mid]`
+**Answer:** Intermediate operators are lazy; without a **terminal** operation (`toList`, `first`, `sum`, `forEach`) nothing is evaluated at all.
+**Follow-up:** *Can you collect a sequence twice?* Not one built from an iterator — a second terminal operation throws `IllegalStateException`.
+
+### Q82. `fold` vs `reduce`? `[Mid]`
+**Answer:** `fold` takes an explicit initial value and can return a different type. `reduce` uses the first element as the seed and **throws** on an empty collection.
+**Follow-up:** *Which is safer by default?* `fold` — it has a defined result for an empty collection.
+
+### Q83. `groupBy` vs `groupingBy`? `[Senior]`
+**Answer:** `groupBy` builds a `Map<K, List<T>>`, materializing every list. `groupingBy` returns a `Grouping` that supports one-pass aggregations like `eachCount()` or `fold()` without building the intermediate lists.
+**Follow-up:** *When does that matter?* Counting occurrences over a large collection — `groupBy { }.mapValues { it.value.size }` allocates lists you immediately discard.
+
+### Q84. `sortedBy` vs `sortBy`? `[Junior]`
+**Answer:** `sortedBy` returns a **new** sorted list and works on any `Iterable`. `sortBy` sorts a `MutableList` **in place** and returns `Unit`.
+**Follow-up:** *How do you sort by several keys?* `sortedWith(compareBy({ it.role }, { it.name }))`.
+
+### Q85. Why is `list.contains(x)` in a loop a problem? `[Mid]`
+**Answer:** It is O(n) per call, so the loop becomes O(n²). Converting to a `Set` first makes each lookup O(1).
+**Follow-up:** *What is the risk of a mutable object as a `HashSet` element?* Mutating it changes its `hashCode`, so it lands in the wrong bucket and becomes unfindable in its own collection.
+
+### Q86. `Array<Int>` vs `IntArray`? `[Mid]`
+**Answer:** `Array<Int>` stores boxed `java.lang.Integer` objects; `IntArray` compiles to a JVM `int[]` with no boxing. In numeric hot paths or large datasets the difference is substantial.
+**Follow-up:** *Why prefer `List` over `Array` generally?* `Array` is invariant, fixed-size, and lacks the rich operator set. `List` is the idiomatic default.
+
+### Q87. What does `associateBy` do? `[Junior]`
+**Answer:** Builds a `Map` keyed by the selector: `users.associateBy { it.id }` gives `Map<Long, User>`. `associateWith` does the inverse — elements become keys.
+**Follow-up:** *What happens on duplicate keys?* The last one wins, silently. Use `groupBy` if duplicates are expected.
+
+### Q88. What are `buildList` / `buildString` for? `[Mid]`
+**Answer:** They give a mutable builder inside a lambda and return a read-only result, so no mutable variable escapes.
+```kotlin
+val csv = buildString { users.forEachIndexed { i, u -> if (i > 0) append(','); append(u.name) } }
+```
+**Follow-up:** *Why not `+=` on a String in a loop?* Each iteration allocates a new string; `buildString` uses one `StringBuilder`.
+
+### Q89. How do you partition a collection in one pass? `[Junior]`
+**Answer:** `val (matching, rest) = users.partition { it.isActive }` — returns a `Pair` of two lists.
+**Follow-up:** *What about `chunked` and `windowed`?* `chunked(2)` gives non-overlapping groups; `windowed(2)` gives sliding overlapping ones.
+
+### Q90. What does `zip` do when the collections differ in length? `[Junior]`
+**Answer:** It stops at the shorter one — the result's size is the minimum of the two.
+**Follow-up:** *How do you get the index alongside the element?* `withIndex()` in a `for` loop, or `mapIndexed`/`forEachIndexed`.
+
+---
+
+## 21.8 Scope Functions
+
+### Q91. How do the five scope functions differ? `[Mid]`
+**Answer:** By **how the object is referenced** and **what is returned**.
+
+| | Reference | Returns |
+|---|---|---|
+| `let` | `it` | Lambda result |
+| `run` | `this` | Lambda result |
+| `with` | `this` (argument, not extension) | Lambda result |
+| `also` | `it` | **The object** |
+| `apply` | `this` | **The object** |
+
+**Follow-up:** *What is the decision rule?* Need the object back → `apply`/`also`. Need the lambda's result → `let`/`run`/`with`.
+
+### Q92. When do you use `apply` vs `also`? `[Junior]`
+**Answer:** Both return the receiver. `apply` uses `this`, so it reads as configuration (`Intent(...).apply { flags = ... }`). `also` uses `it`, so it reads as a side effect (`.also { Log.d(TAG, "$it") }`) and avoids shadowing when nested.
+**Follow-up:** *What is the bug with `apply`?* Using it to compute a value — the block's result is discarded and the receiver is returned instead.
+
+### Q93. When is `with` the right choice over `run`? `[Mid]`
+**Answer:** `with(obj) { }` is a normal function taking the object as an argument, so it cannot be called on a nullable receiver. `obj.run { }` is an extension, so `obj?.run { }` works. Use `with` when the object is definitely non-null and you want several calls on it.
+**Follow-up:** *What is `run` without a receiver for?* Scoping a block that returns a value: `val config = run { val raw = load(); parse(raw) }`.
+
+### Q94. What does `takeIf` return? `[Junior]`
+**Answer:** The receiver if the predicate holds, otherwise `null` — turning a condition into a nullable value that composes with `?:` and `?.let`.
+**Follow-up:** *When is it misused?* On a `Boolean` receiver (`flag.takeIf { it }` returns `true` or `null`), and for simple conditions where a plain `if` is clearer.
+
+### Q95. Why can nested scope functions be a problem? `[Mid]`
+**Answer:** The inner `it` or `this` shadows the outer one, so a reference silently resolves to the wrong object. Name the parameters (`user?.let { u -> ... }`) or restructure.
+**Follow-up:** *Which combination is most confusing?* Nested `apply`/`run`, because `this` is implicit — you cannot see which receiver a bare member call resolves to.
+
+---
+
+## 21.9 Coroutines
+
+### Q96. What is a coroutine, and how does it differ from a thread? `[Junior]`
+**Answer:** A coroutine is a compiler-generated state machine that runs on a thread and can **suspend** without blocking it. A thread costs ~1 MB of stack and OS context switches; a coroutine is a small heap object, so thousands can share a small pool.
+**Follow-up:** *What is the difference between suspending and blocking?* Suspending releases the thread for other work; blocking holds it idle.
+
+### Q97. How does the compiler implement `suspend`? `[Senior]`
+**Answer:** Continuation-Passing Style. Each `suspend` function gains a hidden `Continuation` parameter, and its body becomes a state machine with a `label` marking the current suspension point. Locals become fields so they survive suspension. At a suspension point it returns `COROUTINE_SUSPENDED` and frees the thread; `resumeWith` later re-enters at the saved label.
+**Follow-up:** *Why is a `suspend` call that does not actually suspend nearly free?* It returns the value directly instead of `COROUTINE_SUSPENDED`, so execution falls straight through to the next label with no thread handoff.
+
+### Q98. `launch` vs `async`? `[Junior]`
+**Answer:** `launch` returns a `Job`, produces no value, and throws uncaught exceptions **immediately**. `async` returns a `Deferred<T>` and **stores** its exception until `await()` is called.
+**Follow-up:** *What happens to an exception in an `async` that is never awaited?* It disappears silently. If you do not need the value, use `launch`.
+
+### Q99. What is structured concurrency? `[Mid]`
+**Answer:** Every coroutine has a parent; cancelling the parent cancels all children, and a parent does not complete until its children do. It makes leaked background work structurally impossible.
+**Follow-up:** *What breaks it?* `GlobalScope.launch` — no parent, never cancelled. Inject a scope built from `SupervisorJob()` if you genuinely need app-lifetime work.
+
+### Q100. `Job` vs `SupervisorJob`? `[Mid]`
+**Answer:** With a normal `Job`, one child's failure cancels the parent and all siblings. With a `SupervisorJob`, failures are isolated to that child. `viewModelScope` and `supervisorScope` use supervision; `coroutineScope` does not.
+**Follow-up:** *Why does `launch(SupervisorJob())` not work as expected?* Supervision is a property of the **scope's parent job**. Passing one to a child creates a new parent, detaching that coroutine from the real scope.
+
+### Q101. Why is cancellation cooperative? `[Mid]`
+**Answer:** `cancel()` only sets `isActive = false` and arranges `CancellationException` at the **next suspension point**. A CPU-bound loop with no suspension point ignores it entirely.
+```kotlin
+frames.map { ensureActive(); encode(it) }     // ensureActive() is the cooperation point
+```
+**Follow-up:** *What else works?* `yield()`, which also gives other coroutines a turn, and any suspending call.
+
+### Q102. Why is `catch (e: Exception)` dangerous around suspending code? `[Senior]`
+**Answer:** `CancellationException` is an `Exception`. Swallowing it means the coroutine believes it is still running after being cancelled — it keeps working and can prevent its scope from completing.
+```kotlin
+catch (e: CancellationException) { throw e }   // Always rethrow first
+```
+**Follow-up:** *Does `runCatching` have the same problem?* Yes, and worse — it catches `Throwable`. Use an explicit try/catch that rethrows cancellation.
+
+### Q103. Why does cleanup in `finally` sometimes not run? `[Senior]`
+**Answer:** After cancellation, any **suspending** call throws `CancellationException` immediately — including one inside `finally`. Shield it with `withContext(NonCancellable) { }`.
+**Follow-up:** *Does non-suspending cleanup need this?* No — plain code in `finally` runs normally. Only suspending calls need the shield.
+
+### Q104. Which dispatcher for which work? `[Junior]`
+**Answer:** `Main` for UI, `IO` for network/disk/database (elastic pool, 64 threads), `Default` for CPU-bound work (pool sized to cores).
+**Follow-up:** *Why is `IO` 64 threads but `Default` core-count?* IO-bound work spends its time blocked, so more threads mean more in-flight operations. CPU-bound work gains nothing beyond core count — extra threads only add context switches.
+
+### Q105. Do you need `withContext(Dispatchers.IO)` around Retrofit or a Room suspend DAO? `[Mid]`
+**Answer:** No. Both are **main-safe** by contract — they dispatch internally. The extra switch costs a dispatch for nothing.
+**Follow-up:** *When do you need it?* Around blocking code **you** wrote — `File.readText()`, a blocking JDBC call, heavy synchronous parsing.
+
+### Q106. `coroutineScope` vs `supervisorScope` vs `withContext`? `[Mid]`
+**Answer:** `withContext` switches context and suspends until the block finishes — not a concurrency tool. `coroutineScope` creates a child scope for concurrent children where one failure cancels the rest. `supervisorScope` is the same but isolates failures.
+**Follow-up:** *Why is `withContext` inside a loop a mistake?* Each call is a context switch. Wrap the loop, not the body.
+
+### Q107. Where must a `CoroutineExceptionHandler` be installed? `[Senior]`
+**Answer:** On a **root** coroutine's context. Installed on a child it is a no-op, because the exception has already propagated to the parent. It also never fires for `async` — that exception lives in the `Deferred` until `await()`.
+**Follow-up:** *What handles it if no handler exists?* The thread's default uncaught handler, which on Android crashes the app.
+
+### Q108. What does `runBlocking` do and where is it appropriate? `[Mid]`
+**Answer:** It blocks the current thread until the coroutine completes, bridging blocking and suspending worlds. Appropriate in `main()` and in tests; a bug in application code, and an ANR risk on Android's main thread.
+**Follow-up:** *Can it deadlock?* Yes — `runBlocking` on a dispatcher whose only thread is needed to complete the awaited work deadlocks immediately.
+
+### Q109. How do you run two operations in parallel and wait for both? `[Mid]`
+**Answer:** Start both with `async`, then `await` both.
+```kotlin
+coroutineScope {
+    val a = async { repo.a() }
+    val b = async { repo.b() }
+    Combined(a.await(), b.await())      // Both already running
+}
+```
+**Follow-up:** *What is the common mistake?* `async { }.await()` on one line then another — that is sequential, not parallel.
+
+### Q110. `withTimeout` vs `withTimeoutOrNull`? `[Mid]`
+**Answer:** `withTimeout` throws `TimeoutCancellationException`; `withTimeoutOrNull` returns `null`. Both cancel the block cooperatively, so the block must have suspension points to be interruptible.
+**Follow-up:** *Why might a timeout not fire?* If the block is CPU-bound with no suspension point, cancellation cannot take effect until it finishes.
+
+### Q111. How do you wrap a callback API as a suspend function? `[Senior]`
+**Answer:** `suspendCancellableCoroutine`, resuming on success or error, and cancelling the underlying work in `invokeOnCancellation`.
+```kotlin
+suspend fun Sdk.token(): String = suspendCancellableCoroutine { cont ->
+    val call = request(object : Cb {
+        override fun ok(t: String) = cont.resume(t)
+        override fun err(e: Throwable) = cont.resumeWithException(e)
+    })
+    cont.invokeOnCancellation { call.cancel() }
+}
+```
+**Follow-up:** *What if the callback can fire twice?* Resuming twice throws `IllegalStateException: Already resumed`. Guard with `cont.isActive`.
+
+### Q112. What is `Dispatchers.Main.immediate`? `[Senior]`
+**Answer:** It executes immediately if already on the main thread instead of re-dispatching through the message queue. It avoids an unnecessary frame delay when updating UI from a coroutine already on the main thread.
+**Follow-up:** *Why is that not the default?* Immediate execution changes ordering guarantees — a re-dispatch always runs after currently-queued work, which some code depends on.
+
+### Q113. Why should dispatchers be injected? `[Mid]`
+**Answer:** So tests can substitute a `TestDispatcher` and control virtual time. A hardcoded `Dispatchers.IO` makes the class untestable without real threading and real waiting.
+```kotlin
+class Repo(private val io: CoroutineDispatcher = Dispatchers.IO) {
+    suspend fun load() = withContext(io) { /* ... */ }
+}
+```
+**Follow-up:** *What is the qualifier pattern in DI?* `@IoDispatcher CoroutineDispatcher`, provided per environment.
+
+### Q114. `delay()` vs `Thread.sleep()`? `[Junior]`
+**Answer:** `delay` suspends the coroutine and **releases** the thread for other work. `Thread.sleep` blocks the thread, holding it idle.
+**Follow-up:** *What does `delay` do in `runTest`?* It is skipped — the test scheduler uses virtual time, so a 30-second delay completes instantly.
+
+### Q115. What is a `Mutex` and how does it differ from `synchronized`? `[Senior]`
+**Answer:** `Mutex.withLock { }` **suspends** rather than blocking, so a waiting coroutine releases its thread. It is also **not reentrant** — taking it twice in the same coroutine deadlocks, unlike `synchronized`.
+**Follow-up:** *Do you need it if coroutines share a dispatcher?* Yes — `Default` and `IO` are multi-threaded, so coroutines genuinely run in parallel. Alternatives are immutable data or confining state to a single-threaded dispatcher.
+
+---
+
+## 21.10 Flow & Channels
+
+### Q116. What is a Flow and what does "cold" mean? `[Junior]`
+**Answer:** An asynchronous stream of values. **Cold** means the builder re-runs for every collector and nothing happens without one — unlike a hot `StateFlow`, which exists independently.
+**Follow-up:** *You call `repo.observeUsers()` from two places and see two database queries. Why?* It is cold, so each collector triggers its own upstream. Share it with `stateIn`/`shareIn` in the ViewModel.
+
+### Q117. `flatMapLatest` vs `flatMapMerge` vs `flatMapConcat`? `[Mid]`
+**Answer:** `flatMapLatest` **cancels** the previous inner flow when a new value arrives (search-as-you-type). `flatMapMerge` runs inner flows concurrently and interleaves results. `flatMapConcat` runs them strictly in order.
+**Follow-up:** *Why does `flatMapLatest` fix a stale-response race?* It cancels the coroutine collecting the previous inner flow before starting the new one, so the old response can never be emitted.
+
+### Q118. What does `flowOn` do, and why can't you use `withContext` inside `flow { }`? `[Senior]`
+**Answer:** A flow must emit in the context in which it is collected — the context-preservation invariant. `withContext` inside `flow { }` violates it and throws `IllegalStateException: Flow invariant is violated`. `flowOn` changes the context of everything **upstream** of it, leaving the collector's context intact.
+**Follow-up:** *Why does the invariant exist?* So a collector can reason about where its own code runs — otherwise a library operator could silently move your `collect` block off the main thread.
+
+### Q119. What does `catch` catch? `[Mid]`
+**Answer:** Only exceptions from **upstream** operators. It does not catch exceptions thrown in the `collect` block, and it does not catch `CancellationException`.
+**Follow-up:** *Why place `catch` inside a `flatMapLatest` rather than at the end?* At the end it terminates the outer flow on the first error, so the screen stops responding to further input. Inside, it terminates only that inner flow.
+
+### Q120. `StateFlow` vs `SharedFlow`? `[Mid]`
+**Answer:** `StateFlow` always holds a current value, conflates, and drops emissions equal to the current one — for **state**. `SharedFlow` has configurable replay and buffering and does not conflate — for **events** several collectors share.
+**Follow-up:** *Why does a `StateFlow` sometimes "miss" a value?* It compares with `equals`, so emitting the same value twice produces one collection, and a fast producer can drop intermediates a slow collector never sees.
+
+### Q121. Why must one-shot events not be a `StateFlow`? `[Senior]`
+**Answer:** State is re-read after every configuration change, so a navigation command or snackbar stored in state fires again — sending the user to the same screen twice.
+```kotlin
+private val _events = Channel<UiEvent>(Channel.BUFFERED)
+val events: Flow<UiEvent> = _events.receiveAsFlow()      // Consumed exactly once
+```
+**Follow-up:** *Why a `Channel` rather than `SharedFlow(replay = 0)`?* A zero-replay `SharedFlow` **drops** events emitted while no collector is attached — exactly what happens during a rotation. A `Channel` buffers them.
+
+### Q122. What does `SharingStarted.WhileSubscribed(5_000)` mean? `[Mid]`
+**Answer:** The upstream stays active for 5 seconds after the last collector leaves. A configuration change unsubscribes and resubscribes within milliseconds, so the upstream is not torn down and restarted; genuinely leaving the screen does stop it.
+**Follow-up:** *What is wrong with `Eagerly`?* The upstream runs with no collectors for the scope's entire lifetime, wasting network and CPU.
+
+### Q123. Why does `combine` sometimes never emit? `[Mid]`
+**Answer:** It waits for **every** source to emit at least once. A source with no initial value stalls the whole chain.
+**Follow-up:** *How do you fix it?* Give the source an initial emission with `onStart { emit(default) }`, or use `StateFlow`, which always has a value.
+
+### Q124. `combine` vs `zip`? `[Mid]`
+**Answer:** `combine` emits whenever **any** source emits, using each source's latest value — right for deriving UI state. `zip` pairs emissions one-to-one and waits for both.
+**Follow-up:** *Which do you use to merge a data flow with a connectivity flow?* `combine` — you want the latest of each, not paired emissions.
+
+### Q125. What is `callbackFlow` and why is `awaitClose` mandatory? `[Senior]`
+**Answer:** It bridges a listener API into a Flow. `awaitClose` suspends until the flow is cancelled and runs the unregistration; without it the builder returns immediately and the callback leaks — the builder throws at runtime to prevent exactly that.
+**Follow-up:** *Why `trySend` rather than `send` inside the callback?* A callback is not a suspending context, so `send` cannot be called there.
+
+### Q126. `buffer` vs `conflate` vs `collectLatest`? `[Senior]`
+**Answer:** `buffer(n)` lets emitter and collector run concurrently. `conflate()` is a buffer of 1 that drops intermediates, so the collector always gets the latest. `collectLatest` **cancels** the collector's block when a new value arrives and restarts it.
+**Follow-up:** *A fast sensor feed makes the UI drop frames. Which?* `conflate()` — the UI only needs the latest state. `collectLatest` also works but cancels mid-render, which can leave partial updates.
+
+### Q127. `Channel` vs `SharedFlow`? `[Senior]`
+**Answer:** A `Channel` is a hot **single-consumer** queue with backpressure — each element goes to exactly one receiver. A `SharedFlow` broadcasts every emission to all collectors.
+**Follow-up:** *Which buffer for UI events, and why?* `Channel.BUFFERED` — events survive the configuration-change gap without the producer suspending.
+
+---
+
+## 21.11 Exceptions, Result & Contracts
+
+### Q128. `require` vs `check` vs `error`? `[Mid]`
+**Answer:** `require` throws `IllegalArgumentException` for invalid **arguments** (caller's fault). `check` throws `IllegalStateException` for invalid **object state**. `error(msg)` throws `IllegalStateException` and returns `Nothing`, so it works as an expression.
+**Follow-up:** *Why pass the message as a lambda?* It is inline, so the string is built only on failure — free when the condition holds.
+
+### Q129. Why is `assert` unsuitable for production validation? `[Mid]`
+**Answer:** JVM assertions are disabled unless `-ea` is passed, so the check simply does not run in production.
+**Follow-up:** *What is the Android situation?* Assertions are disabled by default on ART too — `assert` is effectively a no-op in a shipped app.
+
+### Q130. What is `runCatching` and what is its trap? `[Mid]`
+**Answer:** It runs a block and wraps the outcome in `Result<T>`. The trap is that it catches **`Throwable`**, including `CancellationException`, so using it in coroutine code silently breaks cancellation.
+**Follow-up:** *When is `Result<T>` a poor public API type?* Across module boundaries — it carries only a `Throwable`, so consumers match on exception types and messages. A sealed domain error type makes the `when` exhaustive.
+
+### Q131. Why is a `return` inside `finally` dangerous? `[Senior]`
+**Answer:** It discards any in-flight exception — the exception disappears entirely and the function returns normally, hiding the failure.
+**Follow-up:** *What is the safe pattern?* Use `finally` only for cleanup, never for control flow or returning values.
+
+### Q132. What is a contract and what does it enable? `[Senior]`
+**Answer:** It tells the compiler something it cannot infer — typically that a `true` return implies a type, or that a lambda is invoked exactly once. This is how `require`, `checkNotNull`, and `isNullOrEmpty` enable smart casts.
+```kotlin
+contract { returns(true) implies (this@isText is String) }
+```
+**Follow-up:** *What is the risk?* The compiler **trusts** the contract without verifying it, so a wrong contract produces unsound smart casts and a `ClassCastException`.
+
+### Q133. How should errors cross layer boundaries? `[Senior]`
+**Answer:** Translate transport failures into a domain sealed type at the repository boundary, so the UI never sees an `IOException` or an HTTP code.
+```kotlin
+sealed interface AppError { data object Offline : AppError; data class Server(val code: Int) : AppError }
+```
+**Follow-up:** *Why does that matter beyond tidiness?* An exhaustive `when` means adding a new failure mode breaks the build at every site that must handle it, instead of falling into a generic "something went wrong".
+
+---
+
+## 21.12 Annotations, Reflection & Java Interop
+
+### Q134. What are annotation use-site targets and why do they matter? `[Senior]`
+**Answer:** A Kotlin property generates several JVM elements — field, getter, setter, constructor parameter — so an annotation must say which one it applies to. Kotlin defaults to the **constructor parameter**, while JSON libraries usually read the **field**, so a missing target makes the annotation appear to do nothing.
+```kotlin
+class User(@field:Json(name = "user_id") val id: Long)
+```
+**Follow-up:** *What targets exist?* `field`, `get`, `set`, `param`, `property`, `receiver`, `setparam`, `delegate`.
+
+### Q135. What does `@Retention` control? `[Mid]`
+**Answer:** How long the annotation survives: `SOURCE` (compiler and KSP only), `BINARY` (in the class file, not reflection-visible), `RUNTIME` (default, readable by reflection).
+**Follow-up:** *Why does a `SOURCE` annotation break runtime reflection?* It is not in the bytecode at all, so reflection finds nothing.
+
+### Q136. KAPT vs KSP? `[Mid]`
+**Answer:** KAPT generates Java stubs for all Kotlin code before running Java annotation processors — roughly double the time. KSP reads Kotlin symbols directly with full Kotlin type information and is roughly 2× faster.
+**Follow-up:** *Why does migrating one processor sometimes show no improvement?* The stub-generation cost is paid as soon as **any** processor still uses KAPT.
+
+### Q137. When should you avoid reflection? `[Mid]`
+**Answer:** In hot paths (orders of magnitude slower than a direct call), and anywhere R8 shrinking applies — it removes or renames anything reached only reflectively, producing crashes that appear only in release builds.
+**Follow-up:** *What is the cheap alternative?* Callable references (`User::name`, `::User`), which need no `kotlin-reflect` dependency.
+
+### Q138. What is a platform type and how do you defend against it? `[Senior]`
+**Answer:** A type from unannotated Java (`String!`) to which the compiler applies **no** null checks. Assigning it to a non-null Kotlin type compiles and throws at that line if null.
+**Follow-up:** *What are the two fixes?* Annotate the Java side with `@Nullable`/`@NonNull`, or declare the Kotlin variable nullable and handle it.
+
+### Q139. What do `@JvmStatic`, `@JvmOverloads`, `@JvmField`, and `@JvmName` do? `[Mid]`
+**Answer:** `@JvmStatic` exposes a companion member as a real Java static. `@JvmOverloads` generates the overload chain for default arguments. `@JvmField` exposes a property as a public field with no getter. `@JvmName` renames the JVM-level symbol (including `@file:JvmName` for the file class).
+**Follow-up:** *What does Java see for a `suspend` function?* A method taking an extra `Continuation` parameter — effectively unusable directly. Provide a callback or future-based wrapper.
+
+### Q140. What is SAM conversion and when does it apply to Kotlin interfaces? `[Mid]`
+**Answer:** A single-abstract-method interface can accept a lambda. It applies automatically to **Java** interfaces; for a Kotlin interface it requires `fun interface`.
+```kotlin
+fun interface Validator { fun validate(s: String): Boolean }
+val notBlank = Validator { it.isNotBlank() }
+```
+**Follow-up:** *Why is it not automatic for all Kotlin interfaces?* Kotlin has function types, so a lambda-shaped parameter should usually be `(String) -> Boolean` rather than an interface.
+
+### Q141. Is Kotlin's `List` safe to hand to Java? `[Senior]`
+**Answer:** Not as an immutability guarantee. It is read-only **to Kotlin** but is an ordinary `java.util.List` at runtime, so Java can mutate it.
+**Follow-up:** *How do you protect against that?* Pass a defensive copy, or use `Collections.unmodifiableList` at the boundary.
+
+---
+
+## 21.13 Idiomatic Kotlin & Performance
+
+### Q142. Where does boxing occur in Kotlin? `[Senior]`
+**Answer:** Wherever a primitive must be an object: `Int?`, generic arguments (`List<Int>`, `T`), and value classes used generically or nullably.
+**Follow-up:** *How do you avoid it in numeric code?* `IntArray`/`LongArray`/`DoubleArray`, which compile to JVM primitive arrays.
+
+### Q143. Why is `enum.values()` a performance concern? `[Mid]`
+**Answer:** It returns a defensive copy — a fresh array on every call. In a loop that is one allocation per iteration. `entries` (1.9+) returns a cached immutable list.
+**Follow-up:** *Where does this show up?* Parsing helpers like `values().firstOrNull { it.code == code }` called per row while deserializing a list.
+
+### Q144. What is the cost of a lambda, and when is it free? `[Mid]`
+**Answer:** A non-inlined lambda allocates a `FunctionN` object; a capturing one allocates a closure holding the captured values. Inside an `inline` function it is free — the body is copied and no object exists.
+**Follow-up:** *So should everything be inline?* No. For a function with no lambda parameters there is nothing to gain and code size to lose, and the compiler warns.
+
+### Q145. Why is building a String with `+=` in a loop wrong? `[Junior]`
+**Answer:** Strings are immutable, so each iteration allocates a new one and copies the old contents — O(n²) overall. Use `buildString` or `joinToString`.
+**Follow-up:** *What about a single template like `"a $b c"`?* Fine — it compiles to one `StringBuilder` (or an `invokedynamic` concat) with no loop.
+
+### Q146. Why is a mutable property in a `data class` used as a map key dangerous? `[Senior]`
+**Answer:** `hashCode` is derived from the properties. Mutating one after insertion changes the hash, so the entry sits in the wrong bucket and becomes unfindable — the map appears to have lost it.
+**Follow-up:** *What is the rule?* Keys must be immutable. Use `val` properties throughout, or key on a stable identifier.
+
+### Q147. What does "prefer immutability" mean concretely in Kotlin? `[Mid]`
+**Answer:** `val` over `var`; read-only `List`/`Map` return types; `data class` with `val` properties updated via `copy`; and defensive copies when exposing an internal mutable collection.
+**Follow-up:** *What does it buy you?* Thread safety without locks, safe sharing, and structural equality that stays correct over time.
+
+### Q148. When is a `Sequence` slower than a `List`? `[Mid]`
+**Answer:** On small collections, with a single operation, or when the terminal operation needs every element anyway (`sorted`, `groupBy`). The per-element indirection costs more than the intermediate list it avoids.
+**Follow-up:** *What is the rough threshold?* There is no fixed number — measure. As a heuristic, sequences start paying off in the thousands of elements with two or more operations.
+
+### Q149. What makes a Kotlin API pleasant to use? `[Senior]`
+**Answer:** Explicit return types on public functions; nullability expressed in types rather than documentation; default arguments instead of overloads; sealed types for closed result sets; read-only collection types in return positions; and lambda parameters placed **last** so trailing-lambda syntax works.
+**Follow-up:** *What is the most common API mistake?* Leaking mutable state — returning `MutableList` from a getter, or exposing `MutableStateFlow` instead of `asStateFlow()`.
+
+### Q150. You are reviewing Kotlin that uses `!!` in fifteen places. How do you approach it? `[Senior]`
+**Answer:** Treat each as a question, not a style issue, and classify them:
+1. **Platform types from Java** — fix by annotating the Java side or declaring the Kotlin variable nullable.
+2. **A smart cast the compiler refused** (a `var` property) — copy to a local `val`.
+3. **A genuine precondition** — replace with `requireNotNull(x) { "why" }`, which throws with an explanation.
+4. **A design problem** — the property is optional but declared non-null, or initialization order is wrong. Fix the type or use `lateinit`.
+
+The goal is not zero `!!` by rule; it is that each remaining one has a stated reason.
+**Follow-up:** *How do you prevent regressions?* A detekt rule flagging `!!` in new code, plus explicit nullability annotations on the Java boundary so platform types stop entering the codebase.
+
+---
 ## 📌 Quick Reference Cheat Sheet
 
 ```kotlin
-// Variables
-var x = 10              // Mutable
-val y = 20              // Immutable
-const val Z = "API"     // Compile-time constant
+// ---------- Variables ----------
+var mutable = 10
+val readOnly = 20                       // Reference immutability, not deep immutability
+const val COMPILE_TIME = "API"          // Inlined literal; primitives + String only
 
-// Null Safety
-var s: String? = null
-val len = s?.length ?: 0    // Safe + fallback
-val len2 = s!!.length        // Throws if null
+// ---------- Null safety ----------
+val len  = s?.length ?: 0               // Safe call + Elvis fallback
+val forced = s!!.length                 // Throws NPE if null
+val cast = any as? String               // null instead of ClassCastException
+val id = requireNotNull(x) { "why" }    // Throws with an explanation
+s?.let { println(it) }                  // Run only when non-null
 
-// when expression
-val msg = when(x) {
-    1 -> "One"
-    in 2..5 -> "Two to Five"
-    else -> "Other"
+// ---------- Control flow ----------
+val label = when {
+    x < 0 -> "neg"
+    x in 1..9 -> "small"
+    else -> "other"
 }
+for (i in 1..<5) { }                    // 1,2,3,4
+for ((i, v) in list.withIndex()) { }
+outer@ for (i in a) for (j in b) break@outer
 
-// Data class
-data class User(val name: String, val age: Int)
+// ---------- Functions ----------
+fun add(a: Int, b: Int = 0) = a + b     // Default argument, expression body
+fun sum(vararg n: Int) = n.sum()
+val lambda: (Int) -> Int = { it * it }
+inline fun <reified T> isType(v: Any) = v is T
+infix fun Int.pow(e: Int) = ...
+fun String.slug() = lowercase().replace(' ', '-')   // Extension: statically dispatched
 
-// Extension function
-fun String.isPalindrome() = this == this.reversed()
-
-// Lambda
-val add: (Int, Int) -> Int = { a, b -> a + b }
-
-// Coroutine
-viewModelScope.launch {
-    val data = withContext(Dispatchers.IO) { fetchData() }
-    updateUI(data)
+// ---------- Classes ----------
+data class User(val id: Long, val name: String)     // equals/hashCode/toString/copy/componentN
+@JvmInline value class UserId(val value: Long)      // Distinct type, no allocation
+sealed interface State {
+    data object Loading : State
+    data class Ready(val data: String) : State
 }
+object Singleton { }
+class Foo { companion object { const val TAG = "Foo" } }
 
-// Flow
-fun getNumbers(): Flow<Int> = flow {
-    emit(1); emit(2); emit(3)
+// ---------- Delegation ----------
+val config by lazy { parse() }                       // Computed once, cached
+var theme by Delegates.observable(LIGHT) { _, o, n -> apply(n) }
+class Logging(d: Repo) : Repo by d                   // Forwarding, one-way
+
+// ---------- Collections ----------
+users.filter { it.active }.map { it.name }
+users.mapNotNull { it.nickname }                     // Transform + drop nulls, one pass
+users.associateBy { it.id }                          // Map<Long, User>
+users.groupingBy { it.role }.eachCount()             // One-pass counting
+users.sortedWith(compareBy({ it.role }, { it.name }))
+val (adults, minors) = users.partition { it.age >= 18 }
+users.asSequence().map { }.filter { }.first()        // Lazy, short-circuits
+
+// ---------- Scope functions ----------
+// Need the object back:   apply (this) / also (it)
+// Need the lambda result: let (it) / run (this) / with (this, arg)
+val intent = Intent().apply { putExtra("id", id) }
+val name = user?.let { it.first + " " + it.last } ?: "Guest"
+val valid = input.takeIf { it.isNotBlank() }
+
+// ---------- Coroutines ----------
+viewModelScope.launch(handler) {                     // Handler must be on the ROOT
+    val data = withContext(Dispatchers.IO) { api.fetch() }
+    render(data)
 }
-getNumbers().collect { println(it) }
+coroutineScope {                                     // All-or-nothing
+    val a = async { repo.a() }; val b = async { repo.b() }
+    Combined(a.await(), b.await())
+}
+supervisorScope { launch { } ; launch { } }          // Failures isolated
+try { work() } catch (e: CancellationException) { throw e } catch (e: Throwable) { }
+withContext(NonCancellable) { cleanup() }            // Suspending cleanup after cancel
 
-// Scope functions
-val user = User().apply { name = "Raj"; age = 25 }
-val result = user?.let { process(it) }
+// ---------- Flow ----------
+val state = query
+    .debounce(300)
+    .distinctUntilChanged()
+    .flatMapLatest { repo.search(it) }               // Cancels the previous request
+    .flowOn(Dispatchers.IO)                          // Affects UPSTREAM only
+    .stateIn(scope, SharingStarted.WhileSubscribed(5_000), Idle)
+
+private val _events = Channel<UiEvent>(Channel.BUFFERED)
+val events = _events.receiveAsFlow()                 // One-shot: never a StateFlow
+
+// ---------- Errors ----------
+require(n > 0) { "n must be positive, was $n" }      // IllegalArgumentException
+check(!closed) { "already closed" }                  // IllegalStateException
+error("unreachable")                                 // Returns Nothing
 ```
+
+### Quick Decision Tables
+
+| Need | Use |
+|---|---|
+| Compile-time constant | `const val` |
+| Deferred non-null init you assign | `lateinit var` |
+| Computed once on first read | `by lazy` |
+| Distinct type, zero cost | `@JvmInline value class` |
+| Closed set of states with data | `sealed interface` |
+| Closed set of simple constants | `enum class` |
+| Return the object | `apply` / `also` |
+| Return the lambda result | `let` / `run` / `with` |
+| Cancel the previous request | `flatMapLatest` |
+| State the UI renders | `StateFlow` |
+| One-shot event | `Channel` + `receiveAsFlow()` |
+| All-or-nothing parallel work | `coroutineScope` + `async` |
+| Independent parallel work | `supervisorScope` |
+| Large collection, several ops | `asSequence()` |
+| Numeric hot path | `IntArray` |
 
 ---
 
-*Happy Coding & Best of Luck for your Interview! 🎯*
+## 📚 Related Guides
+
+| Guide | Covers |
+|---|---|
+| [`java.md`](./java.md) | Java language and JVM fundamentals, memory model, collections |
+| [`../Android/android.md`](../Android/android.md) | Kotlin applied to Android: lifecycle, coroutines on Android, Flow with UI |
+| [`../Android/compose.md`](../Android/compose.md) | Jetpack Compose, which relies heavily on lambdas with receiver and state |
+| [`../Android/kmp_cmp.md`](../Android/kmp_cmp.md) | Kotlin Multiplatform: `expect`/`actual`, shared source sets, Swift interop |
+| [`../Android/interview_questions/05_coroutines_concurrency.md`](../Android/interview_questions/05_coroutines_concurrency.md) | 30 more coroutine and Flow questions in an Android context |
