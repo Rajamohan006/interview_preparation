@@ -2030,6 +2030,8 @@ objects.toIntArray()                    // Array<Int> -> IntArray  (unboxes)
 
 # 13. Scope Functions
 
+In Kotlin, scope functions are functions that let you execute a block of code within the context of an object. They make code shorter and cleaner, especially when initializing or configuring objects.
+
 ## 13.1 The Five, and How to Choose
 
 ### Definition
@@ -2090,6 +2092,482 @@ val c = Config().also { it.host = "api" }                           // it, retur
 val d = Config().apply { host = "api" }                             // this, returns Config
 ```
 
+---
+
+## 13.1.1 Per-Function Deep Dive
+
+Kotlin has **5 scope functions**:
+
+| Function | Object inside block | Returns         | Main use                      |
+| -------- | ------------------- | --------------- | ----------------------------- |
+| `let`    | `it`                | Lambda result   | Null checks / transformations |
+| `run`    | `this`              | Lambda result   | Execute multiple operations   |
+| `with`   | `this`              | Lambda result   | Work with an existing object  |
+| `apply`  | `this`              | **Same object** | Configure/initialize object   |
+| `also`   | `it`                | **Same object** | Extra actions / logging       |
+
+### 1. `let`
+
+Use `let` when you want to perform an operation on an object, especially for **null safety**.
+
+```kotlin
+val name: String? = "Raj"
+
+name?.let {
+    println("Name is $it")
+}
+```
+
+* `it` → refers to `name`
+* `let` returns the **last expression**
+
+```kotlin
+val length = name?.let {
+    it.length
+}
+// length = 3
+```
+
+---
+
+### 2. `apply`
+
+`apply` is mainly used to **configure an object**.
+
+```kotlin
+val person = Person().apply {
+    name = "Raj"
+    age = 25
+}
+```
+
+Inside `apply` you don't need `person.name = ...` — you write `name = ...` directly. Most importantly, `apply` returns the **same object**, making it ideal for object initialization.
+
+```kotlin
+val person = Person().apply {
+    name = "Raj"
+}
+// person is the fully configured Person
+```
+
+---
+
+### 3. `also`
+
+`also` is useful when you want to perform an **additional operation** without changing the object.
+
+```kotlin
+val person = Person().also {
+    println("Person created: ${it.name}")
+}
+```
+
+`also` returns the **same object**. A common example is logging:
+
+```kotlin
+val user = getUser()
+    .also {
+        println("User received: $it")
+    }
+```
+
+> Think: **"Do this also."**
+
+---
+
+### 4. `run`
+
+`run` executes multiple operations using the object as `this` and returns the **last expression**.
+
+```kotlin
+val result = person.run {
+    println(name)
+    println(age)
+    age + 10
+}
+// result = age + 10
+```
+
+Inside the block, you can access properties directly as `name`, `age` instead of `person.name`, `person.age`.
+
+---
+
+### 5. `with`
+
+`with` is similar to `run`, but you provide the object as an argument.
+
+```kotlin
+val result = with(person) {
+    println(name)
+    println(age)
+    age + 10
+}
+```
+
+The last expression is returned. `with` is commonly used when you want to perform **multiple operations on an existing object**.
+
+---
+
+## 13.1.2 The Most Important Differences
+
+### `let`, `also` → `it`
+
+```kotlin
+person.let {
+    println(it.name)
+}
+```
+
+### `run`, `with`, `apply` → `this`
+
+```kotlin
+person.run {
+    println(name)   // this.name
+}
+```
+
+### Return value summary
+
+```text
+             Object reference     Returns
+------------------------------------------------
+let              it              Lambda result
+also             it              Same object
+run              this            Lambda result
+with             this            Lambda result
+apply            this            Same object
+```
+
+### Android examples
+
+```kotlin
+// apply — configure ViewBinding
+binding.apply {
+    tvName.text = user.name
+    tvAge.text = user.age.toString()
+}
+
+// let — null-safe access
+user?.let {
+    viewModel.loadUser(it.id)
+}
+```
+
+---
+
+## 13.1.3 Interview Q&A — Scope Functions
+
+### Q1. What are scope functions in Kotlin?
+
+Kotlin provides five scope functions: `let`, `run`, `with`, `apply`, and `also`. They execute a block of code within the context of an object and differ in:
+1. How the object is referenced inside the block — `this` or `it`
+2. What the scope function returns — the original object or the lambda result
+
+```text
+let   → it   → lambda result
+run   → this → lambda result
+with  → this → lambda result
+apply → this → original object
+also  → it   → original object
+```
+
+---
+
+### Q2. What is the difference between `it` and `this`?
+
+`let` and `also` use `it`; `run`, `with`, and `apply` use `this`.
+
+```kotlin
+user.let { println(it.name) }   // it
+user.run { println(name) }      // this (name == this.name)
+```
+
+---
+
+### Q3. What does `let` return?
+
+`let` returns the **result of the lambda**, not the original object.
+
+```kotlin
+val result = "Raj".let { it.length }  // result = 3
+```
+
+---
+
+### Q4. What does `apply` return?
+
+`apply` always returns the **receiver object**.
+
+```kotlin
+val user = User().apply { name = "Raj" }
+// user is the same User instance
+```
+
+---
+
+### Q5. Difference between `apply` and `also`?
+
+Both return the original object, but:
+* `apply` → uses `this`, designed for **configuration**
+* `also` → uses `it`, designed for **side effects / logging**
+
+```kotlin
+val user = User()
+    .apply { name = "Raj"; age = 25 }       // configure
+    .also { println("Created: $it") }        // log
+```
+
+---
+
+### Q6. Difference between `let` and `run`?
+
+Both return the lambda result, but:
+* `let` → uses `it`
+* `run` → uses `this`
+
+```kotlin
+user.let  { println(it.name) }   // it
+user.run  { println(name) }      // this
+```
+
+> Use `let` when you want to treat the object as a value; use `run` when you want to work with the object's members directly.
+
+---
+
+### Q7. Difference between `with` and `run`?
+
+Both use `this` and return the lambda result, but:
+* `with(obj) { }` — object is passed as an **argument**
+* `obj.run { }` — object is the **receiver**
+
+`run` also supports nullable receivers (`user?.run { ... }`), while `with` does not chain naturally.
+
+---
+
+### Q8. Difference between `apply` and `run`?
+
+Both use `this`, but:
+* `apply` → returns the **object** (use to configure)
+* `run` → returns the **lambda result** (use to compute)
+
+```text
+apply → object
+run   → lambda result
+```
+
+---
+
+### Q9. Difference between `also` and `let`?
+
+Both use `it`, but:
+* `also` → returns the **object**
+* `let` → returns the **lambda result**
+
+```text
+also → object
+let  → lambda result
+```
+
+---
+
+### Q10. What is `?.let` used for?
+
+It executes the block only when the nullable value is **not null** — the most common null-safety pattern in Kotlin.
+
+```kotlin
+val name: String? = "Raj"
+name?.let { println(it.uppercase()) }
+// block is skipped if name == null
+```
+
+---
+
+### Q11. Can scope functions be nested?
+
+Yes, but avoid deep nesting. Rename `it` to avoid shadowing:
+
+```kotlin
+user?.let { user ->
+    user.address?.let { address ->
+        println(address.city)
+    }
+}
+```
+
+---
+
+### Q12. Can we rename `it`?
+
+Yes. This is especially important in nested scope functions:
+
+```kotlin
+user.let { currentUser ->
+    println(currentUser.name)
+}
+```
+
+---
+
+### Q13. What happens with nested `apply`?
+
+Inside the inner `apply`, `this` refers to the **inner receiver**. Use a labeled receiver for the outer one:
+
+```kotlin
+user.apply userScope@{
+    address.apply {
+        println(this@userScope.name)  // outer receiver
+    }
+}
+```
+
+---
+
+### Q14. What is wrong with `?.let { } ?: else`?
+
+If the `let` block itself returns `null`, the `else` branch executes even when the original object was non-null. Use a real `if` statement for true if/else semantics.
+
+---
+
+### Q15. Which scope function for object initialization?
+
+`apply` — it returns the configured object.
+
+```kotlin
+val request = Request().apply {
+    url = "/users"
+    method = "GET"
+}
+```
+
+---
+
+### Q16. Which scope function for null checking?
+
+`let` with `?.`:
+
+```kotlin
+user?.let { showUser(it) }
+```
+
+---
+
+### Q17. Which scope function for logging in a chain?
+
+`also` — it returns the same object so the chain continues unchanged.
+
+```kotlin
+val users = repository.getUsers()
+    .also { println("Users: $it") }
+```
+
+---
+
+### Q18. Which scope function for transforming an object?
+
+`let` — transform from one type to another:
+
+```kotlin
+val userName: String = user.let { it.name }
+```
+
+---
+
+### Q19. Output question — what does this print?
+
+```kotlin
+val result = "Hello".let { it.length }
+println(result)
+```
+**Output:** `5`
+
+---
+
+### Q20. Output question — what does `apply` return?
+
+```kotlin
+val result = StringBuilder("Hello").apply { append(" Raj") }
+println(result)
+```
+**Output:** `Hello Raj` (`apply` returns the same `StringBuilder`)
+
+---
+
+### Q21. Output question — what does `run` return?
+
+```kotlin
+val result = StringBuilder("Hello").run {
+    append(" Raj")
+    toString()
+}
+```
+**Output:** `Hello Raj` (`run` returns the last expression)
+
+---
+
+### Q22. Output question — what does `with` return?
+
+```kotlin
+val result = with(StringBuilder("Hello")) {
+    append(" Raj")
+    length
+}
+```
+**Output:** `9` (`with` returns the last expression, `length`)
+
+---
+
+### Q23. Can scope functions improve performance?
+
+They are primarily a **readability and code-operation feature**. Most are `inline` functions so they avoid lambda allocation overhead. Choose based on **clarity and intent**, not performance.
+
+---
+
+### Q24. Is this code good?
+
+```kotlin
+user?.let {
+    it.name = "Raj"
+    it.address?.let { it.city = "Hyderabad" }
+}
+```
+
+It works, but `apply` better communicates configuration intent and avoids `it` shadowing:
+
+```kotlin
+user?.apply {
+    name = "Raj"
+    address?.apply { city = "Hyderabad" }
+}
+```
+
+---
+
+### Q25. Complete cheat sheet
+
+| Function | Reference | Return | Typical use                           |
+| -------- | --------- | ------ | ------------------------------------- |
+| `let`    | `it`      | Result | Null checks / transformation          |
+| `run`    | `this`    | Result | Execute operations / calculate result |
+| `with`   | `this`    | Result | Multiple operations on object         |
+| `apply`  | `this`    | Object | Configure object                      |
+| `also`   | `it`      | Object | Logging / side effects                |
+
+**Memory grid:**
+
+```text
+           it             this
+        ┌───────┐       ┌─────────────┐
+Result  │  let  │       │ run / with  │
+        ├───────┤       ├─────────────┤
+Object  │ also  │       │    apply    │
+        └───────┘       └─────────────┘
+```
+
+**One-line interview answer:**
+> `let` transforms using `it`; `run` and `with` execute a block using `this` and return its result; `apply` configures and returns the object using `this`; `also` performs side effects using `it` and returns the object.
+
+---
+
 ### Common Pitfalls
 * **`?.let { } ?: else` as an if/else.** If the `let` block itself returns `null`, the `else` branch runs too. Use a real `if`.
 * **Nested scope functions with `it`.** The inner `it` shadows the outer one; name the parameter (`user?.let { u -> ... }`).
@@ -2127,11 +2605,30 @@ val cached = readCache()
 ## 14.1 What a Coroutine Is
 
 ### Definition
-* **Simple:** A coroutine is a task that can pause and resume without blocking the thread it runs on.
-* **Advanced:** A coroutine is a compiler-generated state machine driven by a `Continuation`. Suspending frees the underlying thread; blocking holds it.
+> A coroutine is a **lightweight unit of asynchronous execution** that can suspend and resume without blocking the underlying thread. Kotlin coroutines allow writing asynchronous code in a sequential style. A coroutine is **not a thread** — multiple coroutines can execute on a small number of threads.
 
 ### Why It Is Used
 Thousands of coroutines share a small thread pool. A thread costs roughly 1 MB of stack and an OS context switch; a coroutine is a small heap object. This is what makes structured, cancellable asynchrony affordable.
+
+### Simple Explanation
+
+```kotlin
+viewModelScope.launch {
+    val user = repository.getUser()   // suspends here — thread is freed
+    updateUI(user)                    // resumes here when result is ready
+}
+```
+
+`launch` starts a coroutine. If `getUser()` suspends, the thread can be used by other work and the coroutine resumes when the result is available.
+
+### Interview Point — Coroutine ≠ Thread
+
+```text
+Thread     → OS-managed execution resource (~1 MB stack)
+Coroutine  → Lightweight unit of work running on a thread
+```
+
+Thousands of coroutines can share a relatively small number of threads.
 
 ### How It Works Internally — CPS and the State Machine
 The compiler rewrites every `suspend` function into Continuation-Passing Style: it gains a hidden `Continuation` parameter, and its body becomes a state machine with a `label` marking the current suspension point.
@@ -2143,10 +2640,11 @@ suspend fun load(): User {
 }
 
 // Conceptually compiles to a class with:
-//   label = 0 -> call fetchId(this); if it returns COROUTINE_SUSPENDED, return and free the thread
-//   label = 1 -> resume here with fetchId's result; call fetchUser(id, this)
+//   label = 0 → call fetchId(this); if it returns COROUTINE_SUSPENDED, return and free the thread
+//   label = 1 → resume here with fetchId's result; call fetchUser(id, this)
 // Local variables become fields on the state machine so they survive suspension.
 ```
+
 When a suspension point actually suspends, the function saves its locals, returns `COROUTINE_SUSPENDED`, and releases the thread. When the awaited work completes, `resumeWith` re-enters at the saved label.
 
 If the callee completes **without** suspending, it returns the value directly and execution falls through to the next label — which is why a `suspend` call that hits a cache costs essentially nothing.
@@ -2157,15 +2655,53 @@ If the callee completes **without** suspending, it returns the value directly an
 
 ---
 
-## 14.2 Builders: `launch`, `async`, `runBlocking`
+## 14.2 `suspend` Functions
 
 ### Definition
-* **Coroutine builder** — a function that *starts* a new coroutine. Because a coroutine must have a parent, a builder is always called on a `CoroutineScope` (or blocks a thread, in `runBlocking`'s case).
-* **`launch`** — starts a coroutine that produces **no result**. It returns a `Job`, the handle used to cancel or join it. An uncaught exception is thrown immediately.
-* **`async`** — starts a coroutine that **produces a value**. It returns a `Deferred<T>`, and `await()` suspends until the value is ready. An exception is stored inside the `Deferred` until `await()` is called.
-* **`runBlocking`** — **blocks the calling thread** until the coroutine finishes, bridging blocking code and suspending code. Correct in `main()` and tests; a bug in application code.
+> A `suspend` function is a function that can **suspend execution and later resume without blocking the underlying thread**. The `suspend` modifier does not automatically make a function asynchronous or move it to another thread — it only means the function is **allowed to suspend**.
+
+### Simple Explanation
+
+```kotlin
+suspend fun getUser(): User {
+    return api.getUser()
+}
+```
+
+A `suspend` function must be called from:
+- another `suspend` function, **OR**
+- a coroutine builder like `launch` or `async`
+
+```kotlin
+viewModelScope.launch {
+    val user = getUser()   // OK — called from a coroutine
+}
+```
+
+### Important Interview Point
+
+> **Does `suspend` create a new thread?**
+> **No.** `suspend` does not create a thread. The coroutine's dispatcher determines where the coroutine executes, and suspension allows the underlying thread to be released while waiting.
+
+```text
+suspend ≠ asynchronous
+suspend ≠ background thread
+suspend = function is allowed to suspend
+```
+
+---
+
+## 14.3 Builders: `launch`, `async`, `runBlocking`
+
+### Definition
+> A **coroutine builder** is an API used to create and start a coroutine within a `CoroutineScope`. Common builders are `launch`, `async`, and `runBlocking`. Each has different semantics regarding return values, exception handling, and thread blocking.
+
+* **`launch`** — starts a coroutine that produces **no result**. Returns a `Job`. Exceptions propagate through the coroutine hierarchy.
+* **`async`** — starts a coroutine that **produces a value**. Returns a `Deferred<T>`. The exception is held inside the `Deferred` and re-thrown when `await()` is called — it does **not** silently disappear; its handling depends on the coroutine hierarchy and whether supervision is used.
+* **`runBlocking`** — **blocks the calling thread** until the coroutine finishes. Correct in `main()` and tests; a bug in Android application code.
 
 ### Code Example
+
 ```kotlin
 // launch: no result needed
 viewModelScope.launch { repository.refresh() }
@@ -2177,43 +2713,81 @@ val page = coroutineScope {
     Page(user.await(), feed.await())
 }
 
-// runBlocking: bridges blocking and suspending worlds.
-// Correct in main() and in tests; a bug in application code — it blocks a thread.
+// runBlocking: bridges blocking and suspending worlds (main/tests only)
 fun main() = runBlocking {
     val data = fetchData()
     println(data)
 }
 ```
 
+### `launch` vs `async`
+
+| | `launch` | `async` |
+|---|---|---|
+| Use for | Work without a result | Work that produces a value |
+| Returns | `Job` | `Deferred<T>` |
+| `await()` | Not applicable | Yes — suspends until result is ready |
+| Exception | Propagates through hierarchy immediately | Held in `Deferred`; surfaces at `await()` |
+
 ### Common Pitfalls
-* **`async` whose result is never awaited.** Its exception disappears silently. If you do not need the value, use `launch`.
-* **`runBlocking` in production code**, especially on the main thread — it defeats the purpose and can ANR on Android.
-* **Sequential `await` written as parallel.** `async { a() }.await()` followed by `async { b() }.await()` is sequential; start both, then await both.
+* **`async` result never `await()`-ed.** The exception is not silently lost by default — in a normal (non-supervisor) scope it still propagates to the parent. Use `launch` when no result is needed.
+* **`runBlocking` in production code** — blocks a thread, can cause ANR on Android.
+* **Sequential `await`.** `async { a() }.await()` then `async { b() }.await()` is sequential, not parallel. Start both, then await both.
 
 ---
 
-## 14.3 Dispatchers and Context
+## 14.4 Dispatchers and Context
 
 ### Definition
-A `CoroutineDispatcher` decides which thread or pool a coroutine runs on. It is one element of the `CoroutineContext`, alongside the `Job`, a name, and an exception handler.
+> A `CoroutineDispatcher` determines **which thread or thread pool executes a coroutine's code**. It is one element of the `CoroutineContext`, alongside the `Job`, a name, and an exception handler.
 
 | Dispatcher | Backing | Use for |
 |---|---|---|
 | `Main` | UI thread | Touching UI |
 | `Main.immediate` | UI thread, no re-dispatch if already there | Avoiding an unnecessary post |
-| `IO` | Elastic pool, 64 threads by default | Network, disk, database |
-| `Default` | Pool sized to CPU cores | Parsing, sorting, image work |
+| `IO` | Elastic pool, 64 threads by default | Blocking network, disk, database |
+| `Default` | Pool sized to CPU cores | Parsing, sorting, CPU-intensive work |
 | `Unconfined` | Caller's thread until first suspension | Tests and advanced cases only |
 
+### `withContext()`
+
+> `withContext()` **temporarily changes the coroutine context** (typically the dispatcher) for the execution of a block and returns the block's result. It suspends the current coroutine rather than blocking the underlying thread.
+
+```kotlin
+suspend fun loadUser(): User {
+    return withContext(Dispatchers.IO) {
+        database.getUser()
+    }
+    // After block, execution resumes in caller's original context
+}
+```
+
+```text
+Main
+ ↓
+withContext(IO)   → IO work
+ ↓
+back to Main
+```
+
+### `launch` vs `withContext`
+
+| | `launch` | `withContext` |
+|---|---|---|
+| Creates new coroutine | Yes | No — runs within the current coroutine |
+| Returns | `Job` | Result of the block |
+| Use for | Starting concurrent work | Changing context and getting a result |
+
 ### Code Example
+
 ```kotlin
 // Context elements combine with +
 val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("sync"))
 
 // withContext switches dispatcher and returns a value
 suspend fun loadAndRender() {
-    val data = withContext(Dispatchers.IO) { api.fetch() }   // Off the main thread
-    render(data)                                              // Back on the caller's context
+    val data = withContext(Dispatchers.IO) { api.fetch() }   // Off main thread
+    render(data)                                              // Back on caller's context
 }
 
 // Inject dispatchers so tests can substitute a TestDispatcher
@@ -2229,16 +2803,36 @@ class Repository(private val io: CoroutineDispatcher = Dispatchers.IO) {
 
 ---
 
-## 14.4 Structured Concurrency, `Job`, and Cancellation
+## 14.5 Structured Concurrency, `Job`, and Cancellation
 
 ### Definition
-* **Structured concurrency** — the rule that every coroutine has a parent, so cancelling the parent cancels all descendants and no parent completes before its children do. This makes leaked background work impossible by construction.
-* **`Job`** — the handle representing a coroutine's lifecycle. It can be cancelled, joined, and queried (`isActive`), and it is what links parent to child.
-* **`SupervisorJob`** — a `Job` variant in which a **child's failure does not cancel its siblings or its parent**, used when tasks are genuinely independent.
-* **Cancellation** — *cooperative*: `cancel()` only marks the job inactive and arranges for `CancellationException` to be thrown at the **next suspension point**. Code with no suspension point never notices.
+> **Structured concurrency** is a design principle where coroutines are organized into a **parent-child hierarchy**. A parent coroutine is responsible for its children, waits for them to complete, and cancellation propagates from parent to children. This makes leaked background work structurally impossible.
 
-### Why It Is Used
-It makes leaked background work structurally impossible. `viewModelScope` cancellation is total — no coroutine can outlive the screen that started it.
+### `Job`
+
+> A `Job` represents the **lifecycle of a coroutine**. It allows you to control and observe the coroutine — cancel it, wait for it with `join()`, and check its state.
+
+```kotlin
+val job = scope.launch { doWork() }
+
+job.cancel()
+job.join()
+job.isActive
+job.isCancelled
+job.isCompleted
+```
+
+### `SupervisorJob`
+
+> `SupervisorJob` is a special `Job` variant where **failure of one child does not automatically cancel its sibling children**. Useful when child operations are logically independent.
+
+```text
+SupervisorJob
+    │
+    ├── API A ❌  (fails)
+    ├── API B ✅  (continues)
+    └── API C ✅  (continues)
+```
 
 ### `Job` vs `SupervisorJob`
 
@@ -2248,16 +2842,78 @@ It makes leaked background work structurally impossible. `viewModelScope` cancel
 | Used by | `coroutineScope { }`, plain `launch` | `viewModelScope`, `supervisorScope { }` |
 | Right for | All-or-nothing work | Independent tasks |
 
-### Cancellation is cooperative
-`cancel()` only sets `isActive = false` and arranges for `CancellationException` at the **next suspension point**. A tight CPU loop with no suspension point ignores cancellation entirely.
+### `coroutineScope` vs `supervisorScope`
+
+```kotlin
+// coroutineScope — one failure cancels all
+coroutineScope {
+    launch { taskA() }   // A fails → B is cancelled
+    launch { taskB() }
+}
+
+// supervisorScope — failures are isolated
+supervisorScope {
+    launch { taskA() }   // A fails → B continues
+    launch { taskB() }
+}
+```
+
+### Cancellation
+
+> Coroutine cancellation is a **cooperative mechanism**. Calling `cancel()` marks the coroutine as cancelled, and cancellable suspending functions respond by throwing `CancellationException`. CPU-bound code that never checks cancellation may continue running.
+
+```kotlin
+val job = launch { delay(10_000) }
+job.cancel()   // delay() is cancellable — responds immediately
+```
+
+CPU-bound code must cooperate:
+
+```kotlin
+// Without ensureActive() — cancellation is ignored
+while (true) {
+    performCpuWork()
+}
+
+// With ensureActive() — responds to cancellation
+while (isActive) {
+    ensureActive()
+    performCpuWork()
+}
+```
+
+### `NonCancellable`
+
+> `NonCancellable` is a special context for **cleanup operations that must complete even when the surrounding coroutine has been cancelled**.
+
+```kotlin
+try {
+    upload()
+} finally {
+    withContext(NonCancellable) {
+        releaseResource()   // Must finish even after cancel
+    }
+}
+```
+
+### Timeouts
+
+```kotlin
+// Throws TimeoutCancellationException on timeout
+withTimeout(5_000) { api.getUser() }
+
+// Returns null on timeout — safer
+val user = withTimeoutOrNull(5_000) { api.getUser() }
+```
 
 ### Code Example
+
 ```kotlin
 // Cooperating with cancellation in CPU-bound work
 suspend fun compress(frames: List<Frame>) = withContext(Dispatchers.Default) {
     frames.map { frame ->
-        ensureActive()              // Throws CancellationException if cancelled
-        encode(frame)               // Without this, cancel() has no effect until the loop ends
+        ensureActive()   // Throws CancellationException if cancelled
+        encode(frame)
     }
 }
 
@@ -2266,55 +2922,45 @@ suspend fun upload(data: ByteArray) {
     try {
         api.upload(data)
     } finally {
-        // A suspending call in `finally` after cancellation throws immediately
-        // unless it is shielded by NonCancellable.
         withContext(NonCancellable) { releaseLock() }
     }
 }
 
 // All-or-nothing vs independent
-suspend fun loadAll() = coroutineScope {         // One failure cancels the rest
+suspend fun loadAll() = coroutineScope {
     val a = async { repo.a() }
     val b = async { repo.b() }
     Combined(a.await(), b.await())
 }
 
-suspend fun loadIndependently() = supervisorScope {   // Failures are isolated
+suspend fun loadIndependently() = supervisorScope {
     launch { runCatching { repo.header() }.onSuccess(::setHeader) }
     launch { runCatching { repo.feed() }.onSuccess(::setFeed) }
 }
-
-// Timeouts
-val result = withTimeoutOrNull(5_000) { api.fetch() }   // null on timeout
-withTimeout(5_000) { api.fetch() }                       // Throws TimeoutCancellationException
 ```
 
 ### Common Pitfalls
 * **Catching `Exception` around a suspending call.** `CancellationException` is an `Exception`; swallowing it breaks cancellation. Rethrow it explicitly, or catch specific types.
-* **`GlobalScope.launch`.** No parent, never cancelled — a leak by construction. Inject a scope built from `SupervisorJob()` if you need app-lifetime work.
+* **`GlobalScope.launch`.** No parent, never cancelled — a leak by construction.
 * **`launch(SupervisorJob())`.** Supervision is a property of the scope's parent job; passing one to a child detaches it from the real scope instead.
 
 ---
 
-## 14.5 Exception Handling
+## 14.6 Exception Handling
 
 ### Definition
-* **The rule that governs everything here** — how an exception behaves depends on **which builder started the coroutine** and **what kind of `Job` its scope has**.
-* **`launch`** — throws the exception immediately, upward, to a `CoroutineExceptionHandler` or to the thread's default handler (which crashes the app).
-* **`async`** — *stores* the exception in the `Deferred` and rethrows it only when `await()` is called. Never awaiting means never seeing it.
-* **`CoroutineExceptionHandler`** — a context element that receives exceptions reaching a **root** coroutine. Attached to a child it does nothing, because the exception has already been handled by the parent.
-* **`CancellationException`** — a special case: it signals normal cancellation, not failure, so it must always be rethrown rather than caught and swallowed.
-
-### How It Works Internally
-* `launch` throws immediately to the `CoroutineExceptionHandler`, or to the thread's default handler (a crash) if none is installed.
-* `async` stores the exception in the `Deferred`; it surfaces only at `await()`.
-* `CoroutineExceptionHandler` works **only on a root coroutine's context**. Installing it on a child is a no-op, because the exception has already gone up to the parent.
+> How an exception behaves depends on **which builder started the coroutine** and **what kind of `Job` its scope has**.
+> * **`launch`** — exception propagates upward immediately through the coroutine hierarchy to a `CoroutineExceptionHandler` or the thread's default handler.
+> * **`async`** — exception is **stored in the `Deferred`** and re-thrown when `await()` is called. In a non-supervisor scope, it also propagates to the parent.
+> * **`CoroutineExceptionHandler`** — a context element that receives exceptions reaching a **root** coroutine. Installing it on a child coroutine is a no-op.
+> * **`CancellationException`** — signals normal cancellation, not failure. It must always be **re-thrown**, never swallowed.
 
 ### Code Example
+
 ```kotlin
 class DashboardViewModel : ViewModel() {
 
-    // On the ROOT coroutine's context — a handler on a child would never fire
+    // Handler on the ROOT coroutine's context — child handler would never fire
     private val handler = CoroutineExceptionHandler { _, e ->
         _state.update { it.copy(error = e.message) }
     }
@@ -2323,7 +2969,7 @@ class DashboardViewModel : ViewModel() {
         val page = coroutineScope {
             val user = async { repo.user() }
             val feed = async { repo.feed() }
-            Page(user.await(), feed.await())      // A failure here propagates to `handler`
+            Page(user.await(), feed.await())   // Failure propagates to handler
         }
         _state.update { it.copy(page = page) }
     }
@@ -2333,239 +2979,1199 @@ class DashboardViewModel : ViewModel() {
 suspend fun <T> safely(block: suspend () -> T): Result<T> = try {
     Result.success(block())
 } catch (e: CancellationException) {
-    throw e                                        // ALWAYS rethrow
+    throw e                // ALWAYS rethrow CancellationException
+} catch (e: Throwable) {
+    Result.failure(e)
+}
+```
+
+### Why NOT to catch `CancellationException`
+
+`CancellationException` indicates **normal coroutine cancellation**, not an application failure.
+
+Bad:
+```kotlin
+try {
+    apiCall()
+} catch (e: Exception) {
+    showError()   // accidentally treats cancellation as an error
+}
+```
+
+Better:
+```kotlin
+try {
+    apiCall()
+} catch (e: CancellationException) {
+    throw e        // rethrow cancellation
+} catch (e: Exception) {
+    showError()
+}
+```
+
+### `runCatching` — the hidden problem
+
+`runCatching` catches `Throwable`, including `CancellationException`, which can accidentally swallow coroutine cancellation.
+
+Safer:
+```kotlin
+try {
+    Result.success(apiCall())
+} catch (e: CancellationException) {
+    throw e
 } catch (e: Throwable) {
     Result.failure(e)
 }
 ```
 
 ### Common Pitfalls
-* **`runCatching` around suspending code.** It catches `Throwable`, including `CancellationException`. Rethrow it, or use a helper like the one above.
+* **`runCatching` around suspending code.** It catches `CancellationException`. Rethrow it, or use a helper.
 * **A handler installed on a child coroutine.** It silently never fires.
-* **Expecting `try/catch` around `launch` to catch the body's exception.** `launch` returns immediately; the exception happens later, elsewhere.
+* **Expecting `try/catch` around `launch` to catch the body's exception.** `launch` returns immediately; the exception happens later, in the coroutine body.
 
 ---
 
-## 14.6 Bridging Callback APIs
+## 14.7 Bridging Callback APIs
 
 ### Definition
-* **Callback API** — an interface whose method is invoked later, when a result is ready, instead of the value being returned from the call.
-* **Bridging** — wrapping such an API so it becomes a `suspend` function, letting callers `await` the result with ordinary sequential code.
-* **`suspendCancellableCoroutine`** — the standard-library builder that performs the bridge. It hands you a `Continuation` to resume with a value or an exception, plus a hook to cancel the underlying work.
+> A **callback API** invokes a method later when a result is ready. **Bridging** wraps such an API so it becomes a `suspend` function. `suspendCancellableCoroutine` is the standard-library builder that performs the bridge — it hands you a `Continuation` to resume with a value or an exception, plus a hook to cancel the underlying work.
 
 ### Code Example
+
 ```kotlin
-// One-shot callback -> suspend function, with cancellation support
-suspend fun LegacySdk.token(): String = suspendCancellableCoroutine { cont ->
+suspend fun getToken(): String =
+    suspendCancellableCoroutine { continuation ->
+
+        val call = requestToken(object : Callback {
+            override fun onSuccess(token: String) {
+                continuation.resume(token)
+            }
+            override fun onError(error: Throwable) {
+                continuation.resumeWithException(error)
+            }
+        })
+
+        // Without this, cancelling the coroutine leaves the SDK call running
+        continuation.invokeOnCancellation {
+            call.cancel()
+        }
+    }
+```
+
+### Common Pitfalls
+* **Omitting `invokeOnCancellation`.** The coroutine cancels but the underlying work continues — a resource leak.
+* **Resuming twice.** Throws `IllegalStateException: Already resumed`. Guard with `cont.isActive` when the callback can fire more than once.
+
+---
+
+## 14.8 Parallel Decomposition Pattern
+
+This is a **very common senior Android interview question**.
+
+```kotlin
+suspend fun loadDashboard(): Dashboard = coroutineScope {
+
+    val user = async { repository.getUser() }
+    val feed = async { repository.getFeed() }
+
+    Dashboard(
+        user = user.await(),
+        feed = feed.await()
+    )
+}
+```
+
+```text
+async(user)  ──┐
+               ├── both run concurrently
+async(feed)  ──┘
+               ↓
+await user + feed
+```
+
+**Don't write** sequential async:
+```kotlin
+// WRONG — sequential, not parallel
+val user = async { getUser() }.await()   // waits for user first
+val feed = async { getFeed() }.await()   // then starts feed
+```
+
+---
+
+## 14.9 Lifecycle-Aware Scopes
+
+### `viewModelScope`
+> `viewModelScope` is an Android lifecycle-aware `CoroutineScope` associated with a `ViewModel`. Coroutines launched here are automatically cancelled when the `ViewModel` is cleared.
+
+```kotlin
+class UserViewModel : ViewModel() {
+    fun loadUser() {
+        viewModelScope.launch {
+            val user = repository.getUser()
+            _uiState.value = UiState.Success(user)
+        }
+    }
+}
+```
+
+### `GlobalScope` — avoid it
+> `GlobalScope` creates coroutines not tied to any lifecycle. Work is never automatically cancelled, leading to leaks and uncontrolled background execution.
+
+```kotlin
+// Avoid
+GlobalScope.launch { doWork() }
+
+// Prefer
+viewModelScope.launch { doWork() }
+```
+
+---
+
+## 14.10 Interview Q&A — Coroutines
+
+### Q1. What is a coroutine?
+A lightweight unit of asynchronous execution that can suspend and resume without blocking the underlying thread. Thousands of coroutines can share a small thread pool, unlike threads.
+
+### Q2. What is a `suspend` function?
+A function that is allowed to suspend its execution without blocking the underlying thread. `suspend` does **not** create a thread — the coroutine's dispatcher controls threading.
+
+### Q3. What is a Continuation?
+A `Continuation` represents the point at which a suspended coroutine can resume. It contains the coroutine context and provides `resumeWith()` to continue with a value or exception.
+
+### Q4. Does a `suspend` function always suspend?
+No. If the operation completes immediately (e.g., a cache hit), there is no actual suspension — execution falls through to the next step without releasing the thread.
+
+### Q5. Difference between `launch` and `async`?
+
+| | `launch` | `async` |
+|---|---|---|
+| Result | None | `Deferred<T>` via `await()` |
+| Returns | `Job` | `Deferred<T>` |
+| Exception | Propagates immediately | Held in Deferred; thrown at `await()` |
+| Use for | Fire-and-manage work | Parallel tasks returning values |
+
+### Q6. What is `runBlocking` and when should it be used?
+`runBlocking` creates a coroutine scope while **blocking the current thread**. Use it in `main()` and unit tests to bridge blocking and suspending code. Never use it in Android application code — it can cause ANRs.
+
+### Q7. What are the main dispatchers?
+
+```text
+Dispatchers.Main    → UI thread work
+Dispatchers.IO      → Blocking I/O (network, disk, database)
+Dispatchers.Default → CPU-intensive work
+Dispatchers.Unconfined → Not recommended for application code
+```
+
+### Q8. What does `withContext` do?
+Temporarily changes the coroutine context (typically the dispatcher) for a block and returns the block's result. It does **not** create a new independent coroutine — it runs within the current coroutine.
+
+### Q9. Difference between `withContext` and `launch`?
+
+```text
+launch       → starts a new concurrent coroutine; returns Job
+withContext  → changes context within current coroutine; returns a result
+```
+
+### Q10. What is CoroutineContext?
+A collection of elements defining a coroutine's behavior: `Job`, `CoroutineDispatcher`, `CoroutineName`, `CoroutineExceptionHandler`. Elements are combined with `+`.
+
+```kotlin
+val context = SupervisorJob() + Dispatchers.Default + CoroutineName("DataSync")
+```
+
+### Q11. What is structured concurrency?
+A design principle where every coroutine has a parent. Cancelling the parent cancels all descendants, and no parent completes before its children. This prevents coroutine leaks.
+
+### Q12. What is a `Job`?
+The handle representing a coroutine's lifecycle. Supports `cancel()`, `join()`, `isActive`, `isCancelled`, `isCompleted`.
+
+### Q13. What is `SupervisorJob`?
+A `Job` variant where a child's failure does **not** automatically cancel its sibling children. Used for logically independent tasks.
+
+### Q14. Difference between `coroutineScope` and `supervisorScope`?
+
+```text
+coroutineScope  → child failure cancels all siblings and propagates up
+supervisorScope → child failure is isolated; siblings continue
+```
+
+### Q15. Is coroutine cancellation automatic?
+Not for all code. Cancellation is **cooperative** — `cancel()` only marks the job inactive. Code must reach a suspension point or call `ensureActive()` to respond.
+
+### Q16. What is `ensureActive()`?
+Checks whether the current coroutine is still active. If cancelled, throws `CancellationException`. Use it in CPU-bound loops to make them respond to cancellation.
+
+### Q17. What is `NonCancellable`?
+A special context for cleanup that must complete even when the coroutine is cancelled. Use inside `finally` blocks for operations that must not be interrupted.
+
+### Q18. Difference between `withTimeout` and `withTimeoutOrNull`?
+
+```text
+withTimeout       → throws TimeoutCancellationException on timeout
+withTimeoutOrNull → returns null on timeout (safer for most cases)
+```
+
+### Q19. How does exception handling differ between `launch` and `async`?
+
+```text
+launch → exception propagates immediately through hierarchy
+async  → exception stored in Deferred; surfaces at await()
+         (also propagates to parent in non-supervisor scope)
+```
+
+### Q20. What is `CoroutineExceptionHandler`?
+A `CoroutineContext` element that handles **uncaught exceptions from root coroutines**. Installing it on a child coroutine has no effect — the exception has already propagated to the parent.
+
+### Q21. Why must `CancellationException` be re-thrown?
+It represents **normal cooperative cancellation**, not an error. Swallowing it with a broad `catch (e: Exception)` breaks the cancellation mechanism.
+
+### Q22. What is the problem with `runCatching` in coroutines?
+`runCatching` catches `Throwable`, including `CancellationException`, which can accidentally suppress coroutine cancellation. Use explicit `try/catch` with `CancellationException` re-thrown.
+
+### Q23. Why avoid `GlobalScope`?
+Coroutines in `GlobalScope` are not tied to any lifecycle and are never automatically cancelled, leading to resource leaks and uncontrolled background work.
+
+### Q24. How do you run two API calls in parallel?
+
+```kotlin
+suspend fun loadDashboard() = coroutineScope {
+    val user = async { repository.getUser() }
+    val feed = async { repository.getFeed() }
+    Dashboard(user.await(), feed.await())
+}
+```
+
+Start both with `async`, then `await` both — not `async { }.await()` sequentially.
+
+### Q25. How do you convert a callback API to a suspend function?
+
+```kotlin
+suspend fun getToken(): String = suspendCancellableCoroutine { cont ->
     val call = requestToken(object : Callback {
-        override fun onSuccess(t: String) = cont.resume(t)
+        override fun onSuccess(token: String) = cont.resume(token)
         override fun onError(e: Throwable) = cont.resumeWithException(e)
     })
-    // Without this, cancelling the coroutine leaves the SDK call running
     cont.invokeOnCancellation { call.cancel() }
 }
 ```
 
-### Common Pitfalls
-* **Omitting `invokeOnCancellation`.** The coroutine cancels but the underlying work continues.
-* **Resuming twice.** Throws `IllegalStateException: Already resumed`. Guard with `cont.isActive` when the callback can fire more than once.
+Always hook `invokeOnCancellation` so cancelling the coroutine also cancels the underlying operation.
+
+---
+
+## 14.11 Senior Interview Quick Revision
+
+```text
+Coroutine              → Lightweight unit of async execution; suspends without blocking thread
+suspend                → Allows a function to suspend; does NOT create a thread
+Continuation           → Represents where suspended execution resumes
+launch                 → Starts coroutine; returns Job; exception propagates immediately
+async                  → Starts coroutine; returns Deferred<T>; exception held until await()
+await                  → Suspends until Deferred result is available
+runBlocking            → Starts coroutine while BLOCKING the current thread (main/tests only)
+Dispatchers.Main       → UI/main-thread work
+Dispatchers.IO         → Blocking I/O work
+Dispatchers.Default    → CPU-intensive work
+withContext            → Temporarily changes coroutine context; returns result
+CoroutineContext       → Collection of coroutine configuration elements
+Job                    → Represents coroutine lifecycle
+SupervisorJob          → Child failures don't automatically cancel sibling children
+Structured concurrency → Parent-child coroutine lifecycle hierarchy
+Cancellation           → Cooperative; code must be cancellable
+ensureActive           → Explicit cancellation check in CPU-bound work
+NonCancellable         → Cleanup that must run despite cancellation
+withTimeout            → Timeout + throws exception
+withTimeoutOrNull      → Timeout + returns null
+CoroutineExceptionHandler → Handles uncaught exceptions from root coroutines only
+coroutineScope         → Structured scope; child failure propagates to all
+supervisorScope        → Structured scope with isolated child failures
+suspendCancellableCoroutine → Converts callback APIs into cancellable suspend functions
+viewModelScope         → Lifecycle-aware scope; auto-cancelled on ViewModel clear
+GlobalScope            → Avoid — no lifecycle, no automatic cancellation
+```
 
 ---
 
 # 15. Flow & Channels
 
+---
+
+# PART 1 — DEFINITIONS
+
 ## 15.1 Flow Fundamentals
 
-### Definition
-* **Flow** — an asynchronous stream of values produced over time, which a collector consumes one at a time. Think of it as a suspending `Sequence`.
-* **Cold** — a `flow { }` does **nothing** until collected, and its builder re-runs independently for **each** collector. Two collectors mean two executions.
-* **Hot** — a `StateFlow`, `SharedFlow`, or `Channel` exists and can produce values whether or not anyone is collecting, and all collectors share one stream.
-* **Emission and collection** — the producer calls `emit(value)`; the consumer calls a terminal operator such as `collect { }`, which is what starts the whole pipeline.
+### 1. What is Flow?
 
-### Cold vs Hot
+> `Flow` is a Kotlin API for representing an **asynchronous stream of values emitted sequentially over time**. A Flow can emit multiple values, and a collector receives those values one at a time. Flow works naturally with coroutines and supports suspension, cancellation, and operators for transforming streams.
 
-| | Cold (`flow { }`) | Hot (`StateFlow`, `SharedFlow`, `Channel`) |
+```kotlin
+val numbers = flow {
+    emit(1)
+    emit(2)
+    emit(3)
+}
+
+numbers.collect { value ->
+    println(value)
+}
+// Output: 1  2  3
+```
+
+```text
+Producer
+   ↓  value
+   ↓  value
+   ↓  value
+Collector
+```
+
+---
+
+### 2. What is a Cold Flow?
+
+> A cold Flow does **not start producing values until it has a collector**. Every collector gets its own independent execution of the Flow.
+
+```kotlin
+val numbers = flow {
+    println("Flow started")
+    emit(1)
+}
+
+numbers.collect { }   // prints "Flow started"
+numbers.collect { }   // prints "Flow started" again
+```
+
+Nothing happens until `collect` is called.
+
+---
+
+### 3. What is a Hot Flow?
+
+> A hot Flow **exists independently of collectors** and can maintain or produce values while there may be zero, one, or multiple collectors.
+
+```text
+Cold Flow  → execution starts per collector
+Hot Flow   → stream exists independently of individual collectors
+```
+
+Common hot stream types: `StateFlow`, `SharedFlow`, `Channel`
+
+---
+
+### 4. What is Emission?
+
+> Emission is the process of a Flow producer sending a value downstream using the `emit()` function inside a `flow {}` builder.
+
+```kotlin
+flow {
+    emit(10)
+    emit(20)
+    emit(30)
+}
+```
+
+---
+
+### 5. What is Collection?
+
+> Collection is the process of consuming values from a Flow. A **terminal operator** such as `collect`, `first`, or `toList` starts execution of a cold Flow.
+
+```kotlin
+numbers.collect { value ->
+    println(value)
+}
+```
+
+Without collection, a cold Flow does not execute its builder.
+
+---
+
+### 6. What is a Flow Builder?
+
+> A Flow builder is an API used to create a Flow.
+
+```kotlin
+flow { emit(1); emit(2) }          // suspend-capable builder
+flowOf(1, 2, 3)                    // fixed values
+listOf(1, 2, 3).asFlow()           // from collection
+```
+
+---
+
+## 15.2 Intermediate Operators
+
+### 7. What is an Intermediate Operator?
+
+> An intermediate operator transforms, filters, combines, or modifies a Flow and returns another Flow. Intermediate operators are **lazy** — they describe the pipeline but execute nothing until a terminal operator collects.
+
+```kotlin
+val result = numbers
+    .map { it * 2 }
+    .filter { it > 2 }
+// Nothing runs until: result.collect { }
+```
+
+---
+
+### 8. What is a Terminal Operator?
+
+> A terminal operator **starts collection** of a Flow and consumes its values. Unlike intermediate operators, it triggers actual execution.
+
+```kotlin
+numbers.map { it * 2 }.collect { println(it) }
+// collect is the terminal operator that starts the pipeline
+```
+
+---
+
+### 9. `map`
+
+> Transforms every emitted value into another value, preserving emission order.
+
+```kotlin
+flowOf(1, 2, 3).map { it * 2 }
+// Produces: 2  4  6
+```
+
+---
+
+### 10. `filter`
+
+> Allows only values satisfying a condition to pass downstream.
+
+```kotlin
+flowOf(1, 2, 3, 4).filter { it % 2 == 0 }
+// Produces: 2  4
+```
+
+---
+
+### 11. `debounce`
+
+> Delays emissions until a specified period has passed without another value being emitted. Useful to wait for rapid input to settle before performing an operation.
+
+```kotlin
+query.debounce(300)   // wait 300ms after last keystroke
+```
+
+---
+
+### 12. `distinctUntilChanged`
+
+> Suppresses consecutive duplicate values — a value is only emitted when it differs from the previously emitted value.
+
+```kotlin
+flowOf("A", "A", "B", "B", "C").distinctUntilChanged()
+// Produces: A  B  C
+```
+
+---
+
+### 13. `flatMapLatest`
+
+> Transforms each upstream value into another Flow and collects **only the latest inner Flow**. When a new upstream value arrives, the previous inner Flow is **cancelled**.
+
+```kotlin
+query.flatMapLatest { q ->
+    repository.search(q)
+}
+// "ap" → starts, "app" → cancels "ap", "apple" → cancels "app"
+```
+
+---
+
+### 14. `flatMapConcat`
+
+> Processes inner Flows **sequentially** — waits for one inner Flow to complete before starting the next.
+
+```text
+Flow A → complete → Flow B → complete → Flow C
+```
+
+Use when ordering matters.
+
+---
+
+### 15. `flatMapMerge`
+
+> Collects multiple inner Flows **concurrently** and merges their emissions into one Flow.
+
+```text
+Flow A ──┐
+Flow B ──┼──→ merged Flow
+Flow C ──┘
+```
+
+Use when inner operations can run concurrently.
+
+---
+
+### 16. `combine`
+
+> Combines the **latest value from multiple Flows**. Emits whenever any source emits, after every source has emitted at least once.
+
+```kotlin
+combine(userFlow, settingsFlow) { user, settings ->
+    UiState(user, settings)
+}
+```
+
+```text
+A1 + B1
+A2 + B1   (A updated; uses latest B)
+A2 + B2   (B updated; uses latest A)
+```
+
+---
+
+### 17. `zip`
+
+> Pairs emissions from two Flows **one-to-one** based on emission order.
+
+```text
+Flow A: 1   2   3
+Flow B: X   Y   Z
+zip:  1-X  2-Y  3-Z
+```
+
+Unlike `combine`, `zip` does not use the latest value continuously.
+
+---
+
+### 18. `combine` vs `zip`
+
+| | `combine` | `zip` |
 |---|---|---|
-| Runs without a collector | No | Yes |
-| Per-collector execution | Independent | Shared |
-| Has a current value | No | `StateFlow` yes |
+| Uses | Latest value from each source | One-to-one pairing |
+| Emits when | Any source emits (after first from each) | Both have a new paired value |
+| Use for | Latest state from multiple streams | One-to-one pairing of emissions |
 
-### Code Example
+---
+
+## 15.3 `flowOn` and Backpressure
+
+### 19. What is `flowOn`?
+
+> `flowOn` changes the `CoroutineContext` used by the **upstream portion** of a Flow pipeline. It is the correct way to move upstream work to another dispatcher while preserving Flow's context invariant.
+
 ```kotlin
-// Builders
-flow { emit(1); delay(100); emit(2) }        // Can suspend inside
-flowOf(1, 2, 3)
-listOf(1, 2, 3).asFlow()
+repository.getUsers()
+    .map { processUser(it) }
+    .flowOn(Dispatchers.IO)   // map + getUsers run on IO
+    .collect { updateUI(it) } // collect runs in caller's context
+```
 
-// Cold: the builder re-runs per collector
-val numbers = flow { println("producing"); emit(1) }
-numbers.collect { }      // prints "producing"
-numbers.collect { }      // prints "producing" again
+```text
+upstream of flowOn → IO
+downstream/collect → caller's context
 ```
 
 ---
 
-## 15.2 Operators
+### 20. Why can't we use `withContext` inside `flow {}`?
 
-### Definition
-* **Flow operator** — a function that takes a flow and returns a new flow with modified behavior. Chaining them describes a pipeline.
-* **Intermediate operator** — `map`, `filter`, `debounce`, `flatMapLatest`. It is **lazy**: it only describes work, and nothing runs until collection begins.
-* **Terminal operator** — `collect`, `first`, `toList`. It starts the pipeline and is the only thing that causes any code to execute.
+A Flow has a **context-preservation invariant** — it must emit in the context of its collection. Using `withContext` inside `flow {}` to change the emission context violates this invariant and throws:
 
-| Need | Operator |
-|---|---|
-| Cancel the previous request when a new value arrives | `flatMapLatest` |
-| Run inner flows concurrently | `flatMapMerge` |
-| Run them strictly in order | `flatMapConcat` |
-| Wait for input to settle | `debounce` |
-| Drop consecutive duplicates | `distinctUntilChanged` |
-| Derive from several streams | `combine` |
-| Pair emissions one-to-one | `zip` |
-| Retry with backoff | `retryWhen` |
-| Move upstream work to another dispatcher | `flowOn` |
-| Emit a value before the stream starts | `onStart` |
-| Handle upstream errors without breaking the stream | `catch` |
+```text
+Flow invariant is violated
+```
 
-### Code Example — search as you type
+**Wrong:**
 ```kotlin
-val results: StateFlow<UiState> = query
-    .debounce(300)                       // Wait for typing to settle
-    .distinctUntilChanged()              // Ignore no-op re-emissions
-    .flatMapLatest { q ->                // Cancel the in-flight request
-        if (q.length < 2) flowOf(UiState.Idle)
-        else repo.search(q)
-            .map { UiState.Success(it) }
-            .onStart { emit(UiState.Loading) }
-            .retryWhen { cause, attempt ->
-                val retry = cause is IOException && attempt < 3
-                if (retry) delay(1000L shl attempt.toInt())
-                retry
-            }
-            .catch { emit(UiState.Error(it.message.orEmpty())) }   // Inside: outer stream survives
+flow {
+    withContext(Dispatchers.IO) {
+        emit(getData())   // ❌ violates context rule
     }
-    .flowOn(Dispatchers.IO)              // Applies to everything UPSTREAM
-    .stateIn(scope, SharingStarted.WhileSubscribed(5_000), UiState.Idle)
+}
 ```
 
-### Context preservation and `flowOn`
-A flow must emit in the context in which it was collected. `withContext` inside `flow { }` violates this and throws `IllegalStateException: Flow invariant is violated`. `flowOn` is the sanctioned mechanism, and it affects only operators **upstream** of it.
-
-### Backpressure
+**Correct:**
 ```kotlin
-sourceFlow
-    .buffer(64)        // Emitter and collector run concurrently
-    .conflate()        // Buffer of 1; intermediate values dropped — right for UI state
-    .collectLatest { } // Cancels the collector block when a new value arrives
+flow {
+    emit(getData())
+}.flowOn(Dispatchers.IO)   // ✅
 ```
-
-### Common Pitfalls
-* **`catch` placed after `stateIn`.** `catch` only sees upstream exceptions; place it before the conversion.
-* **`combine` never emitting.** It waits for **every** source to emit at least once; a source with no initial value stalls the chain.
-* **`withContext` inside `flow { }`.** Throws. Use `flowOn`.
 
 ---
 
-## 15.3 `StateFlow`, `SharedFlow`, and One-Shot Events
+### 21. What is Backpressure?
 
-### Definition
-* **`StateFlow<T>`** — a hot flow that **always holds exactly one current value**, requires an initial value, and conflates: emitting a value equal to the current one produces nothing. It models **state**.
-* **`SharedFlow<T>`** — a hot flow with **no current value**, configurable `replay` and buffering, and no conflation by default. It models **events shared by several collectors**.
-* **One-shot event** — an action that must happen exactly once (navigate, show a snackbar). It is *not* state, because re-reading state after a configuration change would fire it again.
-* **`Channel` + `receiveAsFlow()`** — the correct carrier for one-shot events: each element is delivered to exactly one collector and is buffered while none is attached.
+> Backpressure occurs when a producer emits values **faster than a consumer can process them**. Kotlin Flow provides `buffer`, `conflate`, and `collectLatest` to control this.
 
-### Code Example
+---
+
+### 22. `buffer()`
+
+> Allows producer and consumer to run **concurrently** by buffering emitted values between them.
+
+```kotlin
+flow.buffer().collect { process(it) }
+```
+
+---
+
+### 23. `conflate()`
+
+> Skips intermediate values when the collector is slow, keeping only the **most recent** value available.
+
+```text
+Producer:  1  2  3  4  5  6
+           ↓
+Slow collector receives: 1 → 3 → 6
+```
+
+Useful for rapidly changing UI state where only the latest matters.
+
+---
+
+### 24. `collectLatest()`
+
+> **Cancels the previous collector block** when a new value arrives. Only the processing for the latest value completes.
+
+```kotlin
+flow.collectLatest { value ->
+    process(value)   // cancelled if a new value arrives
+}
+```
+
+```text
+conflate    → skips intermediate upstream values
+collectLatest → cancels current collector block on new value
+```
+
+---
+
+## 15.4 StateFlow, SharedFlow, and One-Shot Events
+
+### 25. What is StateFlow?
+
+> `StateFlow` is a **hot Flow designed to represent state**. It always has a current value, requires an initial value, and immediately delivers the current value to any new collector.
+
 ```kotlin
 private val _state = MutableStateFlow(UiState())
-val state: StateFlow<UiState> = _state.asStateFlow()      // Expose read-only
+val state: StateFlow<UiState> = _state.asStateFlow()
 
-_state.update { it.copy(loading = true) }                 // Atomic read-modify-write
-
-// Converting a cold flow into a hot one
-val users: StateFlow<List<User>> = repo.observeUsers()
-    .stateIn(
-        scope = viewModelScope,
-        // Survives a rotation, tears down when genuinely gone
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = emptyList()
-    )
-
-// One-shot events must NOT be StateFlow — replay would re-fire them after rotation
-private val _events = Channel<UiEvent>(Channel.BUFFERED)
-val events: Flow<UiEvent> = _events.receiveAsFlow()
+// Atomic read-modify-write
+_state.update { it.copy(loading = true) }
 ```
 
-### Common Pitfalls
-* **Modelling navigation or a snackbar as `StateFlow`.** After a configuration change the collector re-reads the value and the event fires again. Use a `Channel`.
-* **`SharingStarted.Eagerly` on an expensive upstream.** It runs with no collectors for the ViewModel's whole life.
-* **Exposing `MutableStateFlow` publicly.** Any caller can then write state, breaking the single-writer rule.
+Used for: UI State, Screen State, Loading State, Error State, Data State.
 
 ---
 
-## 15.4 `callbackFlow` and `channelFlow`
+### 26. What is SharedFlow?
 
-### Definition
-* **`callbackFlow`** — a flow builder for wrapping a **callback or listener API** as a flow. It gives you a channel to emit into from outside the coroutine, and requires an `awaitClose` block that unregisters the listener when collection stops.
-* **`channelFlow`** — a flow builder that permits emission **from several coroutines concurrently**, which the plain `flow { }` builder forbids.
-* **`awaitClose`** — the suspending call that keeps the builder alive until the collector cancels, then runs your cleanup. Omitting it is a runtime error precisely because the listener would leak.
+> `SharedFlow` is a hot Flow for **broadcasting values to multiple collectors**. It has no required current value and can be configured with `replay` and buffering.
 
-### Code Example
 ```kotlin
-// callbackFlow: bridge a listener API into a Flow
-fun ConnectivityManager.status(): Flow<Boolean> = callbackFlow {
-    val cb = object : NetworkCallback() {
-        override fun onAvailable(n: Network) { trySend(true) }
-        override fun onLost(n: Network) { trySend(false) }
-    }
-    registerDefaultNetworkCallback(cb)
-    // MANDATORY: without awaitClose the builder throws, and the callback would leak
-    awaitClose { unregisterNetworkCallback(cb) }
-}.distinctUntilChanged()
+private val _events = MutableSharedFlow<UiEvent>()
+val events = _events.asSharedFlow()
+```
 
-// channelFlow: emit from multiple coroutines (plain `flow` forbids concurrent emission)
+Used for: app-wide events, analytics events, transient notifications.
+
+---
+
+### 27. StateFlow vs SharedFlow
+
+| | `StateFlow` | `SharedFlow` |
+|---|---|---|
+| Represents | State | Events / broadcasts |
+| Current value | Always has one | No required current value |
+| Initial value | Required | Not required |
+| New collector | Receives current state | Depends on `replay` config |
+| Conflation | Equal values not re-emitted | No conflation by default |
+
+```text
+"What is the current state?"  → StateFlow
+"Something just happened."    → SharedFlow / Channel
+```
+
+---
+
+### 28. What is a One-Shot Event?
+
+> A one-shot event is an action that should be handled **once as an occurrence**, not as persistent state. Examples: navigation, Snackbar, Toast, dialog.
+
+These events should **not** be stored as `StateFlow` — after a configuration change, a new collector would re-read the current state and fire the event again.
+
+---
+
+### 29. Why should navigation not be stored as StateFlow?
+
+If navigation is stored as `StateFlow<UiEvent>`:
+- After a configuration change, a new collector receives the current event
+- This can trigger navigation **again** unintentionally
+
+Use a `Channel` with `receiveAsFlow()` for one-shot event delivery.
+
+---
+
+### 30. What is a Channel?
+
+> A `Channel` is a hot communication primitive providing a **queue-like mechanism** for sending values between coroutines. Unlike `SharedFlow`, a channel element is received by **exactly one consumer**.
+
+```kotlin
+val channel = Channel<String>()
+
+launch { channel.send("Hello") }
+launch { val msg = channel.receive() }
+```
+
+```text
+StateFlow    → broadcast state (all collectors receive)
+SharedFlow   → broadcast events (all collectors receive)
+Channel      → queue (one consumer receives each element)
+```
+
+---
+
+### 31. What is `receiveAsFlow()`?
+
+> Converts a `ReceiveChannel` into a Flow-like interface for collecting channel elements, while preserving single-consumer delivery semantics.
+
+```kotlin
+private val events = Channel<UiEvent>(Channel.BUFFERED)
+val eventFlow: Flow<UiEvent> = events.receiveAsFlow()
+```
+
+---
+
+## 15.5 callbackFlow and channelFlow
+
+### 32. What is `callbackFlow`?
+
+> `callbackFlow` is a Flow builder for converting **callback- or listener-based APIs** into a Flow. It provides a channel-backed mechanism for safely emitting callback results and requires `awaitClose` to unregister the callback when collection ends.
+
+```kotlin
+fun observeNetwork(): Flow<Boolean> = callbackFlow {
+    val callback = object : NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            trySend(true)
+        }
+        override fun onLost(network: Network) {
+            trySend(false)
+        }
+    }
+    connectivityManager.registerNetworkCallback(request, callback)
+
+    awaitClose {
+        connectivityManager.unregisterNetworkCallback(callback)
+    }
+}
+```
+
+Use cases: Location updates, Network callbacks, Bluetooth callbacks, Firebase listeners, Sensor listeners.
+
+---
+
+### 33. What is `awaitClose()`?
+
+> `awaitClose()` keeps a `callbackFlow` **alive until the collector cancels** or the channel closes, and executes a cleanup block when the Flow is no longer being collected.
+
+```kotlin
+callbackFlow {
+    val listener = createListener()
+    register(listener)
+
+    awaitClose {
+        unregister(listener)   // runs when collection stops
+    }
+}
+```
+
+Without `awaitClose`, the listener remains registered and leaks resources.
+
+---
+
+### 34. What is `trySend()`?
+
+> Callbacks are not suspend functions, so `send()` (a suspending call) cannot be used directly inside them. `trySend()` sends a value without suspending.
+
+```kotlin
+override fun onAvailable(network: Network) {
+    trySend(true)   // ✅ non-suspending
+    // send(true)   // ❌ cannot call suspend function here
+}
+```
+
+---
+
+### 35. What is `channelFlow`?
+
+> `channelFlow` is a Flow builder that allows values to be **sent concurrently from multiple coroutines** while preserving safe communication through its underlying channel.
+
+```kotlin
 fun merged(): Flow<Item> = channelFlow {
     launch { sourceA().collect { send(it) } }
     launch { sourceB().collect { send(it) } }
 }
 ```
 
-### Common Pitfalls
-* **Omitting `awaitClose`.** Runtime error, and the callback is never unregistered.
-* **`send` from a callback.** Callbacks are not suspending contexts; use `trySend`.
+Unlike the plain `flow {}` builder, `channelFlow` permits concurrent emission from multiple coroutines.
 
 ---
 
-## 15.5 Channels
+# PART 2 — INTERVIEW QUESTIONS & ANSWERS
 
-### Definition
-A `Channel` is a hot, **single-consumer** queue with backpressure. Each element goes to exactly one receiver, unlike a `SharedFlow`, which broadcasts to all.
+## Basic Questions
 
-| Buffer | Behavior |
-|---|---|
-| `RENDEZVOUS` (default) | `send` suspends until a receiver takes the element |
-| `BUFFERED` (64) | Suspends only when the buffer fills |
-| `UNLIMITED` | Never suspends; can grow without bound |
-| `CONFLATED` | Keeps only the latest element |
+### Q1. What is Flow?
+Flow is an asynchronous stream of values that emits multiple values over time. It integrates with coroutines and supports operators for transforming, filtering, combining, and controlling streams.
 
-### Code Example
+### Q2. Is Flow cold or hot?
+A normal `flow {}` builder creates a **cold** Flow. `StateFlow` and `SharedFlow` are **hot**. A `Channel` is also a hot communication primitive.
+
+### Q3. When does a cold Flow start executing?
+When a terminal operator (such as `collect`) starts collection.
+
 ```kotlin
-val channel = Channel<Task>(Channel.BUFFERED)
+val f = flow { println("Started"); emit(1) }
+// Nothing runs yet
+f.collect { }   // "Started" prints now
+```
 
-// Producer
-scope.launch {
-    tasks.forEach { channel.send(it) }
-    channel.close()
-}
+### Q4. What are intermediate operators?
+Operators that return another Flow without executing the pipeline. They are lazy. Examples: `map`, `filter`, `debounce`, `combine`, `flatMapLatest`.
 
-// Consumers compete for elements — a natural worker pool
-repeat(4) {
-    scope.launch { for (task in channel) process(task) }
+### Q5. What are terminal operators?
+Operators that consume a Flow and start execution. Examples: `collect`, `first`, `toList`.
+
+---
+
+## Intermediate / Senior Questions
+
+### Q6. Difference between `map` and `flatMapLatest`?
+
+`map` transforms each value into another value.
+
+```kotlin
+flow.map { transform(it) }
+```
+
+`flatMapLatest` transforms each value into another Flow and cancels the previous inner Flow on each new upstream value.
+
+```kotlin
+query.flatMapLatest { repository.search(it) }
+```
+
+---
+
+### Q7. Difference between `flatMapConcat`, `flatMapMerge`, `flatMapLatest`?
+
+```text
+flatMapConcat   → sequential inner Flows
+flatMapMerge    → concurrent inner Flows
+flatMapLatest   → latest only; previous inner Flow cancelled
+```
+
+```text
+Input: A  B  C
+
+flatMapConcat: A complete → B complete → C complete
+flatMapMerge:  A, B, C all run concurrently
+flatMapLatest: A cancelled, B cancelled, C continues
+```
+
+---
+
+### Q8. `combine` vs `zip`?
+
+`combine` uses the **latest value** from each Flow; `zip` pairs emissions **one-to-one** by position.
+
+```text
+combine:  A1+B1 → A2+B1 → A2+B2
+zip:      A1+B1 → A2+B2 → A3+B3
+```
+
+---
+
+### Q9. Why does `combine` sometimes not emit?
+
+`combine` waits for **every source Flow to emit at least once**. If any source never emits, the combined Flow cannot produce its first result.
+
+---
+
+### Q10. What is `flowOn` and how does it differ from `withContext`?
+
+`flowOn` changes the upstream execution context of a Flow pipeline. `withContext` changes the coroutine context for a block.
+
+Inside `flow {}`, you cannot use `withContext` to change the emission context — that violates Flow's context-preservation rule. Use `flowOn` instead.
+
+---
+
+### Q11. What is backpressure?
+
+Backpressure is when a producer emits values faster than the consumer can process them. Solutions: `buffer()`, `conflate()`, `collectLatest()`.
+
+---
+
+### Q12. Difference between `buffer`, `conflate`, and `collectLatest`?
+
+| | `buffer` | `conflate` | `collectLatest` |
+|---|---|---|---|
+| Mechanism | Buffer values | Skip intermediate values | Cancel current collector block |
+| Keeps | All buffered values | Only latest upstream value | Only latest processing |
+
+---
+
+### Q13. What is StateFlow?
+A hot Flow for representing **observable state**. Always has a current value; new collectors immediately receive it. Conflates equal consecutive values.
+
+```kotlin
+private val _state = MutableStateFlow(UiState())
+val state = _state.asStateFlow()
+```
+
+---
+
+### Q14. Why expose `StateFlow` instead of `MutableStateFlow`?
+
+To enforce **encapsulation and single-writer ownership**. External callers should only read state, not modify it.
+
+```kotlin
+private val _state = MutableStateFlow(UiState())   // writable — private
+val state: StateFlow<UiState> = _state.asStateFlow() // read-only — public
+```
+
+---
+
+### Q15. What is SharedFlow?
+A hot Flow for **broadcasting values to multiple collectors**. No required current value; configurable `replay` and buffering.
+
+---
+
+### Q16. Would you use StateFlow for navigation?
+No. Navigation is a one-shot event, not persistent state. After a configuration change, a new collector re-reads `StateFlow`'s current value and could navigate again. Use a `Channel` with `receiveAsFlow()` for one-shot event semantics.
+
+---
+
+### Q17. How do you implement one-shot events?
+
+```kotlin
+private val _events = Channel<UiEvent>(Channel.BUFFERED)
+val events: Flow<UiEvent> = _events.receiveAsFlow()
+
+// Send
+viewModelScope.launch { _events.send(UiEvent.Navigate) }
+```
+
+Channel delivers each element to **one** receiver, preventing re-delivery on recollection.
+
+---
+
+### Q18. Channel vs SharedFlow?
+
+| | `Channel` | `SharedFlow` |
+|---|---|---|
+| Delivery | One element → one receiver | One emission → all active collectors |
+| Use for | Queue / one-consumer work | Broadcast events |
+
+---
+
+### Q19. What is `callbackFlow`?
+A Flow builder for converting callback/listener APIs into a Flow. Provides channel-backed emission and requires `awaitClose` for listener cleanup.
+
+---
+
+### Q20. Why is `awaitClose()` mandatory in `callbackFlow`?
+Without `awaitClose`, when collection stops the listener is not unregistered, causing resource leaks. `awaitClose` ties listener unregistration to Flow collection cancellation.
+
+---
+
+### Q21. Why use `trySend()` inside a callback?
+Because callbacks are not suspending functions. `send()` is a suspending call and cannot be used directly inside a non-suspending callback. `trySend()` is the non-suspending alternative.
+
+---
+
+### Q22. What is `channelFlow`?
+A Flow builder that allows **concurrent emission from multiple coroutines** into the same Flow safely. Unlike `flow {}`, it does not restrict emission to a single coroutine.
+
+---
+
+### Q23. What is the search pipeline pattern?
+
+```kotlin
+query
+    .debounce(300)             // wait for typing to settle
+    .distinctUntilChanged()    // skip duplicate queries
+    .flatMapLatest { q ->      // cancel previous in-flight search
+        repository.search(q)
+            .map { UiState.Success(it) }
+            .onStart { emit(UiState.Loading) }
+            .catch { emit(UiState.Error(it.message.orEmpty())) }
+    }
+    .flowOn(Dispatchers.IO)
+    .stateIn(scope, SharingStarted.WhileSubscribed(5_000), UiState.Idle)
+```
+
+---
+
+### Q24. Context preservation and `flowOn`
+`flowOn` affects only operators **upstream** of it. Using `withContext` inside `flow {}` throws an `IllegalStateException` because it violates the Flow context-preservation invariant.
+
+---
+
+### Q25. What does `stateIn` do?
+Converts a cold Flow into a `StateFlow` backed by a coroutine scope. The `SharingStarted` policy controls when the upstream Flow is active.
+
+```kotlin
+val users = repo.observeUsers()
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+```
+
+---
+
+# PART 3 — SENIOR / TRICKY QUESTIONS
+
+### Q26. Why is this wrong?
+
+```kotlin
+flow {
+    withContext(Dispatchers.IO) {
+        emit(repository.getUsers())
+    }
 }
 ```
 
-### Common Pitfalls
-* **Forgetting `close()`.** Consumers iterating the channel never finish.
-* **`UNLIMITED` on an unbounded producer.** Memory grows until the process dies.
-* **Using a `Channel` where a `SharedFlow` is meant.** Only one collector receives each element.
+**Answer:** Violates Flow's context-preservation invariant. Use:
+
+```kotlin
+flow { emit(repository.getUsers()) }.flowOn(Dispatchers.IO)
+```
+
+---
+
+### Q27. Why is this search implementation inefficient?
+
+```kotlin
+query.collect { repository.search(it) }
+```
+
+**Answer:** Every keystroke triggers a search. Better:
+
+```kotlin
+query
+    .debounce(300)
+    .distinctUntilChanged()
+    .flatMapLatest { repository.search(it) }
+```
+
+---
+
+### Q28. Why shouldn't we expose `MutableStateFlow`?
+
+External code could mutate ViewModel state directly, breaking single-writer ownership. Always expose the read-only `StateFlow` alias.
+
+---
+
+### Q29. Why does `combine` appear stuck?
+
+It waits for **all source Flows to emit at least once**. If any source never emits, the first combined value is never produced.
+
+---
+
+### Q30. What happens when a collector subscribes to `StateFlow`?
+
+It immediately receives the **current state value** — even if no new emission has occurred. This is a key difference from a cold Flow.
+
+---
+
+### Q31. What happens when two collectors collect a cold Flow?
+
+The Flow's upstream execution runs **independently for each collector** — the builder runs twice.
+
+```text
+Cold Flow
+   ├── Collector A → execution A
+   └── Collector B → execution B
+```
+
+---
+
+### Q32. What happens when two coroutines receive from a Channel?
+
+They **compete for elements** — each element goes to exactly **one** receiver.
+
+```text
+Channel
+  ├── Worker A ← receives element 1
+  ├── Worker B ← receives element 2
+  └── Worker C ← receives element 3
+```
+
+Useful for worker-pool patterns.
+
+---
+
+### Q33. What happens when two collectors collect `SharedFlow`?
+
+Each active collector receives the emitted value according to the `replay`/buffering configuration — unlike a Channel where consumers compete.
+
+---
+
+### Q34. Difference between `conflate()` and `collectLatest()`?
+
+```text
+conflate      → skips intermediate upstream values; slow collector gets latest available
+collectLatest → cancels the current collector block when a new value arrives
+```
+
+Example:
+```text
+conflate:
+  1 2 3 4 5 → slow collector sees: 1 → 4
+
+collectLatest:
+  value 1 → processing...
+  value 2 arrives → cancel processing 1 → process 2
+```
+
+---
+
+### Q35. What happens if `awaitClose()` is missing in `callbackFlow`?
+
+The callback/listener is not unregistered when collection stops. This causes resource leaks — the listener continues receiving and processing events even after the Flow is no longer collected.
+
+---
+
+## Final Cheat Sheet
+
+```text
+FLOW               → Asynchronous stream of values
+COLD FLOW          → Starts per collector
+HOT FLOW           → Exists independently of collectors
+emit()             → Produces a value
+collect()          → Consumes values; starts a cold Flow
+INTERMEDIATE OP    → Returns Flow; lazy
+TERMINAL OP        → Consumes Flow; starts execution
+map                → Transform values
+filter             → Keep matching values
+debounce           → Wait for input to settle
+distinctUntilChanged → Remove consecutive duplicates
+flatMapLatest      → Cancel previous inner Flow
+flatMapConcat      → Sequential inner Flows
+flatMapMerge       → Concurrent inner Flows
+combine            → Latest value from every source
+zip                → Pair emissions one-to-one
+flowOn             → Change upstream execution context
+buffer             → Producer-consumer concurrency
+conflate           → Keep latest, skip intermediate values
+collectLatest      → Cancel previous collector block on new value
+StateFlow          → Hot state holder with current value
+SharedFlow         → Hot broadcast stream
+Channel            → Hot queue / one-consumer delivery
+callbackFlow       → Convert callbacks/listeners to Flow
+awaitClose         → Cleanup callback/listener on collection end
+channelFlow        → Concurrent producers into one Flow
+trySend            → Non-suspending channel send (for callbacks)
+stateIn            → Convert cold Flow to StateFlow
+receiveAsFlow      → Expose Channel as a Flow
+```
 
 ---
 # 16. Exceptions & Result
