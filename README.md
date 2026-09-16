@@ -88,8 +88,7 @@ Interview_preparation/
 │
 ├── DSA/                                   # 🧠 Data Structures & Algorithms
 │   ├── README.md                          # DSA Roadmap & Complexity Cheat Sheet
-│   ├── data_types_and_classification.md   # Data Types, Primitive/Non-Primitive & Linear/Non-Linear
-│   ├── time_and_space_complexity.md       # Complete Time & Space Complexity Guide
+│   ├── time_and_space_complexity.md       # Data Types, Classifications & Complexity Analysis (37 Q&As)
 │   └── dsa_java.md                        # Java DSA Technical Interview Guide (10+ Years)
 │
 ├── Android/                               # 🤖 Modern Android Engineering Guide
@@ -197,8 +196,7 @@ Senior & staff-level technical preparation guide focusing on algorithmic complex
 | Module / Topic | Description | Link |
 |---|---|---|
 | **DSA Roadmap & Index** | Complete DSA roadmap, complexity cheatsheet, and 7-step problem-solving strategy. | [Read Roadmap](DSA/README.md) |
-| **Data Types & Classification** | Primitive vs. non-primitive, JVM boxing rules, linear vs. non-linear structures, and 17 Q&As. | [Read Guide](DSA/data_types_and_classification.md) |
-| **Time & Space Complexity** | Asymptotic analysis, Big-O hierarchy ($O(1)$ to $O(n!)$), loop rules, and 20 Q&As. | [Read Guide](DSA/time_and_space_complexity.md) |
+| **Data Types & Complexity Analysis** | Primitive vs. non-primitive, JVM boxing, linear/non-linear classification, asymptotic analysis, Big-O hierarchy ($O(1)$ to $O(n!)$), and 37 comprehensive Q&As. | [Read Guide](DSA/time_and_space_complexity.md) |
 | **Java DSA Technical Interview Guide** | Architectural definitions, complexity analysis, HashMap internals, trees, heaps, graphs, and 32 senior Q&As. | [Read Guide](DSA/dsa_java.md) |
 
 ---
