@@ -8,7 +8,7 @@ Welcome to the **Data Structures and Algorithms (DSA)** technical preparation mo
 
 | File | Focus | Experience Level | Description |
 |---|---|---|---|
-| [**`time_and_space_complexity.md`**](./time_and_space_complexity.md) | Data Types, Classification, Time & Space Complexity | **Foundations to Senior Focus** | Complete guide to data types (primitive vs. non-primitive, JVM boxing), linear vs. non-linear data structures, Big-O hierarchy ($O(1)$ to $O(n!)$), loop calculation rules, trade-offs, and 37 targeted interview Q&As. |
+| [**`time_and_space_complexity.md`**](./time_and_space_complexity.md) | Data Types, Classification, Linked List Foundations, Time & Space Complexity | **Foundations to Senior Focus** | Complete guide to data types, Linked List prerequisite foundations (references, memory models, traversal, array vs list), linear vs. non-linear data structures, Big-O hierarchy ($O(1)$ to $O(n!)$), and 42 targeted interview Q&As. |
 | [**`dsa_java.md`**](./dsa_java.md) | Java DSA Architecture & Q&A | **10+ Years / Senior / Staff** | Deep-dive architectural definitions, time/space trade-offs, internal mechanics (`HashMap`, Red-Black trees, heaps, caches), and 32 senior-level interview questions. |
 
 ---

@@ -15,7 +15,19 @@
   - [5. Data Structures Classification Overview](#5-data-structures-classification-overview)
   - [6. Linear Data Structures](#6-linear-data-structures)
     - [Array](#array)
-    - [Linked List](#linked-list)
+    - [Linked List — Core Prerequisite Foundations & Mental Models](#linked-list--core-prerequisite-foundations--mental-models)
+      - [What You Should Know Before Linked List](#what-you-should-know-before-linked-list)
+      - [1. References / Pointers — VERY IMPORTANT](#1-references--pointers--very-important)
+      - [2. Classes and Objects (The Node Building Block)](#2-classes-and-objects-the-node-building-block)
+      - [3. null and Loop Termination](#3-null-and-loop-termination)
+      - [4. Arrays vs. Linked Lists Deep Comparison](#4-arrays-vs-linked-lists-deep-comparison)
+      - [5. Time Complexity of Linked List Operations](#5-time-complexity-of-linked-list-operations)
+      - [6. Traversal Mechanics (current = current.next)](#6-traversal-mechanics-current--currentnext)
+      - [7. Head and Tail Pointers](#7-head-and-tail-pointers)
+      - [8. Critical Distinction: Node vs. Linked List](#8-critical-distinction-node-vs-linked-list)
+      - [9. Visualizing the Internal Memory Structure](#9-visualizing-the-internal-memory-structure)
+      - [10. Types of Linked Lists](#10-types-of-linked-lists)
+      - [Recommended Learning Order & Study Roadmap](#recommended-learning-order--study-roadmap)
     - [Stack (LIFO)](#stack-lifo)
     - [Queue (FIFO)](#queue-fifo)
   - [7. Non-Linear Data Structures](#7-non-linear-data-structures)
@@ -46,9 +58,9 @@
   - [21. Time-Space Trade-Offs in Production](#21-time-space-trade-offs-in-production)
   - [22. Best Case, Average Case, and Worst Case Bounds](#22-best-case-average-case-and-worst-case-bounds)
 - [PART 3 — COMPLETE INTERVIEW QUESTIONS & ANSWERS](#part-3--complete-interview-questions--answers)
-  - [Section A: Data Types & Classification Questions (Q1–Q17)](#section-a-data-types--classification-questions)
-  - [Section B: Core Complexity Questions (Q18–Q27)](#section-b-core-complexity-questions)
-  - [Section C: Senior & Staff-Level Architectural Questions (Q28–Q37)](#section-c-senior--staff-level-architectural-questions)
+  - [Section A: Data Types & Structural Classification Questions (Q1–Q22)](#section-a-data-types--classification-questions)
+  - [Section B: Core Complexity Questions (Q23–Q32)](#section-b-core-complexity-questions)
+  - [Section C: Senior & Staff-Level Architectural Questions (Q33–Q42)](#section-c-senior--staff-level-architectural-questions)
 - [PART 4 — QUICK REFERENCE & MENTAL MODELS](#part-4--quick-reference--mental-models)
   - [Complexity Analysis Cheat Sheet](#complexity-analysis-cheat-sheet)
   - [Senior Interview Mindset & Mental Model](#senior-interview-mindset--mental-model)
@@ -198,16 +210,385 @@ Value:   [ 10 ] [ 20 ] [ 30 ] [ 40 ]
 * **Search (Unsorted):** $O(n)$.
 * **Insertion / Deletion:** $O(n)$ due to shifting elements.
 
-### Linked List
-A linked list consists of independent node objects connected through memory pointers/references.
+### Linked List — Core Prerequisite Foundations & Mental Models
+
+> **Senior Interview Context:** Before starting **Linked List** problems, there are fundamental concepts you must be completely comfortable with. If you master these foundational building blocks first, solving Linked List interview problems (like reversal, cycle detection, or fast & slow pointers) becomes intuitive rather than memorization.
+
 ```text
-[ Data: 10 | Next: ──> ] [ Data: 20 | Next: ──> ] [ Data: 30 | Next: null ]
+Node
+ ├── data
+ └── next ──────> another Node
 ```
+
+---
+
+#### What You Should Know Before Linked List
+
+##### 1. References / Pointers — VERY IMPORTANT
+
+The most critical prerequisite for understanding linked structures.
+
+A Linked List is built by connecting independent heap objects (**nodes**) using **memory references** (often called pointers in general computer science).
+
+In Java:
+```java
+class Node {
+    int data;
+    Node next;
+}
+```
+
+In Kotlin:
 ```kotlin
-class Node(val data: Int, var next: Node? = null)
+class Node(
+    var data: Int,
+    var next: Node? = null
+)
 ```
-* **Insertion / Deletion at known node:** $O(1)$.
-* **Search / Access:** $O(n)$ (sequential pointer traversal).
+
+**Crucial Mental Model:**
+> `Node next;` does **not** store the next node's actual data or an entire node copy. It stores a **memory reference (address) pointing to another `Node` object on the heap**.
+
+Key reference concepts you must understand:
+* **What an object reference is:** A 64-bit (or 32-bit with JVM Compressed OOPs) reference pointing to an allocated object on the heap.
+* **How one object refers to another:** The `next` reference field holds the address of the subsequent node.
+* **`null`:** Represents the absence of an object reference. In a linked list, `null` signifies the termination of the sequence.
+* **Creating objects:** Using `new Node()` in Java or `Node()` in Kotlin dynamically allocates a new node on the heap.
+* **Reference assignment:** Setting `first.next = second;` connects two independent heap objects.
+
+For example:
+```java
+Node first = new Node();
+Node second = new Node();
+
+first.data = 10;
+second.data = 20;
+
+first.next = second;
+```
+
+**Conceptual Memory Layout:**
+```text
+first
+  │
+  ▼
+┌─────────────┬───────────┐         ┌─────────────┬───────────┐
+│  data: 10   │  next: ───┼────────►│  data: 20   │  next:null│
+└─────────────┴───────────┘         └─────────────┴───────────┘
+                                          ▲
+                                          │
+                                        second
+```
+
+---
+
+##### 2. Classes and Objects (The Node Building Block)
+
+A Linked List is constructed using a dedicated **`Node` class**.
+
+```java
+class Node {
+    int data;
+    Node next;
+
+    Node(int data) {
+        this.data = data;
+        this.next = null;
+    }
+}
+```
+
+**Creating individual nodes:**
+```java
+Node node1 = new Node(10);
+Node node2 = new Node(20);
+Node node3 = new Node(30);
+```
+
+**Connecting them into a chain:**
+```java
+node1.next = node2;
+node2.next = node3;
+```
+
+**Resulting Logical Structure:**
+```text
+10 → 20 → 30 → null
+```
+
+---
+
+##### 3. `null` and Loop Termination
+
+You need to be completely comfortable with `null` references:
+
+1. The `next` reference of the **last node** in a singly linked list points to `null`:
+   ```text
+   10 → 20 → 30 → null
+   ```
+   This means:
+   ```java
+   node3.next == null
+   ```
+2. In algorithms, `current == null` serves as the universal **sentinel check** indicating we have reached the end of the list:
+   ```java
+   Node current = head;
+   while (current != null) {
+       // Process current node
+       current = current.next;
+   }
+   ```
+   > **Interview Tip:** Forgetting the `null` check or dereferencing `current.next` when `current` is already `null` is the #1 cause of `NullPointerException` in live coding rounds.
+
+---
+
+##### 4. Arrays vs. Linked Lists Deep Comparison
+
+Interviewers frequently ask candidates to contrast Arrays and Linked Lists across storage, access patterns, and performance:
+
+* **Array:** Contiguous indexed storage in physical memory.
+  ```text
+  [ 10 ] [ 20 ] [ 30 ] [ 40 ] [ 50 ]
+  ```
+* **Linked List:** Dispersed nodes connected through memory references.
+  ```text
+  [ 10 | next ] ──► [ 20 | next ] ──► [ 30 | next ] ──► null
+  ```
+
+| Dimension | Array / ArrayList | Linked List |
+|---|---|---|
+| **Memory Topology** | Contiguous memory block | Non-contiguous nodes scattered across the heap |
+| **Element Access** | Direct $O(1)$ random access via index (`arr[i]`) | Sequential $O(n)$ traversal from `head` |
+| **Size Flexibility** | Fixed (static array) or resized via copying ($O(n)$ resize) | Fully dynamic; grows/shrinks per node with zero re-allocation copying |
+| **Insert / Delete at Head** | $O(n)$ (requires shifting all subsequent elements) | $O(1)$ (constant pointer update) |
+| **Insert / Delete in Middle** | $O(n)$ (requires shifting elements) | $O(1)$ **once the target node/predecessor is known** ($O(n)$ to find it) |
+| **Memory Overhead** | Low (only the stored primitive or object reference) | High (stores data + 8-byte pointer + 16-byte object header per node) |
+| **CPU Cache Locality** | **Superior** (spatial locality allows L1/L2 hardware prefetching) | **Poor** (pointer chasing across heap triggers L1/L2 cache misses) |
+
+---
+
+##### 5. Time Complexity of Linked List Operations
+
+Connecting algorithmic complexity directly to Linked List mechanics:
+
+| Operation | Time Complexity | Auxiliary Space | Why / Mechanical Reason |
+|---|:---:|:---:|---|
+| **Access by index ($k$-th element)** | $O(n)$ | $O(1)$ | No indexing math; must step through $k$ nodes sequentially |
+| **Search by value** | $O(n)$ | $O(1)$ | Linear scan from `head` to `tail` comparing each node's `data` |
+| **Insert at head** | $O(1)$ | $O(1)$ | `newNode.next = head; head = newNode;` |
+| **Delete at head** | $O(1)$ | $O(1)$ | `head = head.next;` |
+| **Insert after known node** | $O(1)$ | $O(1)$ | `newNode.next = curr.next; curr.next = newNode;` |
+| **Delete after known predecessor** | $O(1)$ | $O(1)$ | `curr.next = curr.next.next;` |
+| **Insert at tail (without tail pointer)** | $O(n)$ | $O(1)$ | Must traverse all $n$ nodes to reach the end |
+| **Insert at tail (with tail pointer)** | $O(1)$ | $O(1)$ | `tail.next = newNode; tail = newNode;` |
+| **Delete at tail (singly linked list)** | $O(n)$ | $O(1)$ | Even with a `tail` pointer, must traverse to find the $(n-1)$-th node |
+| **Traverse entire list** | $O(n)$ | $O(1)$ | Visits each of the $n$ nodes exactly once |
+
+> **Core Architectural Rule:** Linked Lists excel when your workload requires **frequent $O(1)$ insertions and deletions at boundaries or known references**, but degrade severely when workloads require random access or frequent searching.
+
+---
+
+##### 6. Traversal Mechanics (`current = current.next`)
+
+Moving through sequences is fundamentally different between arrays and linked lists:
+
+* **Array Traversal:**
+  ```java
+  for (int i = 0; i < arr.length; i++) {
+      System.out.println(arr[i]);
+  }
+  ```
+* **Linked List Traversal:**
+  ```java
+  Node current = head;
+
+  while (current != null) {
+      System.out.println(current.data);
+      current = current.next;
+  }
+  ```
+
+**Master this single line:**
+```java
+current = current.next;
+```
+It means:
+> **"Copy the memory reference stored in `current.next` into the local variable `current`, advancing our pointer to the next node in the heap."**
+
+---
+
+##### 7. Head and Tail Pointers
+
+These two reference pointers define the boundaries of the list:
+
+```text
+HEAD
+  │
+  ▼
+┌────┐      ┌────┐      ┌────┐      ┌────┐
+│ 10 │ ───► │ 20 │ ───► │ 30 │ ───► │ 40 │ ───► null
+└────┘      └────┘      └────┘      └────┘
+                                      ▲
+                                      │
+                                    TAIL
+```
+
+* **`head`:** Reference to the first node in the list.
+  * `head.next` refers to the second node.
+  * If `head == null`, the list is empty.
+* **`tail`:** Reference to the last node in the list.
+  * `tail.next` is strictly `null` in a standard singly linked list.
+
+---
+
+##### 8. Critical Distinction: Node vs. Linked List
+
+Do not confuse the building block with the collection container:
+
+* **`Node` (The Element):** Represents a single item storing raw data and pointer(s).
+  ```java
+  class Node {
+      int data;
+      Node next;
+  }
+  ```
+* **`LinkedList` (The Data Structure Container):** Manages the collection state, pointer boundaries, size, and encapsulates operations:
+  ```java
+  class SinglyLinkedList {
+      private Node head;
+      private Node tail;
+      private int size = 0;
+
+      public void addFirst(int val) {
+          Node newNode = new Node(val);
+          newNode.next = head;
+          head = newNode;
+          if (tail == null) tail = head;
+          size++;
+      }
+
+      public int size() {
+          return size;
+      }
+  }
+  ```
+
+---
+
+##### 9. Visualizing the Internal Memory Structure
+
+```text
+                       Linked List Structure
+
+HEAD
+  │
+  ▼
+┌──────────────┐          ┌──────────────┐          ┌──────────────┐
+│  data: 10    │          │  data: 20    │          │  data: 30    │
+│  next: ──────┼─────────►│  next: ──────┼─────────►│  next: null  │
+└──────────────┘          └──────────────┘          └──────────────┘
+```
+
+The relationship between any node during iteration is:
+```text
+current
+   │
+   ▼
+[ data | next ] ────────► [ data | next ]
+```
+
+---
+
+##### 10. Types of Linked Lists
+
+```mermaid
+graph LR
+    subgraph Singly Linked List
+        S1[10] --> S2[20] --> S3[30] --> SN[null]
+    end
+    
+    subgraph Doubly Linked List
+        D1[10] <--> D2[20] <--> D3[30]
+    end
+    
+    subgraph Circular Linked List
+        C1[10] --> C2[20] --> C3[30]
+        C3 --> C1
+    end
+```
+
+1. **Singly Linked List:**
+   * Each node contains data and a single `next` reference.
+   * Traversal is strictly unidirectional (forward only).
+   ```text
+   10 → 20 → 30 → null
+   ```
+2. **Doubly Linked List:**
+   * Each node contains data, a `next` reference, and a `prev` reference.
+   * Allows bidirectional traversal (forward and backward) and $O(1)$ deletion of any given node without needing predecessor traversal.
+   ```text
+   null ← 10 ⇄ 20 ⇄ 30 → null
+   ```
+3. **Circular Linked List:**
+   * The `tail` node's `next` reference points back to `head` instead of `null`.
+   * Useful for round-robin CPU scheduling, circular buffers, and media playlist repeat cycles.
+   ```text
+   10 ───► 20 ───► 30
+   ▲                │
+   └────────────────┘
+   ```
+
+---
+
+##### Recommended Learning Order & Study Roadmap
+
+For Google, Meta, and senior engineering interviews, study Linked Lists in this precise progressive sequence:
+
+```text
+1. References / Objects & Heap Allocation
+        │
+2. Node Class Structure
+        │
+3. Head & Tail Pointers
+        │
+4. Singly Linked List Implementation
+        │
+5. Traversal Mechanics (while current != null)
+        │
+6. Insertion (Head, Tail, Middle)
+        │
+7. Deletion (Head, Tail, Middle)
+        │
+8. Search & Value Lookup
+        │
+9. Reverse a Linked List (Iterative & Recursive)
+        │
+10. Fast & Slow Pointer Technique (Floyd's Tortoise & Hare)
+        │
+11. Detect Cycle & Find Cycle Start Node
+        │
+12. Find the Middle Node (One-Pass)
+        │
+13. Merge Two Sorted Lists (Splice without new nodes)
+        │
+14. Remove N-th Node From End of List
+        │
+15. Doubly Linked List Mechanics
+        │
+16. Circular Linked List & LRU Cache Design
+        │
+17. Advanced Problems (Reverse in K-Groups, Copy List with Random Pointer)
+```
+
+##### Most Important Prerequisite Rule
+
+If you remember only one single sentence before tackling Linked List interview questions:
+
+> **A Linked List is a collection of heap objects (nodes) where each node stores data and a reference to another node.**
+
+Master **references + `null` checks + `head` + `current = current.next` + pointer reassignment order**, and every complex Linked List interview question becomes manageable.
+
+---
 
 ### Stack (LIFO)
 A stack is a linear container enforcing **Last In, First Out (LIFO)**.
@@ -661,63 +1042,103 @@ The structural classification dictates the **natural access patterns and operati
 
 ---
 
+### Q18. What is an Object Reference in Java/Kotlin, and how does it enable Linked Lists? `[Junior]`
+**Answer:**
+An object reference is a 64-bit (or 32-bit with JVM Compressed OOPs) address pointing to an object allocated on the JVM heap, rather than holding the object data inline.
+
+In a Linked List, each `Node` instance contains a `next` reference holding the memory address of the subsequent `Node`. By executing `nodeA.next = nodeB;`, we create an explicit directed pointer from one heap object to another. This enables dynamic chaining of elements across non-contiguous memory without requiring pre-allocated contiguous blocks.
+
+---
+
+### Q19. Explain the expression `current = current.next` during Linked List traversal. What happens if `current` is `null`? `[Junior]`
+**Answer:**
+* **Mechanics:** `current = current.next` reads the memory reference stored in the `next` field of the node currently pointed to by the `current` variable, and updates `current` to point to that next node. This steps forward one position in the linear chain.
+* **Failure Case:** If `current` is already `null` (e.g., executing `null.next`), the runtime immediately throws a `NullPointerException` (Java) or fails compilation (Kotlin strict null safety).
+* **Prevention:** All traversal algorithms must guard with the sentinel condition `while (current != null)` before dereferencing `.next`.
+
+---
+
+### Q20. Why does an Array offer $O(1)$ random access, while a Linked List requires $O(n)$ access time? `[Mid]`
+**Answer:**
+* **Array:** Elements reside in a single contiguous block of physical RAM. Any element's memory address is calculated instantly in $O(1)$ time via pointer arithmetic:
+  $$\text{Address}(i) = \text{BaseAddress} + (i \times \text{SizeOfElement})$$
+* **Linked List:** Nodes are non-contiguous objects scattered randomly across the heap. There is zero mathematical relation between an element's logical index $k$ and its physical memory address. Accessing index $k$ requires dereferencing $k$ successive pointer hops starting from `head`, which scales linearly ($O(n)$).
+
+---
+
+### Q21. What is the architectural difference between a `Node` class and a `LinkedList` container class? `[Mid]`
+**Answer:**
+* **`Node` (The Element):** The low-level structural primitive that holds raw data payload (`data`) and reference pointers (`next`, `prev`). It has zero awareness of the overall list size, boundaries, or invariants.
+* **`LinkedList` (The Data Structure Container):** The high-level ADT manager that maintains references to the boundaries (`head`, `tail`), tracks metadata (`size`), and exposes encapsulated public API operations (`addFirst`, `addLast`, `remove`, `contains`) with invariant enforcement and null safety.
+
+---
+
+### Q22. When should a senior engineer choose an `ArrayList` over a `LinkedList` in production, despite theoretical $O(1)$ insertions? `[Senior]`
+**Answer:**
+In almost all real-world production systems, **`ArrayList` heavily outperforms `LinkedList`**, even for heavy-insertion workloads:
+1. **CPU Cache Locality:** `ArrayList` stores elements in contiguous memory. When the CPU fetches an element, hardware prefetchers load adjacent elements into L1/L2 cache lines (spatial locality). `LinkedList` nodes are scattered across the heap, triggering CPU cache misses on nearly every pointer hop.
+2. **Memory Overhead:** On a 64-bit JVM, every `Node` in a `LinkedList` incurs 24 bytes of overhead (16-byte object header + 8-byte pointer) just to store a 4-byte integer. `ArrayList` has zero per-element object header overhead.
+3. **GC Pressure:** Instantiating and discarding millions of tiny `Node` objects causes severe heap fragmentation and frequent GC collection pauses. `ArrayList` reuses its underlying contiguous array buffer.
+
+---
+
 ## Section B: Core Complexity Questions
 
-### Q18. What is Time Complexity? `[Junior]`
+### Q23. What is Time Complexity? `[Junior]`
 **Answer:**
 Time complexity measures how the number of fundamental computational operations performed by an algorithm scales as the input size ($n$) increases. It evaluates algorithmic scalability independent of hardware, language runtime, or compiler optimizations.
 
 ---
 
-### Q19. What is Space Complexity? `[Junior]`
+### Q24. What is Space Complexity? `[Junior]`
 **Answer:**
 Space complexity measures the total memory required by an algorithm as a function of the input size. In interviews, we distinguish between total space (including inputs) and **auxiliary space** (extra memory allocated for data structures and stack frames).
 
 ---
 
-### Q20. What is Big-O Notation? `[Junior]`
+### Q25. What is Big-O Notation? `[Junior]`
 **Answer:**
 Big-O notation is a mathematical metric that describes the asymptotic upper bound (worst-case ceiling) of an algorithm's growth rate as input size approaches infinity.
 
 ---
 
-### Q21. What is the difference between Time and Space Complexity? `[Junior]`
+### Q26. What is the difference between Time and Space Complexity? `[Junior]`
 **Answer:**
 Time complexity measures CPU operations and instruction growth; space complexity measures RAM allocation, heap objects, and call-stack frame growth.
 
 ---
 
-### Q22. What does $O(1)$ mean? `[Junior]`
+### Q27. What does $O(1)$ mean? `[Junior]`
 **Answer:**
 $O(1)$ denotes constant complexity, meaning operational work does not grow when the input size increases. Example: accessing an array element by index (`arr[0]`).
 
 ---
 
-### Q23. What does $O(n)$ mean? `[Junior]`
+### Q28. What does $O(n)$ mean? `[Junior]`
 **Answer:**
 $O(n)$ denotes linear complexity, where computational work grows directly and proportionally with input size. Example: a single loop scanning an unsorted array.
 
 ---
 
-### Q24. What does $O(\log n)$ mean? `[Junior]`
+### Q29. What does $O(\log n)$ mean? `[Junior]`
 **Answer:**
 $O(\log n)$ denotes logarithmic complexity, where the search space is divided by a constant factor at each step. Example: Binary Search.
 
 ---
 
-### Q25. What does $O(n^2)$ mean? `[Junior]`
+### Q30. What does $O(n^2)$ mean? `[Junior]`
 **Answer:**
 $O(n^2)$ denotes quadratic complexity, where operations scale with the square of the input size. Example: two nested loops iterating over the same $n$ elements.
 
 ---
 
-### Q26. Why is $O(\log n)$ generally better than $O(n)$? `[Junior]`
+### Q31. Why is $O(\log n)$ generally better than $O(n)$? `[Junior]`
 **Answer:**
 As $n$ becomes large, logarithmic growth increases exponentially slower than linear growth. For $n = 1,000,000$, $O(\log_2 n) \approx 20$ operations, whereas $O(n)$ takes $1,000,000$ operations.
 
 ---
 
-### Q27. Why is $O(n \log n)$ preferred over $O(n^2)$? `[Junior]`
+### Q32. Why is $O(n \log n)$ preferred over $O(n^2)$? `[Junior]`
 **Answer:**
 For $n = 100,000$:
 * $n \log_2 n \approx 1,700,000$ operations.
@@ -728,13 +1149,13 @@ $O(n \log n)$ scales efficiently for large-scale data, which is why standard lib
 
 ## Section C: Senior & Staff-Level Architectural Questions
 
-### Q28. Is an $O(1)$ algorithm always faster than an $O(n)$ algorithm? `[Senior]`
+### Q33. Is an $O(1)$ algorithm always faster than an $O(n)$ algorithm? `[Senior]`
 **Answer:**
 **Not necessarily.** Big-O describes asymptotic scalability as $n \to \infty$, not absolute run time for small inputs. An $O(1)$ algorithm with a huge constant factor ($c = 10,000$) will be slower than an $O(n)$ algorithm for $n < 10,000$. Big-O wins only when input size exceeds the cross-over threshold.
 
 ---
 
-### Q29. Can two algorithms have the same Big-O complexity but dramatically different real-world performance? `[Senior]`
+### Q34. Can two algorithms have the same Big-O complexity but dramatically different real-world performance? `[Senior]`
 **Answer:**
 **Yes.** Two algorithms can both be $O(n)$ while performing very differently due to:
 1. **Constant Factors:** One does 2 comparisons per loop; the other does 50.
@@ -744,7 +1165,7 @@ $O(n \log n)$ scales efficiently for large-scale data, which is why standard lib
 
 ---
 
-### Q30. Is the algorithm with the lowest time complexity always the optimal engineering choice? `[Senior]`
+### Q35. Is the algorithm with the lowest time complexity always the optimal engineering choice? `[Senior]`
 **Answer:**
 **No.** Architecture is about balancing trade-offs:
 * **Code Complexity & Maintainability:** A simple $O(n)$ solution may be far more maintainable than a complex $O(\log n)$ balanced tree.
@@ -754,7 +1175,7 @@ $O(n \log n)$ scales efficiently for large-scale data, which is why standard lib
 
 ---
 
-### Q31. What is a Time-Space Trade-Off? Give a production example. `[Senior]`
+### Q36. What is a Time-Space Trade-Off? Give a production example. `[Senior]`
 **Answer:**
 A time-space trade-off involves using extra memory to minimize CPU execution latency, or accepting extra computation to keep memory footprint bounded.
 
@@ -762,7 +1183,7 @@ A time-space trade-off involves using extra memory to minimize CPU execution lat
 
 ---
 
-### Q32. What is Amortized Complexity? `[Senior]`
+### Q37. What is Amortized Complexity? `[Senior]`
 **Answer:**
 Amortized analysis calculates the average cost of an operation over a continuous sequence of operations, guaranteeing that the aggregate cost is bounded even if an occasional single operation is expensive.
 
@@ -774,20 +1195,20 @@ Amortized analysis calculates the average cost of an operation over a continuous
 
 ---
 
-### Q33. Worst-Case vs. Average-Case Complexity in Hash Tables. `[Mid]`
+### Q38. Worst-Case vs. Average-Case Complexity in Hash Tables. `[Mid]`
 **Answer:**
 * **Average Case:** With a uniform hash distribution, `HashMap.get()` is $O(1)$.
 * **Worst Case:** If all keys hash to the same bucket (hash flooding attack or pathological keys), traditional chaining degrades to a linked list ($O(n)$). In modern Java (Java 8+), buckets treeify into Red-Black trees, bounding worst-case lookup to $O(\log n)$.
 
 ---
 
-### Q34. Why do engineers analyze Big-O instead of benchmarking execution time? `[Mid]`
+### Q39. Why do engineers analyze Big-O instead of benchmarking execution time? `[Mid]`
 **Answer:**
 Physical execution times are machine-dependent, influenced by CPU clock speeds, background OS processes, memory architecture, and compiler versions. Big-O provides a universal, hardware-agnostic mathematical model to compare algorithms purely based on their fundamental growth rate.
 
 ---
 
-### Q35. How do you analyze an algorithm's complexity during a live interview? `[Senior]`
+### Q40. How do you analyze an algorithm's complexity during a live interview? `[Senior]`
 **Answer:**
 1. Identify the input variable ($n$, $m$).
 2. Analyze loop structures (single vs. nested).
@@ -798,7 +1219,7 @@ Physical execution times are machine-dependent, influenced by CPU clock speeds, 
 
 ---
 
-### Q36. What is more important in production: Time Complexity or Space Complexity? `[Senior]`
+### Q41. What is more important in production: Time Complexity or Space Complexity? `[Senior]`
 **Answer:**
 Neither is universally more important; the choice is determined by system constraints and SLAs:
 * In low-latency user interfaces or trading systems, **Time Complexity** is paramount.
@@ -806,7 +1227,7 @@ Neither is universally more important; the choice is determined by system constr
 
 ---
 
-### Q37. How do you systematically optimize an algorithmic bottleneck? `[Senior]`
+### Q42. How do you systematically optimize an algorithmic bottleneck? `[Senior]`
 **Answer:**
 1. Profile first to confirm the true bottleneck (avoid premature optimization).
 2. Look for redundant calculations (introduce caching, memoization, or prefix sums).
