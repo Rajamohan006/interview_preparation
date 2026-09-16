@@ -14,17 +14,17 @@ Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Medi
 
 ## 📚 Reference Guides
 
-| Guide | Modules | Covers |
-|---|---|---|
-| [**android.md**](./android.md) | 15 | Platform stack, ART, R8, APK/AAB, components, Intents, permissions, notifications, views, RecyclerView, custom views, touch dispatch, jank, ViewModel, Navigation, coroutines, Flow, Room, DataStore, Retrofit, serialization, offline-first, WorkManager, Doze, FCM, Hilt/Koin, leaks, ANR, startup, profiling, app size, CameraX, Media3, biometrics, Firebase, Play Integrity, edge-to-edge, predictive back, foldables, accessibility, i18n, interop |
-| [**compose.md**](./compose.md) | 15 | Recomposition, compiler internals, slot table, stability, strong skipping, effect APIs, snapshot system, state hoisting, navigation, layouts, lazy lists, `TextFieldState`, UDF, semantics, Material 3, animation, gestures, Canvas, `Modifier.Node`, compiler metrics, testing |
-| [**xml.md**](./xml.md) | 12 | XML architecture, custom attributes, custom views, resources, styles vs themes, drawables, inflation, adaptive layouts, ConstraintLayout helpers, selectors, animations, Data Binding, accessibility, MotionLayout, Navigation graphs, dark theme, qualifiers |
-| [**architecture_patterns.md**](./architecture_patterns.md) | 9 | MVC/MVP/MVVM/MVI compared with code, UDF and state modelling, Clean Architecture, repository pattern, modularization, SOLID on Android, design patterns, choosing an architecture |
-| [**gradle_build.md**](./gradle_build.md) | 11 | Gradle lifecycle, AGP pipeline, build variants, version catalogs, KSP vs kapt, convention plugins, R8, signing and distribution, build performance, CI/CD |
-| [**knowledge_points.md**](./knowledge_points.md) | 15 | Boot sequence, Zygote and CoW, class loaders, reference types, heap structure, serialization, Intent flags, NDK/JNI, licenses, ML Kit, MediaPipe/TFLite, AIDL, multi-process, APK anatomy and signing, ANR triage |
-| [**testing_security.md**](./testing_security.md) | 12 | Testing pyramid, JUnit/MockK/Turbine, Robolectric, Espresso, UI Automator, coverage, CI, bug classification, pentesting, reverse engineering, BOLA, OAuth, Keystore, encrypted storage, TLS and pinning, app hardening, OWASP MASVS |
-| [**kmp_cmp.md**](./kmp_cmp.md) | 9 | KMP fundamentals, source sets, `expect`/`actual`, Skiko/Skia rendering, Ktor, SQLDelight, Koin, serialization, DataStore, Swift interop, memory model, XCFrameworks, testing, adoption strategy |
-| [**CD_Setup_Guide.md**](./CD_Setup_Guide.md) | 10 steps | A concrete CI/CD pipeline walkthrough: keystore encoding, Firebase, SonarCloud, Play service account, secrets, branch protection, verification, rollback, troubleshooting |
+| Guide | Modules | Covers | Integrated Questions |
+|---|---|---|---|
+| [**android.md**](./android.md) | 15 | Platform stack, ART, components, Intents, permissions, notifications, views, RecyclerView, coroutines, Flow, Room, DataStore, Retrofit, WorkManager, Hilt/Koin, leaks, ANR, startup, profiling, CameraX, Media3, edge-to-edge, accessibility, interop | **215 Questions** (8 core sections) |
+| [**compose.md**](./compose.md) | 15 | Recomposition, compiler internals, slot table, stability, strong skipping, effect APIs, snapshot system, state hoisting, navigation, layouts, lazy lists, `TextFieldState`, UDF, semantics, Material 3, animation, gestures, Canvas, `Modifier.Node`, testing | **40 Questions** (§15) |
+| [**xml.md**](./xml.md) | 12 | XML architecture, custom attributes, custom views, resources, styles vs themes, drawables, inflation, adaptive layouts, ConstraintLayout helpers, selectors, animations, Data Binding, accessibility, MotionLayout, Navigation graphs | **30 Questions** (§12) |
+| [**architecture_patterns.md**](./architecture_patterns.md) | 9 | MVC/MVP/MVVM/MVI compared with code, UDF and state modelling, Clean Architecture, repository pattern, modularization, SOLID on Android, design patterns, choosing an architecture | **50 Questions** (§9, Architecture & System Design) |
+| [**gradle_build.md**](./gradle_build.md) | 11 | Gradle lifecycle, AGP pipeline, build variants, version catalogs, KSP vs kapt, convention plugins, R8, signing and distribution, build performance, CI/CD | **20 Questions** (§11) |
+| [**knowledge_points.md**](./knowledge_points.md) | 15 | Boot sequence, Zygote and CoW, class loaders, reference types, heap structure, serialization, Intent flags, NDK/JNI, licenses, ML Kit, MediaPipe/TFLite, AIDL, multi-process, APK anatomy and signing, ANR triage | **30 Questions** (§15) |
+| [**testing_security.md**](./testing_security.md) | 12 | Testing pyramid, JUnit/MockK/Turbine, Robolectric, Espresso, UI Automator, coverage, CI, bug classification, pentesting, reverse engineering, BOLA, OAuth, Keystore, encrypted storage, TLS and pinning, app hardening, OWASP MASVS | **25 Questions** (§12) |
+| [**kmp_cmp.md**](./kmp_cmp.md) | 9 | KMP fundamentals, source sets, `expect`/`actual`, Skiko/Skia rendering, Ktor, SQLDelight, Koin, serialization, DataStore, Swift interop, memory model, XCFrameworks, testing, adoption strategy | **20 Questions** (§9) |
+| [**CD_Setup_Guide.md**](./CD_Setup_Guide.md) | 10 steps | A concrete CI/CD pipeline walkthrough: keystore encoding, Firebase, SonarCloud, Play service account, secrets, branch protection, verification, rollback, troubleshooting | Pipeline Walkthrough |
 
 ---
 

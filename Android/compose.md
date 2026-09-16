@@ -50,10 +50,10 @@ stateDiagram-v2
     Leaving --> [*]
 ```
 
-### Why it is Used
+### Why It Is Used
 Unlike legacy Android XML views which are stateful objects retained in memory and manually modified via mutations, Composables are stateless execution blocks. This prevents sync errors between data models and UI rendering, drastically reducing memory leaks and UI bugs.
 
-### How it Works Internally
+### How It Works Internally
 The Compose runtime executes composable functions and records the output in a **Slot Table** (implemented as a **Gap Buffer**).
 1. **Initial Composition:** The compiler runs the functions, records calls, parameters, and state variables, and inserts nodes into the Slot Table.
 2. **Recomposition:** When a state variable changes, the Compose runtime locates the corresponding slots in the table and re-executes only the composable blocks that read that state.
@@ -62,6 +62,13 @@ The Compose runtime executes composable functions and records the output in a **
 ---
 
 ## 1.2 Life Cycle Phases & Smart Recomposition
+
+### Definition
+* **Composition** — the tree Compose builds by running your composable functions. It is a description of the UI, not the UI objects themselves.
+* **The three phases of a frame** — **Composition** (run composables to build/update the tree), **Layout** (measure and place each node), **Drawing** (render). Compose can skip earlier phases when only a later one is affected.
+* **Recomposition** — re-running a composable because a state object it **read** changed. Compose tracks reads, so only the affected composables re-run.
+* **Smart recomposition (skipping)** — Compose comparing a composable's parameters against the previous values and **skipping the call entirely** when nothing relevant changed.
+* **Enter / leave the composition** — a composable appearing in or disappearing from the tree. This is what starts and cancels `LaunchedEffect` and runs `onDispose`.
 
 ### Detailed Breakdown
 * **Initial Render (Composition):** The first time Compose builds the view tree.
@@ -72,6 +79,13 @@ The Compose runtime executes composable functions and records the output in a **
 ---
 
 ## 1.3 The Compose Graphics & Rendering Pipeline
+
+### Definition
+* **Rendering pipeline** — the path from your composable functions to pixels on the display.
+* **`LayoutNode`** — the node Compose builds per UI element; the tree of them is what actually gets measured, placed, and drawn.
+* **`RenderNode` / display list** — the recorded sequence of drawing commands the GPU replays, so a redraw does not require re-running your draw code.
+* **`RenderThread`** — the separate thread that replays those commands on the GPU, keeping GPU work off the UI thread.
+* **VSync and the frame budget** — the display refresh pulse that paces everything. The whole pipeline must complete within 16.6 ms at 60 Hz, or 8.3 ms at 120 Hz.
 
 ### Concept Overview
 A common misconception is that Jetpack Compose compiles layout definitions into native Android `View` subclasses (like `LinearLayout`, `FrameLayout`, or `TextView`) at runtime. **This is incorrect.**
@@ -121,6 +135,13 @@ graph TD
 ---
 
 ## 1.4 Compose Multiplatform (CMP) Rendering Architecture: Android vs. iOS
+
+### Definition
+* **Compose Multiplatform (CMP)** — running the **same Compose runtime, state system, and layout logic** on platforms other than Android. Only the drawing backend differs.
+* **Skia** — the 2D graphics engine (also used by Chrome and Flutter) that CMP draws through on non-Android targets.
+* **Skiko** — the Kotlin bindings that let Compose issue Skia commands.
+* **The key architectural fact** — CMP does **not** map composables to platform widgets. On iOS it renders custom-drawn content into a single `CAMetalLayer`, so nothing is a `UIView`.
+* **What that trades away** — platform behaviors that would otherwise be inherited for free (text selection callouts, system accessibility integration, automatic OS-version updates) must instead be implemented.
 
 ### Conceptual Diagram
 
@@ -291,6 +312,13 @@ graph TD
 
 ## 2.2 Complete Effect APIs Reference
 
+### Definition
+* **Side effect** — anything a composable does that is visible outside its own scope: starting a request, writing to a database, registering a listener, logging.
+* **Why they need special APIs** — a composable can run many times per frame, in any order, on any thread, and can be cancelled and restarted. Calling a side effect directly in the body would execute it an unpredictable number of times.
+* **Effect handler** — an API that runs a side effect at a **defined point** in the composition lifecycle, with defined cancellation.
+* **Keys** — the values an effect watches. When a key changes the effect is cancelled and restarted; with a constant key it runs once for the composable's lifetime.
+* **Cleanup** — releasing what the effect acquired when it leaves the composition, which `DisposableEffect` makes mandatory.
+
 ### 1. `LaunchedEffect`
 * **Definition:** Launches a Coroutine scope when entering the composition. If any parameter key changes, it cancels the running coroutine and starts a new one. It automatically cancels execution when leaving the composition.
 * **Use Case:** Triggering an API call when a page is opened, or starting a timer tied to a screen.
@@ -439,6 +467,14 @@ graph TD
 
 ## 3.3 Saving and Restoring Complex State
 
+### Definition
+* **The two failure modes** — a **configuration change** destroys and recreates the Activity, and **process death** destroys everything in memory. `remember` survives neither.
+* **`rememberSaveable`** — stores a value in the saved-state `Bundle`, so it survives both.
+* **`Saver`** — the adapter telling `rememberSaveable` how to convert an arbitrary type into something a `Bundle` can hold, and back again.
+* **`listSaver` / `mapSaver`** — ready-made savers that represent an object as a list or map of primitives.
+* **`@Parcelize`** — the alternative: make the type `Parcelable` so no custom saver is needed.
+* **The size limit** — the Bundle travels through a Binder transaction capped near 1 MB, so save identifiers and scroll positions, never data payloads.
+
 When using `rememberSaveable`, simple data types (Strings, numbers) are saved automatically. For custom data objects, use these three options:
 
 ### 1. `@Parcelize`
@@ -544,6 +580,13 @@ selected.add(id)             // Recomposes readers automatically
 
 ## 4.1 Safe Navigation
 
+### Definition
+* **Navigation graph** — the declared set of destinations in an app and the connections between them, so routing lives in one reviewable place rather than scattered across screens.
+* **`NavController`** — the object that performs navigation and owns the **back stack**.
+* **`NavBackStackEntry`** — one entry on that stack. Each is its own `LifecycleOwner`, `ViewModelStoreOwner`, and `SavedStateRegistryOwner`, which is what makes ViewModels scoped to a destination or a flow possible.
+* **Type-safe arguments** — arguments checked at **compile time**, so a missing or mistyped one fails the build rather than throwing at runtime.
+* **Why arguments must stay small** — they are stored in a `Bundle` bounded by the Binder transaction limit, so you pass an ID and re-fetch.
+
 Navigation in Jetpack Compose is managed by a `NavController` routing through a `NavHost`. Type-safety is achieved using Kotlin Serialization.
 
 ```mermaid
@@ -597,6 +640,13 @@ class DetailViewModel @Inject constructor(
 
 ## 5.1 Basic Layouts & Modifiers
 
+### Definition
+* **Layout composable** — `Column`, `Row`, and `Box`: the building blocks that arrange children vertically, horizontally, or stacked.
+* **`Modifier`** — an ordered, immutable chain describing everything about an element that is not its content: size, padding, background, click handling, semantics.
+* **Order is semantics, not style** — each modifier wraps the result of the previous one, so `padding().background()` and `background().padding()` produce visibly different results.
+* **Arrangement and Alignment** — `Arrangement` distributes children **along** the layout's main axis; `Alignment` positions them **across** the cross axis.
+* **Constraints** — the minimum and maximum width and height a parent passes down, which the child must resolve within.
+
 * **Column:** Arranges children vertically.
 * **Row:** Arranges children horizontally.
 * **Box:** Overlaps children, equivalent to a FrameLayout.
@@ -620,6 +670,13 @@ Modifier
 ---
 
 ## 5.2 Lists & Compose Pager (Horizontal/Vertical)
+
+### Definition
+* **Lazy layout** — a container that composes only the items currently visible plus a small prefetch buffer, discarding compositions for items scrolled away. A plain `Column` composes **every** child immediately.
+* **`LazyColumn` / `LazyRow` / grids** — the lazy equivalents of the basic layouts.
+* **`key`** — a stable identity for each item. Without it the slot table identifies items by **position**, so inserting at the top reattaches every item's remembered state to the wrong data.
+* **`contentType`** — a hint telling the reuse pool which item compositions are interchangeable, so a header composition is not reused for a body row.
+* **Pager** — a horizontally or vertically paging container, where each page snaps into place; `PagerState` exposes the current page and scroll offset.
 
 `LazyColumn` and `LazyRow` are scrolling lists, replacing `RecyclerView`. They only compose visible children.
 
@@ -688,7 +745,11 @@ Standard layouts compose first, then measure, then place. `SubcomposeLayout` bre
 ## 5.4 Lazy Lists: Keys, Content Types, and Performance
 
 ### Definition
-`LazyColumn`, `LazyRow`, `LazyVerticalGrid`, and `LazyVerticalStaggeredGrid` compose only the items currently visible plus a small buffer, discarding compositions for items scrolled away.
+* **Lazy list** — a scrolling container that composes only the visible window plus a prefetch buffer, so list cost is proportional to what is on screen rather than to the data set.
+* **Slot table identity** — Compose remembers state by **call-site position** by default. In a list, that means position *is* identity unless you say otherwise.
+* **`key`** — the stable identifier that decouples an item's remembered state from its position, so inserts, removals, and reorders keep state attached to the right item.
+* **`contentType`** — declares which item compositions can be reused for one another, letting the pool match like-for-like rather than forcing a full recomposition.
+* **`animateItem()`** — the built-in insert, removal, and reorder animation, which relies entirely on `key` to know what moved where.
 
 ### Why It Is Used
 A `Column` inside a `verticalScroll` composes **every** child immediately. With 1,000 items that is 1,000 compositions before the first frame. Lazy layouts compose roughly the visible window instead.
@@ -782,7 +843,10 @@ fun PagedFeed(viewModel: FeedViewModel) {
 ## 5.5 Text and TextField State
 
 ### Definition
-`BasicTextField` (Compose 1.7+) manages editing through a `TextFieldState` object rather than through a value/callback pair.
+* **The problem with the value/callback API** — with `TextField(value, onValueChange)` every keystroke round-trips through your state. Any latency in that path (a slow ViewModel, a debounce, async validation) makes the cursor jump or characters drop.
+* **`TextFieldState`** — an object that owns the text, the selection, and the composition region directly, so edits apply to the field immediately and you **observe** changes rather than mediating them.
+* **`InputTransformation`** — a filter applied **before** an edit is accepted, used to reject characters or cap length.
+* **`OutputTransformation`** — changes only what is **displayed** (formatting a phone number) while the stored value remains unformatted.
 
 ### Why It Is Used
 The old `TextField(value, onValueChange)` API had a structural problem: the value round-trips through your state on every keystroke, so any latency (a slow ViewModel, a debounce, an async validation) makes the cursor jump or characters drop. `TextFieldState` keeps the edit buffer in the field, eliminating the race entirely.
@@ -957,7 +1021,7 @@ graph TD
     SemanticsNode -->|UI Testing Framework| Testing[UI Automator / ComposeTestRule]
 ```
 
-### Why it is Used
+### Why It Is Used
 Composables do not map directly to standard Android OS `View` objects, meaning accessibility services cannot read them naturally. Compose generates the Semantics tree to communicate state and metadata to the OS accessibility framework.
 
 ### Invalidation & Custom Semantics
@@ -1073,7 +1137,11 @@ Surface(color = MaterialTheme.colorScheme.surface) {
 ## 10.1 Choosing the Right Animation API
 
 ### Definition
-Compose's animation APIs form a ladder from one-line value animation to fully manual control.
+* **Animation** — interpolating a value over time and driving it from the frame clock, so the UI moves continuously rather than jumping between states.
+* **The ladder** — Compose offers several APIs from one-line value animation to fully manual control. Choosing the lowest one that does the job keeps the code short and correct.
+* **`AnimationSpec`** — the *character* of the motion: `tween` (a fixed duration and easing curve), `spring` (physics-based, defined by stiffness and damping), `keyframes` (explicit values at points in time).
+* **Interruptibility** — whether an in-flight animation can change target smoothly. It is the property that separates `animate*AsState` from `Animatable`, and it is what gesture-driven motion requires.
+* **`label`** — a name that makes an animation identifiable in the Animation Inspector.
 
 ### Why It Is Used
 Picking the lowest-level API that does the job keeps animation code short and correct. Reaching for `Animatable` when `animateFloatAsState` would do produces state-management bugs; the reverse produces animations that cannot be interrupted properly.
@@ -1237,7 +1305,12 @@ fun SharedNav() {
 ## 11.1 The Pointer Input Pipeline
 
 ### Definition
-`Modifier.pointerInput` gives a composable a coroutine scope that receives raw pointer events, on top of which the higher-level gesture detectors are built.
+* **Pointer event** — one report of a finger or stylus: its position, and whether it went down, moved, or lifted.
+* **`Modifier.pointerInput`** — gives a composable a **coroutine scope** that receives those events, so a multi-stage gesture reads as sequential code instead of a state machine.
+* **Gesture detector** — a higher-level helper built on that scope: `detectTapGestures`, `detectDragGestures`, `detectTransformGestures`.
+* **Passes** — events travel in three rounds: **Initial** (parent first, the chance to intercept), **Main** (child first, normal handling), **Final** (parent first, cleanup).
+* **Consumption** — `change.consume()` marks an event handled so ancestors skip it. It is Compose's replacement for `requestDisallowInterceptTouchEvent`.
+* **The key restart** — `pointerInput(key)` cancels and restarts its block when the key changes, which is why an unstable key breaks a drag in progress.
 
 ### Why It Is Used
 Compose replaces the View system's three-method dispatch with a coroutine model: you `await` events in sequence, which makes multi-stage gestures (long-press then drag, tap then double-tap) read as straight-line code instead of a state machine.
@@ -1351,7 +1424,11 @@ fun CollapsingHeaderScreen() {
 ## 12.1 Canvas and the Draw Scope
 
 ### Definition
-`Canvas` (and `Modifier.drawBehind` / `drawWithContent` / `drawWithCache`) gives direct access to a `DrawScope` for issuing drawing commands.
+* **Canvas** — a surface for issuing drawing commands directly, rather than composing existing UI elements.
+* **`DrawScope`** — the receiver inside a draw block, providing `drawRect`, `drawPath`, `drawArc`, and the element's `size`. It works in **pixels**, so `dp` values must be converted with `toPx()`.
+* **Why draw instead of compose** — a chart or progress indicator built from composables costs composition and layout for every element; drawn directly it is a single node with no layout children.
+* **`drawBehind` vs `drawWithContent` vs `drawWithCache`** — behind the content, around the content (you call `drawContent()` where you want it), or a cached setup block plus a draw block.
+* **Why caching matters** — the draw lambda runs on **every frame**, so any `Path` or `Brush` allocated inside it is allocated per frame.
 
 ### Why It Is Used
 Charts, progress indicators, signature pads, and decorative effects are far cheaper as a single draw call than as a hierarchy of composables — and they skip composition and layout entirely.
@@ -1445,7 +1522,11 @@ fun LabelledArc(label: String) {
 ## 12.2 Custom Modifiers with Modifier.Node
 
 ### Definition
-`Modifier.Node` (Compose 1.5+) is the modern API for writing modifiers that hold state or hook into measure/draw/pointer phases, replacing the older `composed { }` factory.
+* **Custom modifier** — extending the modifier chain with your own behavior, so it composes with built-in modifiers and respects ordering.
+* **`Modifier.Node`** — the long-lived object holding that behavior and any state it needs. It participates in the measure, draw, pointer, or semantics phases by implementing the matching interface.
+* **`ModifierNodeElement`** — the immutable, `equals`-comparable description of the modifier. Compose compares the new element against the previous one to decide whether to **update** the existing node or create a new one.
+* **`create()` vs `update()`** — `create` runs once; `update` applies changed parameters **in place**, which is what lets a running animation survive a recomposition.
+* **Why not `composed { }`** — the older approach creates a **composition per modifier instance**, defeating comparison and reuse. `Modifier.Node` participates in no composition at all.
 
 ### Why It Is Used
 `composed { }` creates a composable per modifier instance, defeating modifier reuse and comparison, and adding a composition for every element the modifier is applied to. `Modifier.Node` is a plain object with an explicit lifecycle — measurably cheaper, and it does not participate in composition at all.
@@ -1526,7 +1607,12 @@ private class AspectRatioNode(var ratio: Float) : Modifier.Node(), LayoutModifie
 ## 13.1 Diagnosing and Fixing Recomposition
 
 ### Definition
-Finding which composables recompose more than they should, and why, using measured data rather than intuition.
+* **The performance problem in Compose** — it is almost always **excessive recomposition**: composables re-running when their output could not have changed.
+* **Skippable** — a composable Compose can skip when its parameters are unchanged. A composable that is *restartable but not skippable* re-runs whenever its parent does.
+* **Stability** — the compiler's judgement about whether a parameter type's changes are observable. An **unstable** parameter makes the composable unskippable.
+* **Compiler metrics** — build reports listing every composable with its skippability and each parameter's stability, so the diagnosis is data rather than guesswork.
+* **Recomposition counts** — the Layout Inspector's live per-composable count of recompositions and skips.
+* **The measurement rule** — always profile a **release** build; debug Compose is dramatically slower and directionally misleading.
 
 ### Why It Is Used
 Compose performance problems are almost always excessive recomposition, and the cause is almost never where it feels like it is. The compiler can tell you exactly which composables are skippable and which parameters are unstable.
@@ -1625,7 +1711,12 @@ fun scrollPerformance() = benchmarkRule.measureRepeated(
 ## 14.1 The Compose Test API
 
 ### Definition
-`createComposeRule()` (or `createAndroidComposeRule<Activity>()`) sets up a test composition you can drive with finders, assertions, and actions against the **semantics tree**.
+* **Semantics tree** — the parallel tree describing each element's meaning: its text, role, state, and actions. It is what accessibility services read, and what Compose tests query.
+* **Why that matters** — tests match on **meaning** rather than on view hierarchy, which makes them far more stable than Espresso's view matchers, and means writing testable Compose and accessible Compose are the same activity.
+* **Finder / assertion / action** — the three test primitives: locate a node (`onNodeWithText`), assert something about it (`assertIsDisplayed`), or act on it (`performClick`).
+* **`testTag`** — an identifier attached purely for tests, used when no user-visible text identifies an element.
+* **Automatic synchronization** — the test rule waits until the composition is idle before each assertion, so no `sleep` is needed.
+* **The test clock** — the animation clock, which can be taken off automatic advance so animation states are asserted deterministically.
 
 ### Why It Is Used
 Compose tests match on semantics, not view hierarchy, so they are far more stable than Espresso's view matchers. They also run with a controlled clock, which removes the flakiness that animations cause in traditional UI tests.
@@ -1739,16 +1830,648 @@ compose.onNodeWithContentDescription("Like, 42 likes")
 
 ---
 
-# 15. Interview Questions
+# 15. Jetpack Compose Interview Questions (40 Questions)
 
-The Compose question bank lives in the shared question package:
+> Core topics: Composable lifecycle, recomposition, stability, effects, state hoisting, layout, animation, gestures, performance, testing, and interop.
+> Difficulty: `[Junior]` `[Mid]` `[Senior]`
 
-**➡️ [`interview_questions/09_compose.md`](./interview_questions/09_compose.md) — 40 Compose questions with answers, follow-ups, and code.**
+---
 
-See also:
-* [`interview_questions/04_jetpack_architecture.md`](./interview_questions/04_jetpack_architecture.md) — state holders, ViewModel, Navigation
-* [`interview_questions/10_performance_memory.md`](./interview_questions/10_performance_memory.md) — recomposition cost, startup, frame timing
-* [`interview_questions/00_INDEX.md`](./interview_questions/00_INDEX.md) — full 370-question index
+### Q1. What are the three phases of a Compose frame? `[Junior]`
+
+**Answer**
+1. **Composition** — run composables to build/update the UI tree.
+2. **Layout** — measure and place each node.
+3. **Drawing** — render into the canvas.
+
+Compose can skip earlier phases: a state read only in the draw phase re-runs only drawing.
+
+**Follow-up:** *Why does that make `Modifier.offset { }` cheaper than `Modifier.offset(x.dp)`?*
+> The lambda overload reads the value during **layout**, so composition is skipped entirely. The value overload reads it during **composition**, so the whole composable recomposes on every change.
+
+---
+
+### Q2. What is recomposition and what triggers it? `[Junior]`
+
+**Answer**
+Re-running a composable to update the UI. It is triggered when a **snapshot state object that the composable read** changes. Compose records reads during composition, so only the composables that actually read the changed state are invalidated.
+
+**Follow-up:** *Why must a composable be side-effect free?*
+> It can run many times per frame, in any order, on any thread, and can be cancelled and restarted. Any side effect (a network call, a log, a counter increment) would execute an unpredictable number of times.
+
+---
+
+### Q3. What does the Compose compiler actually do to a composable function? `[Senior]`
+
+**Answer**
+It adds a `Composer` parameter and a `$changed` bitmask, and wraps the body in `startRestartGroup`/`endRestartGroup`. Inside, it compares each parameter against the value stored in the **slot table** from the previous composition, and if nothing changed and the composable is skippable, calls `skipToGroupEnd()` and does no work.
+
+`endRestartGroup()?.updateScope { ... }` registers the lambda that re-invokes the function when an observed state invalidates it.
+
+**Follow-up:** *What is the slot table?*
+> A flat gap buffer of groups keyed by **call-site position**. It stores what `remember` saved and the structure of child groups. Because identity is positional, inserting an item at the top of an unkeyed list reassociates every item's remembered state with the wrong data.
+
+---
+
+### Q4. What is stability and why does it matter? `[Mid]`
+
+**Answer**
+The compiler classifies each parameter type as stable (reliable `equals`, no unnotified mutation) or unstable. A composable with any unstable parameter is **not skippable** and recomposes whenever its parent does.
+
+`List`, `Map`, and `Set` interfaces are unstable, as is any class with a `var`, or any type from a module not compiled with the Compose compiler.
+
+**Follow-up:** *How did strong skipping change this?*
+> From Compose Compiler 2.0.20, composables with unstable parameters became skippable using **instance equality** for those parameters, and lambdas are auto-remembered. Most manual `@Immutable`/`ImmutableList` work is no longer needed — but a fresh `map {}` still produces a new reference every recomposition, so it still recomposes.
+
+---
+
+### Q5. `@Stable` vs `@Immutable`. `[Mid]`
+
+**Answer**
+* `@Immutable` — a promise that the object's public properties **never change** after construction.
+* `@Stable` — the object may change, but it **notifies** composition when it does (through snapshot state), and its `equals` is consistent.
+
+Both are promises the compiler trusts without verification. Lying about them produces stale UI that is extremely hard to debug.
+
+**Follow-up:** *How do you mark a third-party type stable without owning it?*
+> A stability configuration file passed via `composeCompiler { stabilityConfigurationFile = ... }`, listing types or package patterns (`java.time.LocalDate`, `com.thirdparty.model.*`).
+
+---
+
+### Q6. `remember` vs `rememberSaveable`. `[Junior]`
+
+**Answer**
+`remember` survives recomposition but dies with the composition — so it is lost on configuration change and process death. `rememberSaveable` additionally stores its value in the saved-state Bundle, surviving both.
+
+`rememberSaveable` requires a `Saver` for non-primitive types (`@Parcelize`, `mapSaver`, or `listSaver`).
+
+**Follow-up:** *What are its limits?*
+> The Bundle goes through a Binder transaction, so it is bounded by the ~1 MB buffer. Store scroll positions and IDs; never a list of models.
+
+---
+
+### Q7. What does `remember(key)` do when the key changes? `[Junior]`
+
+**Answer**
+It discards the remembered value and recomputes it. With no key, the value is computed once and never again for that call site.
+
+```kotlin
+// Recomputed whenever userId changes; without the key it would go stale
+val formatter = remember(locale) { NumberFormat.getCurrencyInstance(locale) }
+```
+
+**Follow-up:** *What is the most common `remember` bug?*
+> Forgetting a key when the computation depends on a parameter, so the value goes stale silently. The UI shows data derived from an old parameter with no error.
+
+---
+
+### Q8. `derivedStateOf` — when does it earn its cost? `[Mid]`
+
+**Answer**
+When a **frequently-changing** input produces a **rarely-changing** output. It observes the inputs and only invalidates readers when the computed result actually changes.
+
+```kotlin
+// scrollState.firstVisibleItemIndex changes constantly; showButton flips rarely
+val showButton by remember { derivedStateOf { listState.firstVisibleItemIndex > 5 } }
+```
+
+**Follow-up:** *When is it wrong to use?*
+> When input and output change at the same rate. `derivedStateOf { user.name.uppercase() }` adds a snapshot-observation layer for no filtering benefit — just compute it inline.
+
+---
+
+### Q9. `LaunchedEffect` — what are its semantics? `[Mid]`
+
+**Answer**
+It launches a coroutine when it enters the composition, cancels it when it leaves, and **cancels and relaunches** when any key changes.
+
+```kotlin
+LaunchedEffect(userId) {          // Restarts when userId changes
+    viewModel.load(userId)
+}
+LaunchedEffect(Unit) { }          // Runs once for the composable's lifetime
+```
+
+**Follow-up:** *You pass a lambda as a key and the effect restarts every recomposition. Why?*
+> A lambda literal is a new instance each composition unless remembered. Key on stable values, and use `rememberUpdatedState` to read a changing lambda inside a long-running effect without restarting it.
+
+---
+
+### Q10. What is `rememberUpdatedState` for? `[Senior]`
+
+**Answer**
+Reading the **latest** value of something inside a long-running effect without restarting the effect.
+
+```kotlin
+@Composable
+fun AutoDismiss(onTimeout: () -> Unit) {
+    val currentOnTimeout by rememberUpdatedState(onTimeout)
+    LaunchedEffect(Unit) {                 // Must NOT restart when onTimeout changes
+        delay(5_000)
+        currentOnTimeout()                 // Calls the newest lambda, not the captured one
+    }
+}
+```
+
+**Follow-up:** *What happens without it?*
+> Either the effect keys on `onTimeout` and restarts the 5-second timer on every recomposition (so it never fires), or it captures the original lambda and calls a stale callback pointing at old state.
+
+---
+
+### Q11. `DisposableEffect` vs `LaunchedEffect`. `[Mid]`
+
+**Answer**
+`LaunchedEffect` runs a coroutine. `DisposableEffect` runs non-suspending setup and **requires** an `onDispose` block for cleanup — the right tool for registering and unregistering listeners.
+
+```kotlin
+DisposableEffect(lifecycleOwner) {
+    val observer = LifecycleEventObserver { _, e -> if (e == ON_RESUME) refresh() }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+}
+```
+
+**Follow-up:** *What is `SideEffect` for?*
+> Publishing Compose state to a non-Compose object **after every successful composition**. It is not cancelled or keyed — use it for things like updating an analytics screen name or a legacy view's property, never for launching work.
+
+---
+
+### Q12. What is `produceState`? `[Mid]`
+
+**Answer**
+It converts non-Compose state into Compose `State`, running a coroutine that sets `value` over time.
+
+```kotlin
+@Composable
+fun userState(id: Long): State<Result<User>> = produceState<Result<User>>(Loading, id) {
+    value = runCatching { repo.getUser(id) }.fold(::Success, ::Error)
+}
+```
+
+**Follow-up:** *When would you use `collectAsStateWithLifecycle` instead?*
+> Whenever the source is already a Flow — it handles lifecycle-aware collection correctly. `produceState` is for non-Flow sources, or where you need custom production logic.
+
+---
+
+### Q13. `collectAsState` vs `collectAsStateWithLifecycle`. `[Mid]`
+
+**Answer**
+`collectAsState` collects for the composition's lifetime, including while the app is in the background — wasting CPU, network, and battery. `collectAsStateWithLifecycle` applies `repeatOnLifecycle(STARTED)`, suspending collection when the app is not visible.
+
+Always use the lifecycle-aware variant on Android.
+
+**Follow-up:** *Is there a case where `collectAsState` is correct?*
+> On non-Android Compose targets (desktop, web) where there is no Android lifecycle, and for flows that must keep running regardless — rare, and usually a sign the collection belongs in the ViewModel instead.
+
+---
+
+### Q14. What is state hoisting? `[Junior]`
+
+**Answer**
+Moving state up to the lowest common ancestor that needs it, so the composable becomes stateless and takes `value` + `onValueChange`.
+
+```kotlin
+@Composable
+fun Counter(count: Int, onIncrement: () -> Unit) {   // Stateless: testable, previewable, reusable
+    Button(onClick = onIncrement) { Text("$count") }
+}
+```
+
+**Follow-up:** *What is the cost of hoisting too far?*
+> State at the top of the tree invalidates everything below it. Hoist to the lowest common ancestor that actually needs it — not to the root by default.
+
+---
+
+### Q15. Why does mutating a `List` inside `mutableStateOf` not recompose? `[Mid]`
+
+**Answer**
+The state holds a **reference**. Mutating the list in place does not change the reference, so the write observer never fires.
+
+```kotlin
+var items by remember { mutableStateOf(listOf<Item>()) }
+items.toMutableList().add(x)      // Nothing happens
+items = items + x                 // Correct: new reference
+
+val items = remember { mutableStateListOf<Item>() }
+items.add(x)                      // Also correct: observable collection
+```
+
+**Follow-up:** *When do you use `mutableStateListOf` over reassignment?*
+> For frequently-mutated collections where copying is expensive. It also gives finer-grained invalidation. For small lists in a ViewModel, an immutable `StateFlow<List<T>>` is usually cleaner and matches UDF better.
+
+---
+
+### Q16. Explain the snapshot system. `[Senior]`
+
+**Answer**
+Compose state uses multiversion concurrency control. Each `MutableState` holds a chain of `StateRecord`s tagged with the snapshot that wrote them; a reader walks the chain for the newest record visible to its own snapshot.
+
+Composition runs inside a snapshot with a **read observer** (building the dependency map) and writes go through a **write observer** (invalidating scopes that read that state). `Snapshot.apply()` merges records atomically.
+
+**Follow-up:** *Why can you read Compose state from a background thread safely?*
+> Because each snapshot sees a consistent, isolated view. A background reader never observes a half-applied set of writes — the same guarantee a database transaction gives.
+
+---
+
+### Q17. What does `snapshotFlow` do? `[Mid]`
+
+**Answer**
+It converts Compose state reads into a Flow, emitting when the **read values** change.
+
+```kotlin
+LaunchedEffect(listState) {
+    snapshotFlow { listState.firstVisibleItemIndex }
+        .distinctUntilChanged()
+        .filter { it > 5 }
+        .collect { analytics.trackDeepScroll(it) }
+}
+```
+
+**Follow-up:** *Why not just read the state directly in the composable?*
+> Reading it in the composable subscribes that composable to it, so it recomposes on every scroll pixel. `snapshotFlow` reads it inside an effect, so the reaction happens without any recomposition.
+
+---
+
+### Q18. Why does modifier order matter? `[Junior]`
+
+**Answer**
+Modifiers wrap each other in order, so each one operates on the result of the previous.
+
+```kotlin
+Modifier.padding(8.dp).background(Red)   // Red does NOT cover the padding
+Modifier.background(Red).padding(8.dp)   // Red covers the padding
+Modifier.clickable { }.padding(16.dp)    // Padding is OUTSIDE the touch target
+Modifier.padding(16.dp).clickable { }    // Padding is INSIDE — larger touch target
+```
+
+**Follow-up:** *Which ordering do you want for a clickable row, and why?*
+> `padding` before `clickable`, so the padding is part of the touch target. Otherwise the user tapping near the edge of a row hits nothing — a real accessibility problem given the 48 dp minimum target size.
+
+---
+
+### Q19. Why do `LazyColumn` items need keys? `[Mid]`
+
+**Answer**
+Without a key, the slot table identifies items by **position**. Inserting at the top shifts every position, so every item's remembered state — scroll offset, expansion, animation — attaches to the wrong data.
+
+```kotlin
+LazyColumn { items(users, key = { it.id }) { UserRow(it) } }
+```
+
+**Follow-up:** *What does `contentType` add?*
+> It tells the reuse pool which compositions are interchangeable. Reusing a "header" composition for an "item" slot forces a full recomposition instead of a cheap update; declaring content types makes the pool match like-for-like.
+
+---
+
+### Q20. Why can you not nest a `LazyColumn` inside a `LazyColumn`? `[Mid]`
+
+**Answer**
+The inner one receives infinite height constraints and throws. Lazy layouts need a bounded constraint on their scroll axis to know what to compose.
+
+Fix by flattening into one list with multiple `item`/`items` blocks, which is also better for performance since there is one reuse pool.
+
+**Follow-up:** *What if you genuinely need a horizontal list inside a vertical one?*
+> That is fine — the axes differ, so the inner `LazyRow` has a bounded height. Give it an explicit height and share a reuse pool across rows if there are many.
+
+---
+
+### Q21. What is `SubcomposeLayout` and what does it cost? `[Senior]`
+
+**Answer**
+It allows composing children **during** the layout phase, so a child's content can depend on the parent's measurement. `BoxWithConstraints`, `LazyColumn`, and `Scaffold` use it.
+
+The cost is that composition happens inside layout, so it cannot be batched with the main composition pass and is measurably slower. Avoid it in frequently-measured or deeply nested places.
+
+**Follow-up:** *What is the cheaper alternative to `BoxWithConstraints` for adaptive layouts?*
+> `WindowSizeClass` from the Activity, or a custom `Layout` that reads constraints without subcomposing. `BoxWithConstraints` is convenient but pays the subcomposition cost on every measure.
+
+---
+
+### Q22. Explain the single-pass measurement guarantee. `[Senior]`
+
+**Answer**
+A Compose layout may measure each child **exactly once**. This makes layout O(n) rather than the O(n²) that nested double-measuring `RelativeLayout`s produce in the View system.
+
+Where a parent genuinely needs to know a child's size before deciding, **intrinsics** (`minIntrinsicHeight`, `maxIntrinsicWidth`) provide a query that does not count as a measure.
+
+**Follow-up:** *You need two columns to have the same height as the taller one. How?*
+> `Modifier.height(IntrinsicSize.Min)` on the `Row`, which queries intrinsics rather than measuring twice. Without intrinsics you would need `SubcomposeLayout`, which is far more expensive.
+
+---
+
+### Q23. What is `CompositionLocal` and when should you use it? `[Mid]`
+
+**Answer**
+Implicit data passed down the tree without threading it through every parameter — used by `MaterialTheme`, `LocalContext`, `LocalDensity`.
+
+Use it for genuinely ambient, tree-wide concerns: theme, density, layout direction. Do **not** use it for data a composable actually depends on — that makes the dependency invisible and the composable impossible to preview or test in isolation.
+
+**Follow-up:** *`compositionLocalOf` vs `staticCompositionLocalOf`?*
+> `compositionLocalOf` tracks reads, so changing it recomposes only readers. `staticCompositionLocalOf` does not track, so changing it recomposes the **entire subtree** — but reads are cheaper. Use static for values that effectively never change (a `Context`), dynamic for values that do (a theme toggle).
+
+---
+
+### Q24. How do you write a custom modifier correctly today? `[Senior]`
+
+**Answer**
+`Modifier.Node`, not `composed { }`. `composed` creates a composition per modifier instance, defeating modifier comparison and reuse.
+
+```kotlin
+private class ShimmerNode(var color: Color) : Modifier.Node(), DrawModifierNode {
+    override fun ContentDrawScope.draw() { drawContent(); /* ... */ }
+}
+
+private data class ShimmerElement(val color: Color) : ModifierNodeElement<ShimmerNode>() {
+    override fun create() = ShimmerNode(color)
+    override fun update(node: ShimmerNode) { node.color = color }   // Update, do not recreate
+}
+
+fun Modifier.shimmer(color: Color) = this then ShimmerElement(color)
+```
+
+**Follow-up:** *Why must the element be a `data class`?*
+> Compose compares the new element with the previous one using `equals` to decide whether to update or recreate the node. Without correct `equals`/`hashCode`, the node is recreated on every recomposition and any state it holds (a running animation) restarts.
+
+---
+
+### Q25. Which animation API for which job? `[Mid]`
+
+**Answer**
+
+| Need | API |
+|---|---|
+| One value to a new target | `animate*AsState` |
+| Several values from one state change | `updateTransition` |
+| Enter/exit of a composable | `AnimatedVisibility` |
+| Swap between contents | `AnimatedContent` |
+| Loading shimmer, pulse | `rememberInfiniteTransition` |
+| Gesture-driven, interruptible | `Animatable` |
+| Automatic size change | `Modifier.animateContentSize` |
+| List insert/remove/reorder | `Modifier.animateItem` |
+
+**Follow-up:** *Why does every animation API take a `label`?*
+> The Animation Inspector in Android Studio identifies animations by label. Without one, a screen with several animations shows a list of indistinguishable entries.
+
+---
+
+### Q26. Why use `Animatable` rather than `animateFloatAsState` for a drag? `[Senior]`
+
+**Answer**
+`animateFloatAsState` animates toward a target and cannot be interrupted mid-flight to follow a finger. `Animatable` gives `snapTo` (instant, cancels any running animation) and `animateTo` (preserving velocity from the gesture), which is what makes a drag-and-fling feel natural.
+
+```kotlin
+val offsetY = remember { Animatable(0f) }
+// During drag: scope.launch { offsetY.snapTo(offsetY.value + delta) }
+// On release:  scope.launch { offsetY.animateTo(0f, spring()) }
+```
+
+**Follow-up:** *Why must `Animatable` be inside `remember`?*
+> Otherwise a new instance is created on every recomposition, resetting the animation continuously.
+
+---
+
+### Q27. What is a shared element transition? `[Mid]`
+
+**Answer**
+An element that visually persists across a navigation, animating from its position on one screen to its position on the next. In Compose 1.7+, wrap the nav host in `SharedTransitionLayout` and mark matching elements with the same `rememberSharedContentState(key)`.
+
+**Follow-up:** *What is the most common mistake?*
+> Keys that are not unique per item. Using `"image"` rather than `"image-$id"` means every list item matches the same shared element, so the animation targets the wrong one in a list.
+
+---
+
+### Q28. How does `pointerInput` work and what is the key trap? `[Senior]`
+
+**Answer**
+`pointerInput(key)` gives a coroutine scope receiving pointer events; gesture detectors (`detectTapGestures`, `detectDragGestures`, `detectTransformGestures`) are built on it.
+
+The trap: the block **restarts** when the key changes. `pointerInput(someChangingState)` cancels the gesture mid-drag. Use `Unit` and read changing values from state inside the block.
+
+```kotlin
+Modifier.pointerInput(Unit) {          // Installed once
+    detectTransformGestures { _, pan, zoom, _ -> scale *= zoom; offset += pan }
+}
+```
+
+**Follow-up:** *How does event consumption work?*
+> `change.consume()` marks the event handled so ancestors skip it — Compose's replacement for `requestDisallowInterceptTouchEvent`. Events flow in three passes: Initial (parent first), Main (child first), Final (parent first).
+
+---
+
+### Q29. How do you implement a collapsing toolbar in Compose? `[Senior]`
+
+**Answer**
+A `NestedScrollConnection` that consumes scroll in `onPreScroll` before the list gets it.
+
+```kotlin
+val connection = remember {
+    object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val new = (headerHeight + available.y).coerceIn(MIN, MAX)
+            val consumed = new - headerHeight
+            headerHeight = new
+            return Offset(0f, consumed)     // Report what we took; the list gets the rest
+        }
+    }
+}
+Box(Modifier.nestedScroll(connection)) { /* header + LazyColumn */ }
+```
+
+**Follow-up:** *Why `onPreScroll` rather than `onPostScroll`?*
+> The header should collapse **before** the list scrolls, matching user expectation. `onPostScroll` receives only what the list did not consume, so the header would only move once the list hit its end.
+
+---
+
+### Q30. `Canvas` vs `drawBehind` vs `drawWithCache`. `[Mid]`
+
+**Answer**
+* `Canvas(modifier)` — the composable's entire content is custom drawing.
+* `Modifier.drawBehind { }` — draws behind existing content.
+* `Modifier.drawWithContent { }` — draws around content, calling `drawContent()` where you want it.
+* `Modifier.drawWithCache { }` — a cached setup block plus a draw block; the setup re-runs only on size or key change.
+
+**Follow-up:** *When do you need `drawWithCache`?*
+> Whenever the drawing allocates — a `Brush`, a `Path`, an `ImageBitmap`. Allocating in the draw lambda happens every frame; `drawWithCache` builds it once per size change.
+
+---
+
+### Q31. How do you make Compose UI accessible? `[Mid]`
+
+**Answer**
+* Describe the **action**, not the icon: `"Like, 42 likes"`, not `"heart icon"`.
+* Never append the role — TalkBack already says "button".
+* Merge composite rows with `semantics(mergeDescendants = true) {}` so a card is one swipe stop, not five.
+* Minimum 48 dp touch targets.
+* `contentDescription = null` for images already described by a parent.
+* Use `sp` for text so it scales, `dp` for everything else.
+
+**Follow-up:** *Why is writing accessible Compose the same activity as writing testable Compose?*
+> Compose tests query the **semantics tree** — the same tree TalkBack reads. A screen with good semantics is automatically easy to test with `onNodeWithText` and `onNodeWithContentDescription`.
+
+---
+
+### Q32. How do you find the cause of excessive recomposition? `[Senior]`
+
+**Answer**
+1. **Layout Inspector** recomposition counts — live counts and skip counts per composable, the fastest way to find the hot spot.
+2. **Compiler metrics** — enable `reportsDestination`, then read `<module>-composables.txt` for composables marked `restartable` without `skippable`, and which parameter is `unstable`.
+3. **Macrobenchmark `FrameTimingMetric`** to confirm the fix in numbers.
+
+```bash
+./gradlew :app:assembleRelease
+grep -v "skippable" app/build/compose_compiler/app_release-composables.txt
+```
+
+**Follow-up:** *What is the fix once you find an unstable parameter?*
+> In order: use an immutable collection type; annotate your own type `@Immutable`; declare an external type stable in the configuration file; or narrow the parameter so the composable takes only the fields it reads.
+
+---
+
+### Q33. What is a deferred read and why is it the most effective performance fix? `[Senior]`
+
+**Answer**
+Reading state inside a lambda moves the read from the **composition** phase to the **layout** or **draw** phase, so only that phase re-runs.
+
+```kotlin
+// Recomposes every frame while scrolling
+Box(Modifier.offset(x = offset.dp))
+
+// Only re-lays-out — composition is skipped entirely
+Box(Modifier.offset { IntOffset(offsetProvider().roundToInt(), 0) })
+
+// Only redraws
+Box(Modifier.drawBehind { drawRect(colorProvider()) })
+```
+
+**Follow-up:** *Why is `graphicsLayer` even cheaper than `offset {}`?*
+> `graphicsLayer` applies the transform at draw time on the render node, so neither composition nor layout re-runs — the GPU just applies a different matrix to already-recorded content.
+
+---
+
+### Q34. How do you test a Compose screen? `[Mid]`
+
+**Answer**
+```kotlin
+@get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+@Test fun clicking_product_opens_detail() {
+    compose.setContent { AppTheme { ProductList(sampleProducts, onClick = { clicked = it }) } }
+    compose.onNodeWithText("Wireless Mouse").assertIsDisplayed().performClick()
+    assertThat(clicked).isEqualTo(sampleProducts[0].id)
+}
+```
+The rule synchronizes automatically — no `Thread.sleep` needed.
+
+**Follow-up:** *A test with an infinite animation hangs. Why, and what do you do?*
+> `waitForIdle` never returns because the composition is never idle. Set `compose.mainClock.autoAdvance = false` and drive time explicitly with `advanceTimeBy`, which also makes animation assertions deterministic.
+
+---
+
+### Q35. Can you run Compose tests on the JVM? `[Mid]`
+
+**Answer**
+Yes — Robolectric plus `createComposeRule()` runs them without an emulator, typically an order of magnitude faster.
+
+```kotlin
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class FastComposeTest {
+    @get:Rule val compose = createComposeRule()
+}
+```
+Screenshot testing (Paparazzi, Roborazzi) also runs on the JVM and catches visual regressions assertions cannot.
+
+**Follow-up:** *What still requires a real device?*
+> Anything touching real hardware or the system UI — permission dialogs, camera, biometric prompts — and final verification of GPU-dependent rendering. Keep those tests few.
+
+---
+
+### Q36. How do you host Compose inside a Fragment correctly? `[Senior]`
+
+**Answer**
+```kotlin
+override fun onCreateView(...): View = ComposeView(requireContext()).apply {
+    // The DEFAULT strategy disposes on window detach, which is WRONG for a back-stacked
+    // fragment: the composition survives detached and leaks its state.
+    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+    setContent { AppTheme { ProfileScreen(hiltViewModel()) } }
+}
+```
+
+**Follow-up:** *What about a `ComposeView` inside a RecyclerView item?*
+> Each recycled row leaks a composition without a disposal strategy. Use `DisposeOnViewTreeLifecycleDestroyed`, or better, use a `LazyColumn` instead of a RecyclerView hosting ComposeViews.
+
+---
+
+### Q37. How do you host a View inside Compose? `[Mid]`
+
+**Answer**
+```kotlin
+AndroidView(
+    factory = { ctx -> MapView(ctx).apply { onCreate(null) } },   // Runs ONCE
+    update = { view -> view.moveCamera(location) },               // Every relevant recomposition
+    onRelease = { view -> view.onDestroy() },                     // MANDATORY for native resources
+    modifier = modifier
+)
+```
+
+**Follow-up:** *What goes wrong if you skip `onRelease`?*
+> Views holding a `Surface`, a `MediaCodec`, or a map session leak permanently — and devices support only a handful of codec instances, so eventually all video playback fails.
+
+---
+
+### Q38. How do you handle edge-to-edge and the keyboard in Compose? `[Mid]`
+
+**Answer**
+```kotlin
+enableEdgeToEdge()                    // In the Activity, before setContent
+
+Column(
+    Modifier.fillMaxSize()
+        .windowInsetsPadding(WindowInsets.safeDrawing)   // Bars + cutout
+        .imePadding()                                     // Rises with the keyboard
+)
+
+// For a scrolling list, insets go in contentPadding so items scroll UNDER the bars
+LazyColumn(contentPadding = WindowInsets.safeDrawing.asPaddingValues())
+```
+
+**Follow-up:** *Why is `windowInsetsPadding` wrong on a `LazyColumn`?*
+> It pads the whole list, so the list stops short of the bars instead of scrolling under them — visually wrong for edge-to-edge, which is enforced by default on Android 15.
+
+---
+
+### Q39. How does `BackHandler` relate to predictive back? `[Mid]`
+
+**Answer**
+`BackHandler(enabled) { }` registers an `OnBackPressedCallback`. The `enabled` flag is what makes predictive back possible: the system needs to know **before** the gesture starts whether the app will intercept it, so it can animate a preview.
+
+For an animated predictive back, `PredictiveBackHandler` exposes the in-progress gesture as a `Flow<BackEventCompat>`.
+
+**Follow-up:** *What is the most common bug?*
+> A permanently-enabled `BackHandler`, so back never exits the screen and users get stuck. Drive `enabled` from state — for example, only intercept when there are unsaved changes.
+
+---
+
+### Q40. A Compose list scrolls poorly. Walk through your diagnosis. `[Senior]`
+
+**Answer**
+Measure first, on a **release** build — debug Compose is dramatically slower and directionally misleading.
+
+1. **Layout Inspector recomposition counts** while scrolling. High counts on item composables point at stability or unkeyed items.
+2. **Compiler metrics** — find item composables that are `restartable` but not `skippable`, and which parameter is unstable.
+3. **Perfetto / Macrobenchmark `FrameTimingMetric`** to see whether time is in composition, layout, or draw.
+
+Then, in order of expected payoff:
+* Add `key` and `contentType` to `items`.
+* Fix unstable parameters, or narrow them to the fields actually read.
+* Move animated/scroll-derived reads into lambdas (`offset {}`, `graphicsLayer`, `drawBehind`).
+* Replace per-item `derivedStateOf`/heavy computation with values precomputed in the ViewModel.
+* Ensure images are loaded through Coil with correct sizing, not decoded inline.
+* Add a **Baseline Profile** covering the first scroll — often the largest single win, and it requires no code change.
+
+**Follow-up:** *Everything is skippable and the profile is in place, but the first scroll still hitches. What is left?*
+> Item content that is genuinely expensive to compose the first time — deeply nested layouts, `SubcomposeLayout` per item, or synchronous image decoding. Flatten the item, avoid `BoxWithConstraints` per row, and make sure the image loader has a memory cache hit path.
 
 ---
 
