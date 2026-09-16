@@ -571,36 +571,296 @@ const val APP_NAME = "MyApp"       // ✅
 ## 2.2 Type Inference
 
 ### Definition
-* **Type inference** — the compiler deducing a declaration's type from its initializer, so you need not write it: `val count = 42` is an `Int`.
-* **What it is not** — dynamic typing. The type is fixed at compile time and checked exactly as strictly as if you had written it; only the *spelling* is optional.
-* **Where it stops** — a public function's inferred return type becomes part of its published signature, so changing the body can silently change the API.
 
-### Why It Is Used
-It removes noise (`val map = mutableMapOf<String, List<User>>()` rather than repeating the type) while keeping full type safety and IDE support.
+**Type inference** is Kotlin's ability to automatically determine the type of a variable or expression from the value assigned to it.
 
-### How It Works Internally
-Inference runs over the whole expression, including generic arguments and lambda parameter types. It does **not** cross a public API boundary: a public function's return type is inferred from its body but becomes part of the signature, which is why explicit return types on public APIs prevent accidental breaking changes.
-
-### Code Example
 ```kotlin
-val count = 42                 // Int
-val ratio = 42.0               // Double
-val label = "hits"             // String
-val ids = listOf(1, 2, 3)      // List<Int>
-val lookup = mutableMapOf<String, Int>()   // Explicit generic args when the initializer is empty
+val count = 42   // Kotlin infers: count → Int
+```
 
-// Lambda parameter types are inferred from the expected type
-val lengths: List<Int> = listOf("a", "bb").map { it.length }
+The compiler knows the type at **compile time**. Type inference does **not** mean Kotlin is dynamically typed.
 
-// Explicit return type on a public API: prevents an implementation change
-// from silently altering the published signature
+---
+
+### Simple Example
+
+Without type inference:
+```kotlin
+val count: Int = 42
+val name: String = "Raj"
+val numbers: List<Int> = listOf(1, 2, 3)
+```
+
+With type inference:
+```kotlin
+val count = 42
+val name = "Raj"
+val numbers = listOf(1, 2, 3)
+```
+
+Both versions are equally type-safe. You still get compile-time type checking, IDE autocomplete, smart casts, and generic type checking.
+
+---
+
+### Why Type Inference Is Used
+
+Type inference reduces unnecessary verbosity while preserving Kotlin's strong static type safety.
+
+---
+
+### How Type Inference Works — Per Type
+
+**Integer:**
+```kotlin
+val count = 42        // → Int
+```
+
+**String:**
+```kotlin
+val name = "Raj"      // → String
+```
+
+**Boolean:**
+```kotlin
+val isLoggedIn = true // → Boolean
+```
+
+**Double:**
+```kotlin
+val price = 99.99     // → Double
+```
+
+**Collection (with generic type):**
+```kotlin
+val numbers = listOf(1, 2, 3)        // → List<Int>
+val names = listOf("Raj", "Ravi")    // → List<String>
+```
+
+Kotlin infers both the collection type and the generic element type.
+
+---
+
+### Type Inference Is NOT Dynamic Typing
+
+This is a key interview point.
+
+```kotlin
+val age = 25   // inferred as Int
+```
+
+Once compiled, `age` cannot become a `String`:
+
+```kotlin
+var age = 25
+age = "Raj"    // ❌ Type mismatch: inferred String, expected Int
+```
+
+> **Type inference determines the type automatically at compile time; it does not make the type dynamic.**
+
+```text
+var
+ ↓
+Can change VALUE
+ ↓
+Cannot change TYPE
+```
+
+---
+
+### Numeric Literal Type Defaults
+
+A common interview question:
+
+```kotlin
+val a = 10      // → Int
+val b = 10L     // → Long
+val c = 10.0    // → Double
+val d = 10.0f   // → Float
+```
+
+If you need `Long` from a literal:
+```kotlin
+val number = 1L         // ✅
+val number: Long = 1    // ✅
+val number = 1          // → Int, NOT Long
+```
+
+---
+
+### Type Inference With Generics
+
+Kotlin infers generic type arguments when the information is available:
+
+```kotlin
+val numbers = listOf(1, 2, 3)        // List<Int>  — inferred
+val numbers = listOf<Int>(1, 2, 3)   // List<Int>  — explicit (usually unnecessary)
+```
+
+---
+
+### Empty Collections — Inference Needs Help
+
+When there are no elements, the compiler has nothing to infer the element type from:
+
+```kotlin
+val users = mutableListOf()           // ❌ Cannot determine element type
+val users = mutableListOf<User>()     // ✅
+val lookup = mutableMapOf<String, Int>()  // ✅
+```
+
+---
+
+### Type Inference With Lambdas
+
+Lambda parameter types are inferred from the expected type:
+
+```kotlin
+val lengths: List<Int> = listOf("a", "bb", "ccc").map {
+    it.length   // 'it' inferred as String because map operates on List<String>
+}
+```
+
+Explicit form (usually unnecessary):
+```kotlin
+listOf("a", "bb").map { text: String -> text.length }
+```
+
+---
+
+### Type Inference in Function Return Types
+
+```kotlin
+fun getName() = "Raj"   // inferred return type: String
+```
+
+Equivalent to:
+```kotlin
+fun getName(): String = "Raj"
+```
+
+#### Public APIs — Prefer Explicit Return Types
+
+```kotlin
+// Inferred — return type may change silently if implementation changes
+fun activeUsers() = repository.all().filter { it.isActive }
+
+// Explicit — API contract is clear and compiler-enforced
 fun activeUsers(): List<User> = repository.all().filter { it.isActive }
 ```
 
+> **For public APIs, explicitly declaring the return type improves readability, documents the contract, and prevents accidental breaking changes.**
+
+---
+
+### Recursive Functions — Explicit Return Type Required
+
+```kotlin
+// ❌ Compiler cannot infer a type that depends on itself
+fun factorial(n: Int) = if (n <= 1) 1 else n * factorial(n - 1)
+
+// ✅ Explicit return type required
+fun factorial(n: Int): Int = if (n <= 1) 1 else n * factorial(n - 1)
+```
+
+> **Recursive functions must have an explicit return type.**
+
+---
+
+### Type Annotation vs Type Inference
+
+| | Type Annotation | Type Inference |
+|---|---|---|
+| Syntax | `val age: Int = 25` | `val age = 25` |
+| Who specifies type | Developer | Compiler |
+| Type safety | Same | Same |
+| Useful when | Clarity needed, target type differs from literal | Initializer makes type obvious |
+
+---
+
+### Complete Code Example
+
+```kotlin
+val count = 42                           // Int
+val price = 99.99                        // Double
+val name = "Raj"                         // String
+val isActive = true                      // Boolean
+val numbers = listOf(1, 2, 3)           // List<Int>
+val names = listOf("Raj", "Ravi")       // List<String>
+val users = mutableListOf<User>()        // MutableList<User>
+val lengths = listOf("A", "AB", "ABC")
+    .map { it.length }                   // List<Int>
+
+fun getName() = "Raj"                    // inferred: String
+fun activeUsers(): List<User> =          // explicit for public API
+    repository.all().filter { it.isActive }
+```
+
+---
+
 ### Common Pitfalls
-* **Omitting return types on public functions.** Changing the body can silently change the public type, breaking callers.
-* **Expecting inference for a recursive function.** It cannot infer a type that depends on itself; declare it explicitly.
-* **`val x = 1` when you needed a `Long`.** Numeric literals default to `Int`; write `1L` or annotate the type.
+
+* **Thinking inference means dynamic typing.** `var value = 10; value = "Hello"` — ❌ type is fixed as `Int` at compile time.
+* **Forgetting numeric literal defaults.** `val count = 1` is `Int`, not `Long`. Use `1L` or `: Long`.
+* **Empty generic collection without type argument.** `mutableListOf()` gives the compiler no element type — specify it explicitly.
+* **Overusing explicit types where obvious.** `val name: String = "Raj"` is noisier than `val name = "Raj"` with no benefit.
+* **Omitting return types on important public APIs.** An implementation change can silently change the exposed type.
+
+---
+
+### Interview Questions — Type Inference
+
+#### Q1. What is type inference in Kotlin?
+Type inference is Kotlin's ability to automatically determine the type of a variable or expression at compile time based on its initializer or context.
+
+```kotlin
+val age = 25   // Kotlin infers Int
+```
+
+#### Q2. Is Kotlin dynamically typed because it supports type inference?
+No. Kotlin is **statically typed**. The compiler determines the type at compile time and that type cannot change.
+
+```kotlin
+var age = 25
+age = 30       // ✅ same type
+age = "Raj"    // ❌ type mismatch
+```
+
+#### Q3. What type is inferred for `val number = 10`?
+`Int`. For `Long`, use `val number = 10L` or `val number: Long = 10`.
+
+#### Q4. What type is inferred for `val numbers = listOf(1, 2, 3)`?
+`List<Int>` — Kotlin infers both the collection type and the generic element type.
+
+#### Q5. Can Kotlin infer the type of an empty mutable list?
+Not the element type. You must specify it: `mutableListOf<User>()`.
+
+#### Q6. Can Kotlin infer a function's return type?
+Yes — `fun getName() = "Raj"` infers `String`. However, explicit return types are preferred for public APIs to document the contract and prevent accidental changes.
+
+#### Q7. Why are explicit return types useful for public functions?
+They document the API contract and prevent an implementation change from silently altering the exposed return type, which could break callers.
+
+#### Q8. Can recursive functions use return-type inference?
+No — the compiler cannot infer a type that depends on the function's own recursive call. An explicit return type is required.
+
+```kotlin
+fun factorial(n: Int): Int = if (n <= 1) 1 else n * factorial(n - 1)
+```
+
+---
+
+### Quick Interview Summary
+
+> **1. Type inference = compiler automatically determines the type at compile time.**
+> **2. Kotlin is still statically typed; inference does not mean dynamic typing.**
+> **3. Works with variables, generics, lambdas, and function return types.**
+> **4. Numeric defaults: `1` → `Int`, `1L` → `Long`, `1.0` → `Double`, `1.0f` → `Float`.**
+> **5. Explicit return types preferred for public APIs; recursive functions require them.**
+
+```kotlin
+val users = listOf(User("Raj"), User("Ravi"))
+// Kotlin infers: List<User> — no explicit type needed
+```
 
 ---
 
