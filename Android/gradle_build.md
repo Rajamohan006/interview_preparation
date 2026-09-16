@@ -5,7 +5,7 @@
 >
 > Covers the Gradle lifecycle, AGP, build variants, version catalogs, KSP vs kapt, convention plugins, R8, signing, build performance, and CI/CD.
 >
-> **20 build & release interview questions:** [`interview_questions/13_build_release_gradle.md`](./interview_questions/13_build_release_gradle.md)
+> **20 build & release interview questions:** [Section 11](#11-build-gradle--release-interview-questions-20-questions)
 
 ---
 

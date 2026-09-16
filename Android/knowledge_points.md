@@ -3,7 +3,7 @@
 > **Authoritative Technical Reference**
 > The platform internals interviewers use to separate "uses the SDK" from "understands the system".
 >
-> **30 internals interview questions:** [`interview_questions/01_system_internals.md`](./interview_questions/01_system_internals.md)
+> **30 internals interview questions:** [Section 15](#15-android-system-internals-interview-questions-30-questions)
 
 ---
 

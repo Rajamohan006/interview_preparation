@@ -5,7 +5,7 @@
 >
 > Covers both sides: the **testing stack** an Android engineer is expected to build, and the **security posture** a pentester will probe.
 >
-> **25 testing & security interview questions:** [`interview_questions/11_testing_security.md`](./interview_questions/11_testing_security.md)
+> **25 testing & security interview questions:** [Section 12](#12-testing--security-interview-questions-25-questions)
 
 ---
 

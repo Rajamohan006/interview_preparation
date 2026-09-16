@@ -5,7 +5,7 @@
 >
 > Covers the View system: layouts, resources, styles, themes, drawables, Data Binding, MotionLayout, and Navigation graphs.
 >
-> **30 View-system interview questions:** [`interview_questions/03_ui_views_xml.md`](./interview_questions/03_ui_views_xml.md)
+> **30 View-system interview questions:** [Section 12](#12-ui-views--xml-interview-questions-30-questions)
 
 ---
 

@@ -5,7 +5,7 @@
 >
 > Updated for **Compose BOM 2025.x**, **Compose Compiler 2.x with strong skipping**, **Material 3**, **Navigation 2.8 type-safe routes**, and **Compose Multiplatform**.
 >
-> **40 Compose interview questions:** [`interview_questions/09_compose.md`](./interview_questions/09_compose.md)
+> **40 Compose interview questions:** [Section 15](#15-jetpack-compose-interview-questions-40-questions)
 
 ---
 

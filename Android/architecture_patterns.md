@@ -5,7 +5,7 @@
 >
 > Covers presentation patterns (MVC → MVP → MVVM → MVI), Clean Architecture, modularization, design patterns, SOLID, and offline-first data flow.
 >
-> **Architecture interview questions:** [`interview_questions/04_jetpack_architecture.md`](./interview_questions/04_jetpack_architecture.md) and [`interview_questions/14_scenario_system_design.md`](./interview_questions/14_scenario_system_design.md)
+> **50 Architecture & System Design interview questions:** [Section 9](#9-architecture--system-design-interview-questions-50-questions)
 
 ---
 

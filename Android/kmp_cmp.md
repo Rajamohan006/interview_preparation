@@ -5,7 +5,7 @@
 >
 > Covers KMP architecture, `expect`/`actual`, Skiko/Skia rendering, shared libraries, Swift interop, testing, and adoption strategy.
 >
-> **20 KMP/CMP interview questions:** [`interview_questions/12_kmp_cmp.md`](./interview_questions/12_kmp_cmp.md)
+> **20 KMP/CMP interview questions:** [Section 9](#9-kotlin-multiplatform--compose-multiplatform-interview-questions-20-questions)
 
 ---
 

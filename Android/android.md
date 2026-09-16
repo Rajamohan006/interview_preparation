@@ -5,7 +5,7 @@
 >
 > Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Media3**, **Hilt/Koin**, and current Play policy.
 >
-> Contains deep architectural coverage and **core interview questions** directly integrated under each subject area, with the full multi-module index in [`interview_questions/00_INDEX.md`](./interview_questions/00_INDEX.md).
+> Contains deep architectural coverage and **215 core interview questions** directly integrated under [Section 15](#15-core-android-interview-questions-bank).
 
 ---
 

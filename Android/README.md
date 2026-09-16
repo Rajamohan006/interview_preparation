@@ -28,26 +28,28 @@ Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Medi
 
 ---
 
-## 🎯 Interview Question Bank
+## 🎯 Integrated Interview Question Bank (370 Questions)
 
-**[`interview_questions/`](./interview_questions/00_INDEX.md) — 370 questions**, each with an answer, a follow-up probe, and code where it clarifies.
+Every question has an **Answer**, a **Follow-up** probe with its answer, and **code** where code clarifies.
+Difficulty is tagged inline: `[Junior]` · `[Mid]` · `[Senior]`.
 
-| File | Topic | Q |
-|---|---|---|
-| [01](./interview_questions/01_system_internals.md) | System internals | 30 |
-| [02](./interview_questions/02_components_manifest.md) | Components & manifest | 30 |
-| [03](./interview_questions/03_ui_views_xml.md) | UI, views & XML | 30 |
-| [04](./interview_questions/04_jetpack_architecture.md) | Jetpack architecture | 30 |
-| [05](./interview_questions/05_coroutines_concurrency.md) | Coroutines & concurrency | 30 |
-| [06](./interview_questions/06_data_networking.md) | Data & networking | 30 |
-| [07](./interview_questions/07_background_work.md) | Background work | 20 |
-| [08](./interview_questions/08_dependency_injection.md) | Dependency injection | 20 |
-| [09](./interview_questions/09_compose.md) | Jetpack Compose | 40 |
-| [10](./interview_questions/10_performance_memory.md) | Performance & memory | 25 |
-| [11](./interview_questions/11_testing_security.md) | Testing & security | 25 |
-| [12](./interview_questions/12_kmp_cmp.md) | KMP & CMP | 20 |
-| [13](./interview_questions/13_build_release_gradle.md) | Build & release | 20 |
-| [14](./interview_questions/14_scenario_system_design.md) | Scenarios & system design | 20 |
+| # | Topic | Questions | Integrated Inside Guide |
+|---|---|---|---|
+| 01 | System Internals | 30 | [`knowledge_points.md#15`](./knowledge_points.md#15-android-system-internals-interview-questions-30-questions) & [`android.md#151`](./android.md#151-system-internals--low-level-architecture-30-questions) |
+| 02 | Components & Manifest | 30 | [`android.md#152`](./android.md#152-core-application-components--manifest-30-questions) |
+| 03 | UI, Views & XML | 30 | [`xml.md#12`](./xml.md#12-ui-views--xml-interview-questions-30-questions) & [`android.md#153`](./android.md#153-ui-layouts-views-and-rendering-30-questions) |
+| 04 | Jetpack Architecture | 30 | [`architecture_patterns.md#part-1`](./architecture_patterns.md#part-1-jetpack-architecture--state-management-30-questions) |
+| 05 | Coroutines & Concurrency | 30 | [`android.md#154`](./android.md#154-threading-concurrency--reactive-streams-30-questions) |
+| 06 | Data & Networking | 30 | [`android.md#155`](./android.md#155-data-storage--networking-30-questions) |
+| 07 | Background Work | 20 | [`android.md#156`](./android.md#156-background-execution--scheduling-20-questions) |
+| 08 | Dependency Injection | 20 | [`android.md#157`](./android.md#157-dependency-injection-20-questions) |
+| 09 | Jetpack Compose | 40 | [`compose.md#15`](./compose.md#15-jetpack-compose-interview-questions-40-questions) |
+| 10 | Performance & Memory | 25 | [`android.md#158`](./android.md#158-performance-memory--diagnostics-25-questions) |
+| 11 | Testing & Security | 25 | [`testing_security.md#12`](./testing_security.md#12-testing--security-interview-questions-25-questions) |
+| 12 | KMP & CMP | 20 | [`kmp_cmp.md#9`](./kmp_cmp.md#9-kotlin-multiplatform--compose-multiplatform-interview-questions-20-questions) |
+| 13 | Build, Release & Gradle | 20 | [`gradle_build.md#11`](./gradle_build.md#11-build-gradle--release-interview-questions-20-questions) |
+| 14 | Scenarios & System Design | 20 | [`architecture_patterns.md#part-2`](./architecture_patterns.md#part-2-scenarios--system-design-20-questions) |
+| | **Total Questions** | **370** | |
 
 ---
 
@@ -59,10 +61,10 @@ Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Medi
 3. [`compose.md`](./compose.md) Modules 1–3 — recomposition, effects, state
 4. [`android.md`](./android.md) Modules 6–8 — data, background, DI
 5. [`architecture_patterns.md`](./architecture_patterns.md) — tie it together
-6. [`interview_questions/`](./interview_questions/00_INDEX.md) — test yourself
+6. Test yourself on the integrated interview questions at the end of each guide
 
 **If you are refreshing before an interview**
-Follow the one-week plan in the [question bank index](./interview_questions/00_INDEX.md#-study-plans).
+Read the **Follow-up** lines across each guide — they test deep understanding and trade-offs.
 
 ---
 
@@ -71,7 +73,7 @@ Follow the one-week plan in the [question bank index](./interview_questions/00_I
 | Looking for | Go to |
 |---|---|
 | Activity lifecycle, launch modes | [`android.md`](./android.md) §2.1 |
-| Coroutine internals, `suspend` | [`android.md`](./android.md) §5.1, [`Q05`](./interview_questions/05_coroutines_concurrency.md) |
+| Coroutine internals, `suspend` | [`android.md`](./android.md) §5.1, [`§15.4`](./android.md#154-threading-concurrency--reactive-streams-30-questions) |
 | Flow operators (`flatMapLatest`, `combine`) | [`android.md`](./android.md) §5.6 |
 | Recomposition and stability | [`compose.md`](./compose.md) §1.5, §13 |
 | Compose effect APIs | [`compose.md`](./compose.md) §2 |
