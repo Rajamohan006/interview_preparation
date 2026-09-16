@@ -1315,244 +1315,468 @@ Inside the `if` block, the compiler knows `name` cannot be `null` and automatica
 
 ### Definition
 
-A **smart cast** is when the compiler automatically narrows a type after a proven check, eliminating the need for an explicit cast.
+**Smart cast** is a Kotlin compiler feature that automatically treats a value as a more specific type after the compiler has established that the type is safe — eliminating the need for an explicit cast.
 
-#### Null check smart cast
+Without smart cast (manual):
 ```kotlin
-fun printLength(name: String?) {
+if (value is String) {
+    println((value as String).length)   // explicit cast required
+}
+```
+
+With smart cast:
+```kotlin
+if (value is String) {
+    println(value.length)   // compiler narrows automatically
+}
+```
+
+Also works for null checks:
+```kotlin
+val name: String? = "Raj"
+if (name != null) {
+    println(name.length)   // Smart cast: String? → String
+}
+```
+
+---
+
+### What Triggers Smart Casting?
+
+1. `is` type checks
+2. `!is` combined with control-flow termination (early return/throw)
+3. Null checks (`!= null`, `== null` with early exit)
+4. `when` type branches
+5. Compound boolean conditions with `&&`
+6. Certain logical expressions where the compiler can prove the type
+
+---
+
+### How It Works Internally
+
+Smart casting is a **compiler data-flow analysis** feature. The compiler tracks what is known to be true on each control-flow path.
+
+```text
+value : Any?
+    ↓
+value is String   ← check
+    ↓
+value : String    ← inside this branch only
+    ↓
+value.length OK
+```
+
+The compiler also considers whether `value` could change between the check and the use. Local parameters and immutable values are easiest to reason about.
+
+---
+
+### Smart Cast with `is`
+
+```kotlin
+fun describe(value: Any): String {
+    return if (value is String) {
+        "String with length ${value.length}"   // value narrowed to String
+    } else {
+        "Other type"
+    }
+}
+```
+
+---
+
+### Smart Cast with Nullable Values
+
+```kotlin
+fun printName(name: String?) {
     if (name != null) {
-        println(name.length)   // name is String inside this block
+        println(name.length)   // name narrowed from String? to String
     }
 }
 ```
 
-#### Type check smart cast
+---
+
+### Smart Cast with Early Return
+
+Early returns let the compiler eliminate an invalid state from the remaining flow:
+
 ```kotlin
-fun printValue(value: Any) {
-    if (value is String) {
-        println(value.length)  // value is String inside this block
-    }
+fun printLength(value: Any?) {
+    if (value !is String) return
+    println(value.length)   // ✅ value is guaranteed String here
+}
+
+fun process(name: String?) {
+    if (name == null) return
+    println(name.length)    // ✅ name is guaranteed non-null here
 }
 ```
 
-#### Smart cast with `when`
+---
+
+### Smart Cast with `when`
+
+Especially powerful with sealed classes:
+
 ```kotlin
+sealed class Shape
+class Circle(val radius: Double) : Shape()
+class Rectangle(val width: Double, val height: Double) : Shape()
+
 fun area(shape: Shape): Double = when (shape) {
-    is Circle -> Math.PI * shape.radius * shape.radius
-    is Rect   -> shape.width * shape.height
+    is Circle    -> Math.PI * shape.radius * shape.radius  // shape: Circle
+    is Rectangle -> shape.width * shape.height             // shape: Rectangle
 }
 ```
 
-### When Smart Cast Fails
+---
 
-The compiler can only smart-cast a value it can guarantee **won't change** between the check and the use.
+### Smart Cast with Boolean Conditions
 
-**Local `val` — works:**
 ```kotlin
-val name: String? = getName()
-if (name != null) { println(name.length) }   // ✅
+fun printLength(value: Any?) {
+    if (value is String && value.isNotEmpty()) {
+        println(value.length)   // ✅ value is String — established by &&
+    }
+}
 ```
 
-**Mutable `var` property — may be refused:**
+`&&` evaluates the right side only when the left side is true, so the type is already proven.
+
+---
+
+### When Smart Cast Is Refused
+
+The key concept is **stability** — the compiler must prove the value cannot change in an unsafe way between the check and the use.
+
+#### Case 1: Mutable Property
+
 ```kotlin
 class Holder(var value: String?) {
     fun show() {
         if (value != null) {
-            // println(value.length)  // ❌ may be refused — another thread could null it
-            val local = value ?: return
-            println(local.length)     // ✅ copy to local val first
+            // println(value.length)  // ❌ may be refused
+            // Another thread could null `value` between check and use
         }
     }
 }
 ```
 
-> **Common fix: copy the mutable property to a local `val` before the check.**
-
----
-
-## 3.9 `?.let { }`
-
-Executes a block only when the receiver is non-null:
-
+**Fix — copy to a local `val`:**
 ```kotlin
-val name: String? = "Raj"
-
-name?.let { nonNullName ->
-    println(nonNullName.uppercase())   // 'nonNullName' is String, not String?
-}
-// Block is skipped entirely if name is null
-```
-
-### `?.let` Pitfall
-
-This is **not** the same as `if (x != null) … else …`:
-
-```kotlin
-result?.let {
-    doSomething()    // if doSomething() returns null...
-} ?: doSomethingElse()  // ...this ALSO runs — even when result was non-null!
-```
-
-For a genuine null branch, use an explicit `if`:
-```kotlin
-if (result != null) {
-    doSomething()
-} else {
-    doSomethingElse()
+class Holder(var value: String?) {
+    fun show() {
+        val local = value ?: return
+        println(local.length)   // ✅ local is stable
+    }
 }
 ```
 
----
-
-## 3.10 Safe Cast `as?`
+#### Case 2: Custom Getter
 
 ```kotlin
-val value: Any = "Raj"
-val text = value as? String    // → "Raj"
+class User {
+    val name: String?
+        get() = getNameFromSomewhere()   // could return different value each call
+}
 
-val value: Any = 100
-val text = value as? String    // → null (no ClassCastException)
+// Smart cast refused even though it's `val`
 ```
 
-| | `as` | `as?` |
+**Fix:**
+```kotlin
+val localName = name
+if (localName != null) {
+    println(localName.length)   // ✅
+}
+```
+
+#### Case 3: Open / Overridable Property
+
+```kotlin
+open class User {
+    open val name: String? = null
+}
+// Subclass could override with a custom getter — compiler refuses smart cast
+```
+
+> **The rule is not simply `val` = smart cast, `var` = no smart cast. The rule is: can the compiler prove the value is stable?**
+
+---
+
+### Smart Cast vs Explicit Cast
+
+| | Smart Cast | Explicit Cast (`as`) |
 |---|---|---|
-| Cast fails | `ClassCastException` | Returns `null` |
-| Use when | You're certain of the type | Failure is an expected possibility |
-
----
-
-## 3.11 Combining `?.` and `?:`
-
-One of the most common patterns in production Kotlin:
+| Who performs narrowing | Compiler | Developer |
+| Based on | Proven condition | Developer's assertion |
+| Fails if wrong | Compile error | `ClassCastException` at runtime |
+| Syntax | None (automatic) | `as` or `as?` |
+| Safety | Compiler-guaranteed | Developer's responsibility |
 
 ```kotlin
-val name = user?.name ?: "Guest"           // always String
-val length = user?.name?.length ?: 0       // always Int
-val slug = name?.lowercase()?.replace(" ", "-") ?: "unnamed"
+// Explicit cast — can throw ClassCastException
+val text = value as String
+
+// Smart cast — compiler enters branch only when condition is true
+if (value is String) { println(value.length) }
 ```
 
 ---
 
-## 3.12 Nullable Collections
+### Common Pitfalls — Smart Casts
 
-Nullability can apply to the **collection**, the **elements**, or both:
+* **Assuming every `val` can be smart-cast** — a `val` with a custom getter may still be refused; stability is what matters.
+* **Using `!!` inside a null check** — `if (name != null) { name!!.length }` — the `!!` is unnecessary; the compiler already smart-casts.
+* **Expecting smart cast on a captured mutable variable** — use a local immutable snapshot: `val current = value ?: return`.
+* **Smart cast on open/overridable property across modules** — compiler refuses; copy to local.
 
+---
+
+### Senior-Level Interview Questions — Smart Casts
+
+**Q1. What is a smart cast?**
+A compiler data-flow feature that automatically narrows a value's type after a proven type or null check. Allowed only when the compiler can guarantee the value is stable.
+
+**Q2. Why doesn't Kotlin smart-cast every mutable property?**
+The property could change between the check and the use (e.g., another thread). Kotlin requires provable stability — copy to a local `val` as the fix.
+
+**Q3. Is smart casting a runtime feature?**
+No — it is entirely a compile-time, data-flow analysis feature. The compiler generates appropriate bytecode; no extra runtime mechanism is involved.
+
+**Q4. Why does `if (value is String) { value.length }` work without `as`?**
+Because `is String` establishes the type on that control-flow path; the compiler narrows automatically.
+
+**Q5. Why can this fail?**
 ```kotlin
-val a: List<String>    // list non-null, elements non-null
-val b: List<String?>   // list non-null, elements may be null
-val c: List<String>?   // list may be null, elements non-null
-val d: List<String?>?  // list may be null, elements may be null
+class Test(var value: String?) {
+    fun print() { if (value != null) { println(value.length) } }
+}
 ```
+`value` is a mutable property — another thread could null it between the check and the use. Fix: `val local = value ?: return; println(local.length)`.
 
+**Q6. Does `val` always guarantee smart casting?**
+No. A `val` with a custom getter can return a different value each access. Stability — not just `val` — is what the compiler checks.
+
+**Q7. How does an early return help?**
+After `if (value !is String) return`, every remaining execution path has already passed the check, so the compiler knows `value: String` for all code below.
+
+**Q8. How does smart casting work with sealed classes?**
+`when` branches with `is` checks narrow to the exact subtype in each arm. Sealed hierarchies make `when` exhaustive, so the compiler knows all possible subtypes.
+
+**Q9. What does the compiler need before applying a smart cast?**
+1. The condition is true on the current control-flow path.
+2. The value cannot have changed since the check.
+3. The declaration is stable (local val, parameter, or provably unchanged).
+
+**Q10. What is the safest pattern for smart-casting a mutable property?**
 ```kotlin
-val b: MutableList<String?> = mutableListOf()
-b.add("Raj")   // ✅
-b.add(null)    // ✅
-
-val a: MutableList<String> = mutableListOf()
-a.add(null)    // ❌ Compilation error
+val snapshot = mutableProp ?: return   // or ?: throw
+println(snapshot.length)               // snapshot is local val — always smart-castable
 ```
 
 ---
 
-## 3.13 `requireNotNull()` and `checkNotNull()`
+## 3.9 Null-Safety Helpers Beyond the Operators
 
-Better alternatives to `!!` when you need to fail fast:
+### Definition
+
+Kotlin's standard library provides helpers that make null handling more expressive than raw `!!`, `if`, or manual collection filtering.
+
+Key helpers:
+
+| Helper | Purpose |
+|---|---|
+| `requireNotNull()` | Assert non-null with meaningful error; return non-null value |
+| `checkNotNull()` | Assert valid state non-null; return non-null value |
+| `mapNotNull()` | Transform + discard null results in one pass |
+| `filterNotNull()` | Remove null elements from a collection |
+| `orEmpty()` | Convert nullable `String`/`List`/`Map` to empty value |
+
+---
+
+### `requireNotNull()`
+
+Verifies a value is non-null; throws `IllegalArgumentException` if not. Returns the non-null value.
 
 ```kotlin
-// !! — throws NPE with no context
-val user = getUser()!!
-
-// requireNotNull — throws IllegalArgumentException with a message
-val user = requireNotNull(getUser()) { "User must be available before opening this screen" }
-
-// checkNotNull — throws IllegalStateException with a message
-val user = checkNotNull(currentUser) { "currentUser should be set by now" }
+val id = requireNotNull(intent.getStringExtra("id")) {
+    "Launch intent must contain an id"
+}
+// id: String (not String?)
 ```
 
-| | `requireNotNull` | `checkNotNull` |
+---
+
+### `checkNotNull()`
+
+Verifies a value is non-null; throws `IllegalStateException` if not. Returns the non-null value.
+
+```kotlin
+val database = checkNotNull(databaseInstance) {
+    "Database has not been initialized"
+}
+```
+
+### `requireNotNull` vs `checkNotNull`
+
+| Function | Null means | Exception | Typical use |
+|---|---|---|---|
+| `requireNotNull()` | Invalid argument/input | `IllegalArgumentException` | Caller supplied bad value |
+| `checkNotNull()` | Invalid state | `IllegalStateException` | Object/app not in required state |
+
+```kotlin
+fun createUser(name: String?) {
+    val validName = requireNotNull(name) { "User name is required" }
+    // ... invalid argument
+}
+
+val repo = checkNotNull(repository) { "Repository not initialized" }
+// ... invalid state
+```
+
+### `requireNotNull()` vs `!!`
+
+| | `!!` | `requireNotNull()` |
 |---|---|---|
-| Signals | Invalid argument/precondition | Invalid state/postcondition |
-| Throws | `IllegalArgumentException` | `IllegalStateException` |
-| Returns | Non-null value | Non-null value |
-
-Both are more explicit and debuggable than `!!`.
-
----
-
-## 3.14 Null Safety and Java Interoperability (Platform Types)
-
-Kotlin cannot always know whether a Java value can be `null`:
-
-```java
-// Java
-public String getName() { return null; }
-```
+| Throws | `NullPointerException` | `IllegalArgumentException` |
+| Message | None | You provide it |
+| Readability | Opaque | Communicates intent |
 
 ```kotlin
-// Kotlin — compiler sees this as a platform type: String!
-val name = javaObject.getName()
+// ❌ — crashes with no context
+val id = value!!
+
+// ✅ — fails fast with a clear message
+val id = requireNotNull(value) { "User ID is required" }
 ```
 
-`String!` is Kotlin's internal notation for a Java-origin type with unknown nullability — **it is not valid Kotlin syntax you write yourself**.
-
-The compiler may allow operations it would normally prevent for `String?`, meaning a runtime NPE is possible.
-
-**Mitigations:**
-- Use Java nullability annotations (`@Nullable`, `@NonNull`/`@NotNull`) which Kotlin recognizes
-- Treat Java return values defensively as nullable
-
-> **Kotlin's null safety is strongest within pure Kotlin code. Java interop introduces uncertainty through platform types.**
+> Do not blindly replace every `!!` with `requireNotNull`. Only when null genuinely violates a requirement.
 
 ---
 
-## 3.15 Null Safety Is Primarily a Compile-Time Feature
+### `mapNotNull()`
+
+Transforms each element and discards null results — transform + filter in one pass:
+
+```kotlin
+val names: List<String> = users.mapNotNull { it.displayName }
+// null displayNames are dropped automatically
+
+val ids: List<Int> = listOf("10", "20", "abc", "30").mapNotNull { it.toIntOrNull() }
+// → [10, 20, 30]
+```
+
+---
+
+### `filterNotNull()`
+
+Removes null elements from a `List<T?>`, returning `List<T>`:
+
+```kotlin
+val maybeNames: List<String?> = listOf("Raj", null, "John", null)
+val names: List<String> = maybeNames.filterNotNull()
+// → ["Raj", "John"]
+```
+
+---
+
+### `mapNotNull()` vs `filterNotNull()`
+
+| | `filterNotNull()` | `mapNotNull()` |
+|---|---|---|
+| Use when | You have the values, just drop nulls | You need to transform AND drop null results |
+| Example | `listOf("A", null, "B").filterNotNull()` | `listOf("1","x","2").mapNotNull { it.toIntOrNull() }` |
+
+Avoid `map { }.filterNotNull()` when `mapNotNull { }` expresses the same thing directly.
+
+---
+
+### `orEmpty()`
+
+Converts a null receiver to the empty equivalent:
+
+```kotlin
+val label: String = user.nickname.orEmpty()       // null → ""
+val items: List<Item> = maybeItems.orEmpty()      // null → emptyList()
+val data: Map<String, String> = maybeData.orEmpty() // null → emptyMap()
+```
+
+Equivalent to `?: ""` / `?: emptyList()` but more readable when null and empty are semantically the same.
+
+---
+
+### Nullable Receiver Extensions
+
+Kotlin allows extension functions whose receiver is nullable:
+
+```kotlin
+fun String?.isBlankOrNull(): Boolean = this == null || this.isBlank()
+
+val name: String? = null
+name.isBlankOrNull()   // ✅ — callable even when receiver is null
+```
+
+Inside the extension, `this` is `String?` so null handling is still required.
+
+---
+
+### Common Pitfalls — Null-Safety Helpers
+
+* **Replacing every `!!` with `requireNotNull`** — only use it when null is genuinely invalid input; a missing nickname that's optional should use `orEmpty()` or `?: default`.
+* **Confusing `requireNotNull` and `checkNotNull`** — wrong exception type misleads debugging. Use `requireNotNull` for arguments, `checkNotNull` for state.
+* **`map { }.filterNotNull()`** — prefer `mapNotNull { }` for transform-and-discard patterns.
+* **Thinking `orEmpty()` validates contents** — it only converts `null` to empty; it says nothing about element validity.
+
+---
+
+### Senior-Level Interview Questions — Null-Safety Helpers
+
+**Q1. What is the difference between `requireNotNull()` and `checkNotNull()`?**
+Both assert non-null and return the value. `requireNotNull` throws `IllegalArgumentException` (bad input), `checkNotNull` throws `IllegalStateException` (bad state).
+
+**Q2. What does `requireNotNull()` return?**
+The same value with the nullable type removed — `String?` in becomes `String` out.
+
+**Q3. What is the difference between `mapNotNull()` and `filterNotNull()`?**
+`filterNotNull()` removes nulls from an existing collection. `mapNotNull()` transforms each element and removes null transformation results in one pass.
+
+**Q4. When should you use `orEmpty()` instead of `?:`?**
+When the natural fallback is "empty" — `orEmpty()` is more readable than `?: ""` or `?: emptyList()`. For non-trivial fallbacks, use Elvis directly.
+
+**Q5. Is `mapNotNull()` guaranteed to be one allocation vs `map().filterNotNull()`?**
+The important point is that `mapNotNull()` expresses the intent directly and avoids creating an intermediate list in the typical eager case. Don't rely on a hard "one allocation" guarantee — consider the specific implementation for performance-critical paths.
+
+**Q6. Why prefer `requireNotNull()` over `!!`?**
+`requireNotNull()` can carry a message explaining the invariant, producing far more debuggable failures. Both throw when null; only `requireNotNull` tells you why.
+
+**Q7. Does `filterNotNull()` mutate the original collection?**
+No — it returns a new collection containing only non-null elements.
+
+**Q8. What is a nullable receiver extension?**
+An extension function whose receiver type is nullable (`fun String?.foo()`), callable even when the receiver is null. Inside, `this` is `T?` so null handling is still required.
+
+---
+
+### Senior Summary
 
 ```text
-String? at the JVM level:
-    → No separate "NullableString" runtime class
-    → Both String and String? use the JVM's reference type
-    → The compiler inserts Intrinsics.checkNotNull() at boundaries (!! and public params)
-    → Nullability is enforced by the compiler and Kotlin metadata
+Smart Cast
+    → Compiler proves a narrower type via data-flow analysis
+
+requireNotNull / checkNotNull
+    → Explicitly establish a non-null contract with a meaningful message
+
+mapNotNull / filterNotNull
+    → Remove null results/elements from collections
+
+orEmpty()
+    → Convert nullable String/List/Map to an empty value
 ```
 
-> **`String?` is not a different runtime type — it is a compile-time type-system concept.**
+> **Kotlin tries to move correctness from runtime checks into compile-time type information whenever it can prove the operation is safe.**
 
 ---
-
-## 3.16 Common Pitfalls
-
-* **`!!` everywhere** — every `!!` is a potential crash. Prefer `?:`, `?.let`, `requireNotNull`.
-* **`val` ≠ non-null** — `val name: String? = null` is perfectly valid. `val` controls reassignment; `?` controls nullability.
-* **`?.let { } ?: else`** — the else branch runs if the `let` block returns null, not just when the receiver is null.
-* **Smart cast refused on mutable property** — copy to a local `val` first.
-* **Ignoring Java platform types** — Java can still deliver null to Kotlin code at runtime.
-* **Confusing `List<String?>` and `List<String>?`** — nullability on element vs nullability on the list itself.
-
----
-
-## 3.17 Null Safety Helpers
-
-```kotlin
-// requireNotNull / checkNotNull: fail fast with a message
-val id = requireNotNull(intent.getStringExtra("id")) { "Launch intent must carry an id" }
-
-// mapNotNull: transform + drop nulls in one pass
-val names: List<String> = users.mapNotNull { it.displayName }
-
-// filterNotNull: drop nulls from List<String?>
-val clean: List<String> = maybeNames.filterNotNull()
-
-// orEmpty(): null → empty string / list / map
-val label = user.nickname.orEmpty()
-val list  = maybeList.orEmpty()
-
-// Nullable receiver extension
-fun String?.isBlankOrNull(): Boolean = this == null || this.isBlank()
-```
-
----
-
 ## Interview Questions — Null Safety
 
 ### Q1. What is null safety in Kotlin?
