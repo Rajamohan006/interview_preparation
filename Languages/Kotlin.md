@@ -1899,141 +1899,290 @@ This is a key senior-level distinction: local `val` smart casts reliably; mutabl
 ## 4.1 Numeric and Basic Types
 
 ### Definition
-* **Basic type** — in Kotlin there are no primitive *types* in the source language. `Int`, `Long`, `Double`, `Boolean`, and `Char` are all classes with methods you can call.
-* **Primitive mapping** — the compiler still emits a JVM primitive (`int`, `long`) wherever a value can never be `null`, so you get object syntax at primitive cost.
-* **Boxing** — the fallback when a primitive *must* be an object (because it is nullable or a generic argument): the value is wrapped in `java.lang.Integer` and allocated on the heap.
 
-### How It Works Internally
-An `Int` variable compiles to a JVM `int`. An `Int?` **cannot** — null needs a reference — so it compiles to `java.lang.Integer`, which means boxing. The same applies to generic type arguments: `List<Int>` stores boxed `Integer`s.
+Kotlin provides several built-in types for representing numbers, characters, and boolean values. Unlike Java, Kotlin presents types such as `Int`, `Long`, `Double`, `Boolean`, and `Char` as Kotlin types with properties and functions. On the JVM, Kotlin can optimize non-nullable primitive-like values to JVM primitives when possible.
 
-| Type | Bits | Notes |
+| Type | Size | Typical JVM representation |
 |---|---|---|
-| `Byte` / `Short` / `Int` / `Long` | 8 / 16 / 32 / 64 | No implicit widening — conversion is explicit |
-| `Float` / `Double` | 32 / 64 | `Double` is the default for decimal literals |
-| `Boolean` | — | |
-| `Char` | 16 | Not a number; no implicit `Int` conversion |
+| `Byte` | 8-bit | `byte` |
+| `Short` | 16-bit | `short` |
+| `Int` | 32-bit | `int` |
+| `Long` | 64-bit | `long` |
+| `Float` | 32-bit | `float` |
+| `Double` | 64-bit | `double` |
+| `Char` | 16-bit | `char` |
+| `Boolean` | platform | boolean-like |
 | `UInt`, `ULong`, `UByte`, `UShort` | — | Unsigned, implemented as value classes |
 
+Kotlin does **not** perform implicit numeric widening. You must explicitly convert:
+
+```kotlin
+val a: Int = 10
+// val b: Long = a       // ❌ Compilation error
+val b: Long = a.toLong()  // ✅
+```
+
+### Why It Is Used
+
+Explicit conversion makes precision changes visible in source code — important for financial calculations, timestamps, database IDs, API values, file sizes, and mathematical operations.
+
+### How It Works Internally
+
+On the JVM:
+- Non-nullable `Int` → JVM primitive `int`
+- Nullable `Int?` → boxed `java.lang.Integer` (null needs a reference)
+- `List<Int>` → stores boxed `Integer` objects (generic argument)
+- `IntArray` → JVM `int[]` (no boxing — use for performance-sensitive paths)
+
+> **Do not say:** "`Int` is always a JVM primitive."
+> **Say:** "The compiler represents `Int` as a primitive `int` in suitable non-nullable contexts; boxing is required when an object reference is needed."
+
+### Numeric Conversion
+
+```kotlin
+val intValue = 100
+val longValue   = intValue.toLong()
+val doubleValue = intValue.toDouble()
+val floatValue  = intValue.toFloat()
+```
+
+### Integer Overflow
+
+Kotlin integer arithmetic follows fixed-width JVM arithmetic — overflow is silent:
+
+```kotlin
+val result = Int.MAX_VALUE + 1   // → -2147483648
+```
+
+For overflow detection:
+```kotlin
+val safe = Math.addExact(Int.MAX_VALUE, 1)   // throws ArithmeticException
+```
+
 ### Code Example
+
 ```kotlin
 val a: Int = 1
-// val b: Long = a           // Error: no implicit widening in Kotlin
-val b: Long = a.toLong()     // Explicit conversion required
+val b: Long = a.toLong()    // explicit conversion required
 
-// Readability separators and literal suffixes
-val million = 1_000_000
+val million = 1_000_000     // readability separator
 val big = 10L
 val precise = 1.5f
+val decimal = 1.5           // Double
 
-// Boxing: measurable in hot paths and large collections
-val boxed: List<Int> = listOf(1, 2, 3)     // Stores java.lang.Integer objects
-val unboxed: IntArray = intArrayOf(1, 2, 3) // Stores JVM int[] — no boxing
+val boxedNumbers: List<Int> = listOf(1, 2, 3)  // stores Integer objects
+val numbers = intArrayOf(1, 2, 3)              // stores JVM int[] — no boxing
 
-// Integer overflow is silent, exactly as in Java
-val overflow = Int.MAX_VALUE + 1           // -2147483648
-val safe = Math.addExact(Int.MAX_VALUE, 1) // Throws ArithmeticException
+val nullableNumber: Int? = 10   // requires boxed Integer
 ```
 
 ### Common Pitfalls
-* **Expecting implicit numeric widening.** Kotlin deliberately removed it because it hides precision loss; you must call `.toLong()`.
-* **`Int?` in a hot loop.** Every value is boxed, allocating an object per element.
-* **Comparing boxed values with `==` in Java-interop code.** In Kotlin `==` calls `equals`, so it is correct — but the same code read as Java would be reference comparison.
+
+* **Expecting implicit numeric widening** — use `.toLong()`, `.toDouble()` etc.
+* **`Int?` in a hot loop** — every value is boxed, allocating an object per element
+* **Using `List<Int>` in performance-critical paths** — use `IntArray` / `LongArray` instead
+* **Forgetting integer overflow** — fixed-width arithmetic wraps silently
+* **Treating `Char` as numeric** — `Char` does not implicitly convert to `Int`
 
 ---
 
 ## 4.2 `Any`, `Unit`, and `Nothing`
 
 ### Definition
-* **`Any`** — the root of the non-nullable type hierarchy; `Any?` is the root of everything.
-* **`Unit`** — the type of a function that returns no meaningful value. A real singleton object, not a void keyword.
-* **`Nothing`** — the type with **no values**, and a subtype of every type. It marks code that never returns normally.
 
-### Why It Is Used
-`Nothing` is the one that earns its keep in real code: it is what makes `throw` and `return` usable as expressions, and what makes `?:` with an early exit type-check.
+* **`Any`** — the root of all **non-nullable** Kotlin types. Provides `equals()`, `hashCode()`, `toString()`. `Any?` is the root of all types including nullable.
+* **`Unit`** — the return type of a function with no meaningful value. A real singleton object — not a Java `void` keyword.
+* **`Nothing`** — a type with **no values** at all. A subtype of every type. Marks code that can never complete normally.
 
-### How It Works Internally
-Because `Nothing` is a subtype of everything, an expression of type `Nothing` fits wherever any type is expected. The compiler also uses it for **unreachable-code analysis**: anything after a `Nothing`-typed expression is dead code.
+### `Any`
 
-### Code Example
 ```kotlin
-// Unit is a value; these two are identical
-fun log(msg: String) { println(msg) }
-fun log2(msg: String): Unit { println(msg) }
-
-// Nothing lets throw be an expression
-fun fail(message: String): Nothing = throw IllegalStateException(message)
-
-val user = findUser(id) ?: fail("User $id not found")   // Type-checks: Nothing fits User
-
-// Nothing? is the type of a bare null literal
-val n = null                                             // Inferred as Nothing?
-
-// Any: equals/hashCode/toString are declared here
+val value: Any = "Hello"   // Any? can hold null too
 fun printAll(items: List<Any>) = items.forEach { println(it) }
 ```
 
+### `Unit`
+
+```kotlin
+fun log(message: String) { println(message) }           // implicitly returns Unit
+fun log2(message: String): Unit { println(message) }    // identical
+```
+
+Unlike Java's `void`, `Unit` is a real type — `List<Unit>` is legal and a generic `T` can be `Unit`.
+
+### `Nothing`
+
+```kotlin
+fun fail(message: String): Nothing = throw IllegalStateException(message)
+```
+
+`Nothing` is a subtype of every type, so:
+
+```kotlin
+val user = findUser(id) ?: fail("User $id not found")
+// findUser() → User?
+// fail()     → Nothing (fits User, so expression type = User)
+```
+
+The compiler also uses `Nothing` for unreachable-code analysis — anything after a `Nothing`-typed expression is dead code.
+
+### `Nothing?`
+
+`Nothing?` can hold only one possible value: `null`.
+
+```kotlin
+val value = null   // inferred as Nothing?
+```
+
+### Why `Nothing` Matters in Practice
+
+* Makes `throw` and `return` usable as expressions (both have type `Nothing`)
+* Allows `?: fail(...)` to type-check
+* Enables the compiler to prove unreachable branches in `when` and `if`
+
+### Code Example
+
+```kotlin
+fun log(msg: String) { println(msg) }
+fun log2(msg: String): Unit { println(msg) }
+
+fun fail(message: String): Nothing = throw IllegalStateException(message)
+
+val user = findUser(id) ?: fail("User $id not found")
+val n = null   // Nothing?
+```
+
 ### Common Pitfalls
-* **Confusing `Unit` with `void`.** `Unit` is a real object, so `List<Unit>` is legal and a generic `T` can be `Unit`.
-* **Declaring a helper that always throws as returning `Unit`.** The compiler then cannot prove the code after the call is unreachable, and `?:` with it will not type-check. Return `Nothing`.
-* **Using `Any` where a generic would be better.** `Any` erases type information the caller has to cast back.
+
+* **Confusing `Unit` with `void`** — `Unit` is a real Kotlin object
+* **Declaring a helper that always throws as returning `Unit`** — the compiler can't prove unreachability; return `Nothing` instead
+* **Using `Any` where a generic would be better** — `Any` erases type info; callers must cast back
 
 ---
 
 ## 4.3 Type Checks and Casts
 
 ### Definition
-* **Type check (`is`)** — asks at runtime whether a value is of a given type, returning `Boolean`. `!is` is the negation.
-* **Unsafe cast (`as`)** — asserts that a value *is* a given type. If it is not, it throws `ClassCastException`.
-* **Safe cast (`as?`)** — attempts the same cast but yields `null` instead of throwing, so the failure becomes a value you can handle.
+
+* **`is`** — checks at runtime whether a value is an instance of a given type (`!is` is the negation)
+* **`as`** — unsafe cast; throws `ClassCastException` if the value is incompatible
+* **`as?`** — safe cast; returns `null` instead of throwing
+
+### `is` and `!is`
+
+```kotlin
+if (value is String) {
+    println(value.length)   // smart-cast: value is String inside this branch
+}
+
+fun printLength(value: Any?) {
+    if (value !is String) return
+    println(value.length)   // value: String for all remaining code
+}
+```
+
+### `as` vs `as?`
+
+```kotlin
+val text  = value as  String   // ❌ ClassCastException if wrong
+val maybe = value as? String   // ✅ null if wrong, no exception
+```
+
+| | `as` | `as?` |
+|---|---|---|
+| Cast fails | `ClassCastException` | Returns `null` |
+| Result type | `T` | `T?` |
+| Use when | Certain of type | Failure is possible |
+
+### How It Works Internally — JVM Type Erasure
+
+Generic type arguments are **erased** at runtime:
+
+```kotlin
+// These look the same at runtime — the <String> is gone
+val strings  = anyList as List<String>       // ⚠️ Unchecked cast — no element verification
+val verified = anyList.filterIsInstance<String>()  // ✅ Checks each element
+```
+
+`as List<String>` succeeds even when elements are not `String` — the failure surfaces later when an element is used as `String`.
 
 ### Code Example
+
 ```kotlin
-if (payload is String) println(payload.length)      // is + smart cast
-if (payload !is String) return
+fun printPayload(payload: Any?) {
+    if (payload is String) { println(payload.length) }
+}
 
-val text = payload as String        // Throws ClassCastException when wrong
-val maybe = payload as? String      // null when wrong
+val text  = payload as  String
+val maybe = payload as? String
 
-// Casting a collection: the element check is erased, so this succeeds and fails later
-val strings = anyList as List<String>       // Unchecked cast warning — no runtime verification
-val safeStrings = anyList.filterIsInstance<String>()   // Correct: checks each element
+// Safe generic filtering
+val safeStrings = anyList.filterIsInstance<String>()
 ```
 
 ### Common Pitfalls
-* **Unchecked generic casts.** `as List<String>` cannot verify elements because of erasure; the failure surfaces later, far from the cast. Use `filterIsInstance`.
-* **`as` on a nullable value.** `x as String` throws when `x` is null; `x as String?` allows it.
+
+* **`as` on a nullable value** — `x as String` throws when `x` is null; use `x as String?` to allow null
+* **Unchecked generic casts** — `as List<String>` can't verify elements due to erasure; use `filterIsInstance`
+* **Overusing casts** — repeated casts can indicate the design is losing type information that generics would preserve
 
 ---
 
 ## 4.4 Type Aliases and Value Classes
 
 ### Definition
-* **`typealias`** — an alternative name for an existing type. Purely a compile-time convenience; **no new type is created**.
-* **`@JvmInline value class`** — a genuinely new type that wraps a single value and is **erased to that value at runtime** where possible, so it costs nothing.
 
-### Why It Is Used
-This is the fix for "primitive obsession". A function taking `(String, String)` invites passing the arguments in the wrong order; taking `(UserId, Email)` makes that a compile error — and with value classes, for free.
+* **`typealias`** — an alternative name for an existing type. Purely compile-time convenience; **no new type is created**. The two names are fully interchangeable.
+* **`@JvmInline value class`** — a genuinely new, distinct type wrapping a single value. Erased to the underlying value at runtime where possible — so it can cost nothing extra.
 
-### How It Works Internally
-A value class is compiled away: `UserId(5L)` is represented as a plain `long` in most positions. It is **boxed** only when it must be treated as an object — when used as a generic argument, when nullable, or when it implements an interface used polymorphically.
+### Why It Is Used — Fixing Primitive Obsession
 
-| | `typealias` | `value class` |
+```kotlin
+// Problem: both are String — easy to swap arguments accidentally
+fun sendMessage(userId: String, email: String) { }
+sendMessage(email, userId)  // compiles! wrong order silently accepted
+
+// Solution with value classes
+@JvmInline value class UserId(val value: String)
+@JvmInline value class Email(val value: String)
+
+fun sendMessage(userId: UserId, email: Email) { }
+// sendMessage(email, userId)  // ❌ Compile error — different types
+```
+
+### How `value class` Works Internally
+
+A value class is **compiled away** — `UserId(5L)` is represented as a plain `long` in most positions. It is **boxed** only when an object representation is required:
+
+- Nullable: `UserId?` (null needs a reference)
+- Generic argument: `List<UserId>`
+- Interface/polymorphic usage
+
+> **Do not say:** "Value classes never allocate."
+> **Say:** "Value classes can avoid wrapper allocation in unboxed form, but boxing occurs when an object reference is required."
+
+### `typealias` vs `value class`
+
+| Feature | `typealias` | `value class` |
 |---|---|---|
-| New type? | **No** — fully interchangeable | **Yes** — not interchangeable |
-| Type safety | None | Full |
+| Creates a new type? | No — fully interchangeable | Yes — not interchangeable |
+| Compile-time type safety | None | Full |
+| Can have members? | No | Yes (functions, computed properties) |
+| Can validate construction? | No | Yes (via `init`) |
 | Runtime cost | None | None when unboxed |
-| Can add members | No | Yes (functions, computed properties) |
+| Boxed when | N/A | Nullable, generic, polymorphic |
 
 ### Code Example
+
 ```kotlin
-// typealias: readability only — these remain the same type
-typealias UserMap = Map<String, List<User>>
+// typealias — readability only, no new type
+typealias UserMap     = Map<String, List<User>>
 typealias ClickHandler = (View) -> Unit
 
-// value class: a distinct type with no allocation
+// value class — distinct type, often zero cost
 @JvmInline
 value class UserId(val value: Long) {
-    init { require(value > 0) { "UserId must be positive" } }   // Validation at construction
+    init { require(value > 0) { "UserId must be positive" } }
 }
 
 @JvmInline
@@ -2041,21 +2190,366 @@ value class Email(val value: String) {
     val domain: String get() = value.substringAfter('@')
 }
 
-// The compiler now prevents argument-order mistakes
 fun invite(id: UserId, email: Email) { /* ... */ }
-// invite(email, id)   // Compile error — impossible with two raw Strings
+// invite(email, id)   // ❌ Compile error
 
-// Boxing happens here, and is worth knowing about
-val ids: List<UserId> = listOf(UserId(1))    // Generic argument => boxed
-val maybe: UserId? = null                     // Nullable => boxed
+// Boxing scenarios
+val ids: List<UserId> = listOf(UserId(1))   // generic → boxed
+val maybe: UserId? = null                   // nullable → boxed
 ```
 
 ### Common Pitfalls
-* **Expecting `typealias` to give type safety.** `typealias Meters = Double` still lets you pass seconds.
-* **A value class in a `List` or as a nullable, in a hot path.** Both box, so the "free" claim no longer holds.
-* **Java interop.** A value class's mangled JVM signature is awkward from Java; add `@JvmName` on functions taking one if Java must call them.
+
+* **Expecting `typealias` to provide type safety** — `typealias Meters = Double` still accepts seconds
+* **Value class in a `List` or as nullable in a hot path** — boxing occurs; profile before assuming "free"
+* **Java interop** — value class JVM signatures are mangled; add `@JvmName` on functions for Java callers
+* **Serialization/reflection frameworks** — may need explicit support/configuration for value classes
 
 ---
+
+# 10-Year-Level Interview Questions — Smart Casts, Null Safety & Type System
+
+## Q1. What exactly is a smart cast?
+
+A compiler feature that narrows a value's type after the compiler proves a condition through control-flow/data-flow analysis — no explicit `as` required.
+
+```kotlin
+fun printValue(value: Any?) {
+    if (value is String) {
+        println(value.length)   // value: String — narrowed automatically
+    }
+}
+```
+
+---
+
+## Q2. Why doesn't Kotlin smart-cast every `var`?
+
+The value may change after the check. The real rule is **stability**, not `val` vs `var`:
+
+```kotlin
+class User {
+    var name: String? = null
+    fun printName() {
+        if (name != null) {
+            // println(name.length)  // ❌ may be refused
+        }
+    }
+}
+```
+
+Fix — stable local snapshot:
+```kotlin
+val currentName = name ?: return
+println(currentName.length)   // ✅
+```
+
+---
+
+## Q3. Why can a `val` property still fail to smart-cast?
+
+`val` prevents reassignment, but a `val` with a custom getter can return a different value on each access:
+
+```kotlin
+class User {
+    val name: String? get() = getNameFromDatabase()  // re-evaluated every access
+}
+```
+
+Fix: `val localName = name; if (localName != null) { println(localName.length) }`
+
+---
+
+## Q4. What is the difference between a smart cast and `as`?
+
+```text
+Smart cast → compiler proves the type on this control-flow path
+as         → developer asserts; ClassCastException at runtime if wrong
+```
+
+```kotlin
+if (value is String) { println(value.length) }   // smart cast — safe
+val text = value as String                         // explicit — can throw
+```
+
+---
+
+## Q5. What happens with `as?`?
+
+Safe cast — returns `null` instead of throwing:
+
+```kotlin
+val text = value as? String   // → "Raj" if String, null otherwise
+```
+
+---
+
+## Q6. Why does `val result = user?.name ?: "Unknown"` compile?
+
+`user?.name` produces `String?`. The Elvis `?:` provides a `String` fallback, making the whole expression `String`.
+
+---
+
+## Q7. Why does `val user = findUser() ?: throw IllegalStateException()` compile?
+
+`throw` has type `Nothing`. `Nothing` is a subtype of every type, so the null branch type-checks as compatible with `User`.
+
+---
+
+## Q8. What is the difference between `requireNotNull()` and `checkNotNull()`?
+
+| | `requireNotNull()` | `checkNotNull()` |
+|---|---|---|
+| Null means | Invalid argument/input | Invalid state |
+| Throws | `IllegalArgumentException` | `IllegalStateException` |
+
+```kotlin
+val id = requireNotNull(userId) { "User ID is required" }   // argument
+val db = checkNotNull(database) { "DB not initialized" }    // state
+```
+
+---
+
+## Q9. Why is `requireNotNull()` better than `!!` in some cases?
+
+Both fail when null. `requireNotNull()` communicates the contract and provides a meaningful diagnostic message — far easier to debug at 3 a.m.
+
+```kotlin
+val id = requireNotNull(value) { "User ID is required to load the profile" }
+```
+
+> Only use `requireNotNull` when null genuinely violates a requirement — not to silence every `!!`.
+
+---
+
+## Q10. What is the difference between `mapNotNull()` and `filterNotNull()`?
+
+```kotlin
+listOf("A", null, "B").filterNotNull()                          // → ["A", "B"]
+listOf("10", "abc", "20").mapNotNull { it.toIntOrNull() }       // → [10, 20]
+```
+
+`filterNotNull` removes nulls. `mapNotNull` transforms and removes null results in one pass.
+
+---
+
+## Q11. What is wrong with this code?
+
+```kotlin
+class UserManager {
+    var user: User? = null
+    fun printName() {
+        if (user != null) { println(user.name) }   // ❌ may fail smart-cast
+    }
+}
+```
+
+`user` is mutable — it could be nulled by another thread between check and use. Fix:
+```kotlin
+val currentUser = user ?: return
+println(currentUser.name)
+```
+
+---
+
+## Q12. What if another thread changes the property?
+
+```text
+Thread A: check user != null
+Thread B: user = null
+Thread A: access user.name  →  NPE
+```
+
+Local snapshot prevents re-reading the property:
+```kotlin
+val currentUser = user ?: return   // currentUser is stable
+println(currentUser.name)
+```
+
+Note: a stable reference does **not** make the object itself immutable.
+
+---
+
+## Q13. Why doesn't Kotlin automatically introduce a temporary variable?
+
+Because it would change semantics. A property with a custom getter may return different values on each access — auto-snapshotting would change the number and timing of getter calls. Kotlin requires explicit stability rules instead.
+
+---
+
+## Q14. What is the difference between nullability and smart casting?
+
+```text
+Nullability   → type-system: can this variable hold null? (String vs String?)
+Smart casting → control-flow: proven narrower type on this path (String? → String)
+```
+
+They work together: `if (name != null) { /* name: String */ }`.
+
+---
+
+## Q15. Does smart casting happen at runtime?
+
+No — it is a compile-time, data-flow analysis decision. The compiler generates appropriate bytecode; no extra runtime mechanism is involved.
+
+---
+
+## Q16. Can smart casts work across function calls?
+
+For local `val` — yes. For mutable properties or values with custom/arbitrary access — no. The key: **can the compiler prove the value is stable across that span of code?**
+
+---
+
+## Q17. What happens with smart casts inside lambdas?
+
+Captured mutable variables introduce stability concerns — the lambda may execute later. Use a local immutable snapshot before the lambda:
+
+```kotlin
+val currentValue = value ?: return
+listOf(1).forEach { println(currentValue.length) }   // ✅ currentValue is stable
+```
+
+---
+
+## Q18. What is the difference between `?.let {}` and `if (x != null)`?
+
+Both execute code only when non-null, but `?.let` introduces a lambda scope and `it`/named receiver. For a simple null check, `if` is usually clearer. `let` is useful for scoping, transforming, or chaining the non-null value.
+
+Pitfall: `x?.let { a() } ?: b()` runs `b()` if `a()` returns null — not only when `x` is null.
+
+---
+
+## Q19. Is `!!` a cast?
+
+No. `!!` is the **not-null assertion operator** — it tells the compiler to treat a nullable value as non-null. A type cast (`as`) changes the type; `!!` only removes the nullable wrapper, throwing `NPE` if the value is actually null.
+
+---
+
+## Q20. Is `?.let {}` itself a null-safety operator?
+
+No — `let` is a scope function. The null-safe behavior comes from `?.`. The combination `value?.let { }` uses the safe-call operator to gate the scope function.
+
+---
+
+## Q21. Is `orEmpty()` always equivalent to Elvis?
+
+For the supported nullable types (`String?`, `List?`, `Map?`), it is conceptually `?: ""` / `?: emptyList()` / `?: emptyMap()`. Use `orEmpty()` when null and empty are semantically the same; use Elvis for non-trivial fallbacks.
+
+---
+
+## Q22. Does `filterNotNull()` make objects immutable?
+
+No — it only removes null elements from the resulting collection. The `User` objects inside remain mutable if they are mutable.
+
+---
+
+## Q23. Can a generic type parameter `T` be nullable?
+
+Yes — without an upper bound, `T` can represent nullable types:
+
+```kotlin
+fun <T> printValue(value: T) { println(value) }  // T can be String?
+printValue(null)  // valid
+```
+
+To enforce non-null: `fun <T : Any> printValue(value: T)`.
+
+---
+
+## Q24. Why is `<T : Any>` commonly used in generic APIs?
+
+Because unconstrained `T` allows nullable types. `<T : Any>` explicitly requires a non-null upper bound, preventing callers from passing `null` as the type argument. Essential in repositories, caches, and DI APIs.
+
+---
+
+## Q25. Why is smart casting useful in Android ViewModel/Repository code?
+
+Android deals with nullable API responses, Intent extras, Bundle values, database results, and lifecycle-sensitive references. Stable local snapshots avoid repeated null checks and unsafe `!!` assertions:
+
+```kotlin
+val currentUser = user ?: return
+repository.loadProfile(currentUser.id)
+```
+
+---
+
+## Q26. Why should you avoid `!!` heavily in Android code?
+
+Android has many lifecycle and async boundaries. A binding reference valid in `onViewCreated` may be gone by the time a coroutine resumes. `!!` turns lifecycle mistakes into runtime crashes:
+
+```kotlin
+// ❌
+_binding!!.textView.text = "Hello"
+
+// ✅
+val binding = _binding ?: return
+binding.textView.text = "Hello"
+```
+
+> Nullability should model lifecycle and state correctly, not be suppressed.
+
+---
+
+## Q27. How would you review this code in a senior code review?
+
+```kotlin
+fun loadUser(user: User?) {
+    if (user != null) { repository.load(user.id) }
+}
+```
+
+The code is valid. Alternatives (`user?.let { repository.load(it.id) }` or `val u = user ?: return`) are all acceptable — the right choice depends on surrounding control flow. A senior engineer optimizes for **correctness + readability + maintainability**, not Kotlin feature usage for its own sake.
+
+---
+
+## Q28. How would you model an API response without excessive nullability?
+
+```kotlin
+// ❌ — three nullable fields, all combinations possible
+data class UserResponse(val user: User?, val error: String?, val loading: Boolean)
+
+// ✅ — mutually exclusive states modeled explicitly
+sealed interface UserState {
+    data object Loading : UserState
+    data class Success(val user: User) : UserState
+    data class Error(val message: String) : UserState
+}
+
+when (state) {
+    UserState.Loading      -> showSpinner()
+    is UserState.Success   -> println(state.user.name)   // smart cast to Success
+    is UserState.Error     -> println(state.message)     // smart cast to Error
+}
+```
+
+This combines sealed types + smart casts + exhaustive `when` + explicit state modeling — the expected senior-level design approach.
+
+---
+
+## Q29. How would you explain smart casts in one senior-level answer?
+
+> Smart casting is Kotlin's compiler-assisted type narrowing based on control-flow and data-flow analysis. After checks such as `is` or `!= null`, the compiler treats a value as a narrower type — but only when it can establish that the value is stable enough for the checked condition to remain valid. This is why local immutable values generally smart-cast while mutable properties, custom getters, and overridable/captured properties may not.
+
+---
+
+## Q30. What is the most important concept to remember about Kotlin smart casts?
+
+Not `val = smart cast, var = no smart cast`. The real rule:
+
+```text
+         Can the compiler prove the value is stable
+         and the condition valid at the use site?
+                       │
+               ┌───────┴───────┐
+              YES              NO
+               │                │
+          Smart cast      No smart cast
+               │                │
+          value.length    create local val
+                               │
+                         val local = value ?: return
+```
+
+> Smart casts depend on what the **compiler can prove**, not what the developer believes will happen.
 
 # 5. Strings
 
