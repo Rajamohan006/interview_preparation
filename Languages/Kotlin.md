@@ -251,50 +251,323 @@ fun process(x: Any) {
 ## 2.1 `var`, `val`, and `const val`
 
 ### Definition
-* **`var`** — a mutable reference; can be reassigned.
-* **`val`** — a read-only reference; assigned once. It is **not** deep immutability.
-* **`const val`** — a compile-time constant, inlined into bytecode. Only top-level, or inside an `object`/`companion object`, and only primitives or `String`.
 
-### Why It Is Used
-`val` by default makes state changes explicit and localized, which removes a large class of bugs. `const val` removes a getter call and a field lookup entirely.
+Kotlin provides three ways to declare variables/constants:
 
-### How It Works Internally
-`val` compiles to a private final field plus a getter. `const val` produces no field at all — the compiler substitutes the literal at each use site, so changing it requires recompiling every consumer.
+* **`var`** — a mutable variable. Its value/reference can be reassigned after initialization.
+* **`val`** — a read-only variable. It can be assigned only once, but the object it refers to may still be mutable.
+* **`const val`** — a compile-time constant. Its value must be known at compile time and can be inlined by the compiler at call sites.
 
-| | `var` | `val` | `const val` |
-|---|---|---|---|
-| Reassignable | Yes | No | No |
-| Evaluated | Runtime | Runtime | **Compile time** |
-| Allowed types | Any | Any | Primitives + `String` |
-| Allowed location | Anywhere | Anywhere | Top level, `object`, `companion object` |
-| Bytecode | Field + getter + setter | Field + getter | Inlined literal |
+---
+
+### `var`
+
+Use `var` when the variable needs to be reassigned.
+
+```kotlin
+var age = 25
+age = 26        // Allowed
+age = 27        // Allowed
+```
+
+> `var` allows reassignment of the variable/reference.
+
+---
+
+### `val`
+
+Use `val` when the variable/reference should not be reassigned.
+
+```kotlin
+val name = "Raj"
+name = "Ravi"   // Compilation error
+```
+
+However, `val` **does not mean that the object itself is immutable**.
+
+```kotlin
+val numbers = mutableListOf(1, 2, 3)
+numbers.add(4)  // Allowed
+// numbers = mutableListOf(5, 6)  // Not allowed
+```
+
+* `numbers` cannot point to another list.
+* The existing `MutableList` can still be modified.
+
+> **`val` provides read-only access to the reference, not deep immutability of the object.**
+
+For a read-only collection API, prefer:
+
+```kotlin
+val numbers: List<Int> = listOf(1, 2, 3)
+```
+
+---
+
+### `const val`
+
+`const val` is used when the value is a **compile-time constant**.
+
+```kotlin
+const val BASE_URL = "https://api.example.com"
+const val MAX_RETRY_COUNT = 3
+```
+
+It must:
+* Have a primitive type (`Int`, `Long`, `Double`, `Float`, `Boolean`, `Char`, etc.) or `String`
+* Be initialized with a compile-time constant expression
+* Be declared at the top level, or inside an `object` / `companion object`
+
+```kotlin
+const val API_VERSION = "v1"
+
+object AppConfig {
+    const val TIMEOUT = 30
+}
+
+class NetworkManager {
+    companion object {
+        const val MAX_RETRIES = 3
+    }
+}
+```
+
+**Not valid:**
+```kotlin
+const val CURRENT_TIME = System.currentTimeMillis()   // Runtime value — not allowed
+const val numbers = listOf(1, 2, 3)                   // List not an allowed type
+```
+
+---
+
+### `var` vs `val` vs `const val`
+
+| Property | `var` | `val` | `const val` |
+| ---------------------------------------- | -------- | -------- | -------------------------- |
+| Can be reassigned? | Yes | No | No |
+| Type | Any type | Any type | Primitive types + `String` |
+| Value determined | Runtime | Runtime | Compile time |
+| Can have custom getter? | Yes | Yes | No |
+| Top-level declaration | Yes | Yes | Yes |
+| Inside class | Yes | Yes | No directly |
+| Inside `object` | Yes | Yes | Yes |
+| Inside `companion object` | Yes | Yes | Yes |
+| Compile-time constant | No | No | Yes |
+| Can be initialized with a function call? | Yes | Yes | No |
+
+---
+
+### Why is `val` preferred over `var`?
+
+Prefer `val` whenever reassignment is not required. This makes the program easier to reason about because the reference cannot unexpectedly change.
+
+```kotlin
+val user = User("Raj")
+// user = User("Ravi")  // ❌ not allowed
+user.name = "Ravi"      // ✅ may be allowed if name is a var property
+```
+
+---
+
+### How `val` works internally
+
+A `val` is a Kotlin read-only property. The compiler generates a private field and a getter. The reference cannot be reassigned after initialization, but the object the reference points to may still be mutable.
+
+> **`val` is a read-only Kotlin property/reference that cannot be reassigned after initialization.**
+
+---
+
+### How `const val` works internally
+
+`const val` generates a **static final field** in the declaring class/object. Additionally, its value is **inlined at every call site** — usages are compiled with the literal value substituted directly.
+
+```kotlin
+const val MAX_RETRIES = 3
+// Usage:
+println(MAX_RETRIES)
+// Compiled as:
+println(3)   // value is inlined
+```
+
+**Important consequence:** If a library changes a `const val`, consumers may continue using the old inlined value until their code is recompiled.
+
+> **Changing a `const val` requires recompilation of all consumers because its value is inlined into their bytecode.**
+
+---
+
+### `const val` vs normal `val`
+
+```kotlin
+const val TIMEOUT = 30   // compile-time constant; inlined at call sites
+val TIMEOUT = 30         // runtime value; stored in a field; accessed via getter
+```
+
+| | `const val` | Normal `val` |
+|---|---|---|
+| Value known at | Compile time | Runtime |
+| Can use runtime expressions | No | Yes |
+| Allowed types | Primitive + `String` | Any |
+| Custom getter | No | Yes |
+| Inlined at call sites | Yes | No |
+
+```kotlin
+val currentTime = System.currentTimeMillis()   // Valid — runtime expression
+// const val currentTime = System.currentTimeMillis()  // Invalid
+```
+
+---
+
+### `val` with a custom getter
+
+A `val` does not necessarily compute its value only once.
+
+```kotlin
+val currentTime: Long
+    get() = System.currentTimeMillis()
+```
+
+Every access calls the getter again. The value can differ between calls.
+
+```kotlin
+val isExpired: Boolean
+    get() = System.currentTimeMillis() - createdAt > BASE_TTL
+```
+
+> **A `val` property with a custom getter can return a different value on each access.**
+
+To compute the value once and store it:
+```kotlin
+val createdAt = System.currentTimeMillis()
+```
+
+---
 
 ### Code Example
+
 ```kotlin
-const val BASE_URL = "https://api.example.com"   // Inlined literal, zero runtime cost
+const val BASE_URL = "https://api.example.com"   // Inlined at call sites
 
 class Session {
     var token: String? = null                     // Mutable
-    val createdAt = System.currentTimeMillis()    // Read-only, computed at construction
+    val createdAt = System.currentTimeMillis()    // Read-only, computed once at construction
 
-    // A `val` with a custom getter is recomputed on every access
+    // Recomputed on every access
     val isExpired: Boolean
         get() = System.currentTimeMillis() - createdAt > BASE_TTL
 }
 
-// `val` is reference immutability, NOT content immutability
+// val is reference immutability, NOT content immutability
 val items = mutableListOf(1, 2, 3)
-items.add(4)          // Allowed — the list changes
-// items = mutableListOf()   // Not allowed — the reference cannot be reassigned
+items.add(4)             // ✅ Allowed — the list changes
+// items = mutableListOf()  // ❌ Not allowed — reference cannot be reassigned
 ```
-
-### Common Pitfalls
-* **Believing `val` means immutable.** `val list: MutableList<T>` is fully mutable. Use `List<T>` (read-only) or an immutable collection if you want that guarantee.
-* **`const val` for a value that may change per environment.** Every consuming module must be recompiled; a normal `val` in an `object` is safer for configuration.
-* **A `val` with a getter that does real work.** `val expensive get() = compute()` recomputes on every read and looks free at the call site.
 
 ---
 
+### Common Pitfalls
+
+* **Thinking `val` means immutable.** `val list: MutableList<T>` is fully mutable. Use `List<T>` or an immutable collection for read-only guarantees.
+* **Using `const val` for runtime configuration.** `const val BASE_URL = getBaseUrl()` is invalid; its value must be known at compile time.
+* **`const val` for values that may change.** Every consumer must recompile to pick up the new value; a normal `val` in an `object` is safer for configuration that may change.
+* **Assuming every `val` is calculated only once.** A `val` with a custom getter recomputes on every access.
+* **Confusing `val List<T>` with `val MutableList<T>`.** The former exposes only the read-only interface; the latter is still mutable.
+
+---
+
+## 2.1.1 Interview Questions — `var`, `val`, `const val`
+
+### Q1. What is the difference between `var` and `val`?
+
+`var` is mutable and allows reassignment. `val` is read-only and cannot be reassigned after initialization.
+
+```kotlin
+var age = 25;  age = 26    // ✅
+val name = "Raj"
+// name = "Ravi"            // ❌
+```
+
+### Q2. Does `val` mean immutable?
+
+No. `val` means the **reference** cannot be reassigned. The object itself may still be mutable.
+
+```kotlin
+val list = mutableListOf(1, 2, 3)
+list.add(4)    // ✅ Allowed
+```
+
+### Q3. What is `const val`?
+
+A compile-time constant. The value must be known at compile time, only primitive types and `String` are supported, and it is inlined at call sites.
+
+```kotlin
+const val MAX_RETRIES = 3
+const val API_VERSION = "v1"
+```
+
+### Q4. Where can `const val` be declared?
+
+At the **top level**, inside an **`object`**, or inside a **`companion object`**. Not directly inside a normal class body.
+
+### Q5. Can we use a function call with `const val`?
+
+No — the value must be a compile-time constant expression.
+
+```kotlin
+const val TIME = System.currentTimeMillis()  // ❌ Error
+```
+
+### Q6. What is the difference between `val` and `const val`?
+
+`val` is a read-only property whose value can be determined at runtime. `const val` is a compile-time constant inlined at call sites. `const val` is also restricted to primitive types and `String`.
+
+### Q7. Can `const val` be a `Double`, `Float`, or `Boolean`?
+
+Yes — any primitive type (`Int`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Char`, `Boolean`) and `String` are allowed.
+
+```kotlin
+const val PI = 3.14
+const val ENABLE_LOGGING = true
+const val APP_NAME = "MyApp"
+```
+
+### Q8. What happens if a `const val` changes in a library?
+
+Because constants are inlined into consuming code, consumers may continue using the **old inlined value** until their code is recompiled.
+
+### Q9. Can a `val` have a custom getter?
+
+Yes. The getter is called on every property access.
+
+```kotlin
+val currentTime: Long
+    get() = System.currentTimeMillis()
+```
+
+### Q10. Which should you prefer: `var` or `val`?
+
+Prefer **`val` by default**. Use `var` only when reassignment is actually required. This reduces mutable state and makes code easier to reason about.
+
+---
+
+### Quick Interview Summary
+
+> **`var` = can be reassigned**
+> **`val` = cannot be reassigned, but the referenced object may still be mutable**
+> **`const val` = compile-time constant; generates a static final field and is inlined at call sites**
+
+```kotlin
+var age = 25;  age = 26            // ✅
+val name = "Raj"
+// name = "Ravi"                   // ❌
+
+val list = mutableListOf(1, 2)
+list.add(3)                        // ✅
+
+const val MAX_RETRIES = 3          // ✅
+const val APP_NAME = "MyApp"       // ✅
+```
+
+---
 ## 2.2 Type Inference
 
 ### Definition
