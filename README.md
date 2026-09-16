@@ -83,9 +83,27 @@ Interview_preparation/
 │   ├── Module-09-Wireless-IoT.md
 │   ├── Module-10-Cloud-Modern-Networking.md
 │   └── Module-11-EXC-Abbreviations-Glossary.md
+├── Linux/                                 # 🐧 Linux Command Reference
+│   └── LinuxModule.md                     # Complete Linux Commands Guide (22 topics)
 │
-└── Linux/                                 # 🐧 Linux Command Reference
-    └── LinuxModule.md                     # Complete Linux Commands Guide (22 topics)
+├── DSA/                                   # 🧠 Data Structures & Algorithms
+│   ├── README.md                          # DSA Roadmap & Complexity Cheat Sheet
+│   └── dsa_java.md                        # Java DSA Technical Interview Guide (10+ Years)
+│
+├── Android/                               # 🤖 Modern Android Engineering Guide
+│   ├── README.md                          # Android Roadmap & Study Plans
+│   ├── android.md                         # Platform Architecture & 215 Core Q&As
+│   ├── compose.md                         # Jetpack Compose Guide & 40 Q&As
+│   ├── xml.md                             # UI Views & XML Guide & 30 Q&As
+│   ├── architecture_patterns.md           # Architecture & System Design (50 Q&As)
+│   ├── gradle_build.md                    # Build, Release & Gradle (20 Q&As)
+│   ├── knowledge_points.md                # System Internals (30 Q&As)
+│   ├── testing_security.md                # Testing & Security (25 Q&As)
+│   └── kmp_cmp.md                         # KMP & CMP Guide (20 Q&As)
+│
+└── Languages/                             # ☕ Programming Languages
+    ├── Kotlin.md                          # Complete Kotlin Language Reference
+    └── java.md                            # Complete Java Reference
 ```
 
 ---
@@ -170,6 +188,36 @@ Complete Linux command reference from file system basics to security hardening a
 
 ---
 
+## 🧠 Data Structures & Algorithms (DSA) — Table of Contents
+
+Senior & staff-level technical preparation guide focusing on algorithmic complexity, memory trade-offs, architecture decisions, and real-world system design implications:
+
+| Module / Topic | Description | Link |
+|---|---|---|
+| **DSA Roadmap & Index** | Complete DSA roadmap, complexity cheatsheet, and 7-step problem-solving strategy. | [Read Roadmap](DSA/README.md) |
+| **Java DSA Technical Interview Guide** | Architectural definitions, complexity analysis, HashMap internals, trees, heaps, graphs, and 32 senior Q&As. | [Read Guide](DSA/dsa_java.md) |
+
+---
+
+## 🤖 Android Engineering Guides
+
+Comprehensive guides for Android developers & technical leads covering platform internals, Jetpack, Compose, and architecture:
+
+| Guide | Description | Questions | Link |
+|---|---|---|---|
+| **Android Roadmap & Index** | Complete Android study plan and directory roadmap. | — | [Read Index](Android/README.md) |
+| **Core Android Platform** | Platform architecture, components, coroutines, Room, WorkManager, Hilt, leaks, ANR. | 215 Q&As | [Read Guide](Android/android.md) |
+| **Jetpack Compose** | Recomposition, stability, effects, snapshot system, layouts, animations, performance. | 40 Q&As | [Read Guide](Android/compose.md) |
+| **UI Views & XML** | View rendering pipeline, custom views, RecyclerView internals, touch dispatch, drawables. | 30 Q&As | [Read Guide](Android/xml.md) |
+| **Architecture & System Design** | MVVM/MVI, Clean Architecture, modularization, offline-first sync, real-world scenarios. | 50 Q&As | [Read Guide](Android/architecture_patterns.md) |
+| **Build, Release & Gradle** | Gradle lifecycle, AGP, version catalogs, KSP, R8, signing schemes, CI/CD pipelines. | 20 Q&As | [Read Guide](Android/gradle_build.md) |
+| **System Internals** | Android boot sequence, Zygote, ART vs Dalvik, class loaders, Binder IPC, DEX limits. | 30 Q&As | [Read Guide](Android/knowledge_points.md) |
+| **Testing & Security** | Testing pyramid, MockK, Robolectric, Espresso, Keystore, TLS pinning, OWASP MASVS. | 25 Q&As | [Read Guide](Android/testing_security.md) |
+| **KMP & CMP** | Kotlin Multiplatform, `expect`/`actual`, Skiko rendering, Swift interop, adoption strategy. | 20 Q&As | [Read Guide](Android/kmp_cmp.md) |
+
+---
+
 ## 📄 License
 
 This repository is licensed under the **MIT License**. Feel free to use, modify, and share these notes for academic, personal, or commercial training purposes.
+
