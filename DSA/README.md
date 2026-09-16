@@ -8,6 +8,7 @@ Welcome to the **Data Structures and Algorithms (DSA)** technical preparation mo
 
 | File | Focus | Experience Level | Description |
 |---|---|---|---|
+| [**`time_and_space_complexity.md`**](./time_and_space_complexity.md) | Asymptotic Complexity, Big-O & Trade-offs | **All Levels / Senior Focus** | Complete guide to time & space complexity, growth rates ($O(1)$ to $O(n!)$), Big-O calculation rules, trade-offs, and 20 targeted interview Q&As. |
 | [**`dsa_java.md`**](./dsa_java.md) | Java DSA Architecture & Q&A | **10+ Years / Senior / Staff** | Deep-dive architectural definitions, time/space trade-offs, internal mechanics (`HashMap`, Red-Black trees, heaps, caches), and 32 senior-level interview questions. |
 
 ---

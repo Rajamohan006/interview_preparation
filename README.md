@@ -88,6 +88,7 @@ Interview_preparation/
 │
 ├── DSA/                                   # 🧠 Data Structures & Algorithms
 │   ├── README.md                          # DSA Roadmap & Complexity Cheat Sheet
+│   ├── time_and_space_complexity.md       # Complete Time & Space Complexity Guide
 │   └── dsa_java.md                        # Java DSA Technical Interview Guide (10+ Years)
 │
 ├── Android/                               # 🤖 Modern Android Engineering Guide
@@ -195,6 +196,7 @@ Senior & staff-level technical preparation guide focusing on algorithmic complex
 | Module / Topic | Description | Link |
 |---|---|---|
 | **DSA Roadmap & Index** | Complete DSA roadmap, complexity cheatsheet, and 7-step problem-solving strategy. | [Read Roadmap](DSA/README.md) |
+| **Time & Space Complexity** | Asymptotic analysis, Big-O hierarchy ($O(1)$ to $O(n!)$), loop rules, and 20 Q&As. | [Read Guide](DSA/time_and_space_complexity.md) |
 | **Java DSA Technical Interview Guide** | Architectural definitions, complexity analysis, HashMap internals, trees, heaps, graphs, and 32 senior Q&As. | [Read Guide](DSA/dsa_java.md) |
 
 ---
