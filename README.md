@@ -89,6 +89,7 @@ Interview_preparation/
 ├── DSA/                                   # 🧠 Data Structures & Algorithms
 │   ├── README.md                          # DSA Roadmap & Complexity Cheat Sheet
 │   ├── time_and_space_complexity.md       # Data Types, Classifications, Linked List Foundations & Complexity (42 Q&As)
+│   ├── linked_list.md                     # Linked List Master Guide, Architectures & Patterns (17 Q&As)
 │   └── dsa_java.md                        # Java DSA Technical Interview Guide (10+ Years)
 │
 ├── Android/                               # 🤖 Modern Android Engineering Guide
@@ -197,6 +198,7 @@ Senior & staff-level technical preparation guide focusing on algorithmic complex
 |---|---|---|
 | **DSA Roadmap & Index** | Complete DSA roadmap, complexity cheatsheet, and 7-step problem-solving strategy. | [Read Roadmap](DSA/README.md) |
 | **Data Types & Complexity Analysis** | Primitive vs. non-primitive, JVM boxing, Linked List prerequisite foundations (references, memory models, traversal), linear/non-linear classification, asymptotic analysis, Big-O hierarchy ($O(1)$ to $O(n!)$), and 42 comprehensive Q&As. | [Read Guide](DSA/time_and_space_complexity.md) |
+| **Linked List Architecture & Patterns** | Complete guide covering node memory structures, Singly/Doubly/Circular lists, real-world systems (LRU, OS scheduling), 11-step interview framework, and 17 core Q&As. | [Read Guide](DSA/linked_list.md) |
 | **Java DSA Technical Interview Guide** | Architectural definitions, complexity analysis, HashMap internals, trees, heaps, graphs, and 32 senior Q&As. | [Read Guide](DSA/dsa_java.md) |
 
 ---
