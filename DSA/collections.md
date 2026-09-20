@@ -3293,39 +3293,174 @@ List<String> view = list.subList(0, 1); // Live sub-window view
 
 ### HashSet
 
-- **Internal Structure**: Backed entirely by an internal `HashMap<E, Object>` instance:
-  ```java
-  private transient HashMap<E, Object> map;
-  private static final Object PRESENT = new Object(); // Dummy placeholder
-  
-  public boolean add(E e) {
-      return map.put(e, PRESENT) == null;
-  }
-  ```
-- **Ordering**: Unordered; iteration order depends entirely on hash bucket distribution and may change upon rehashing.
-- **Time Complexity**: $O(1)$ average for `add`, `remove`, `contains`.
+**Package**: `java.util.HashSet<E>` | **Implements**: `Set<E>`, `Cloneable`, `Serializable` | **Backed by**: `HashMap<E, Object>`
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `HashSet()` | Empty set; default capacity 16, load factor 0.75 |
+| `HashSet(int initialCapacity)` | Specified initial capacity |
+| `HashSet(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `HashSet(Collection<? extends E> c)` | Initializes from a collection (duplicates removed) |
+
+#### Internal Structure
+Backed entirely by an internal `HashMap<E, Object>` instance:
+```java
+private transient HashMap<E, Object> map;
+private static final Object PRESENT = new Object(); // Dummy placeholder
+
+public boolean add(E e) {
+    return map.put(e, PRESENT) == null;
+}
+```
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `add(E e)` | Adds element; returns `false` if already present | O(1) avg |
+| `remove(Object o)` | Removes element; returns `false` if not found | O(1) avg |
+| `contains(Object o)` | Returns `true` if element exists | O(1) avg |
+| `size()` | Returns number of elements | O(1) |
+| `isEmpty()` | Returns `true` if empty | O(1) |
+| `clear()` | Removes all elements | O(n) |
+| `iterator()` | Returns an iterator (no guaranteed order) | O(1) |
+| `toArray()` | Returns all elements as `Object[]` | O(n) |
+| `addAll(Collection c)` | Adds all elements — set union | O(n) |
+| `retainAll(Collection c)` | Keeps only common elements — intersection | O(n) |
+| `removeAll(Collection c)` | Removes all elements in c — difference | O(n) |
+| `containsAll(Collection c)` | Returns `true` if all elements of c are present | O(n) |
+
+```java
+HashSet<String> set = new HashSet<>();
+set.add("Apple");  set.add("Mango");  set.add("Apple"); // Duplicate ignored
+System.out.println(set.size());           // 2
+System.out.println(set.contains("Mango")); // true
+set.remove("Mango");
+System.out.println(set);                  // [Apple] (order may vary)
+```
+
+#### Advantages
+- **Fastest Set** — O(1) average for add, remove, contains
+- **Automatic deduplication** — ideal for uniqueness checks in DSA
+- Permits **one `null`** element
+- Uses battle-tested `HashMap` internally
+
+#### Disadvantages
+- **No ordering** — iteration order is unpredictable and may change on rehash
+- **Not thread-safe** — wrap with `Collections.synchronizedSet()` or use `ConcurrentHashMap.newKeySet()`
+- Extra memory overhead from the dummy `PRESENT` object per entry
+- **Worst-case O(n)** on hash collisions (Java 8+ mitigates with treeification at bucket size 8)
 
 ---
 
 ### LinkedHashSet
 
-- **Internal Structure**: Extends `HashSet`, backed by an internal `LinkedHashMap`.
-- **Ordering**: Maintains a **doubly-linked list** running through all entries. Iteration order matches **insertion order**.
-- **Performance Trade-off**: Basic operations remain $O(1)$ average; slightly higher memory footprint per element to store `before` and `after` pointers.
+**Package**: `java.util.LinkedHashSet<E>` | **Extends**: `HashSet<E>` | **Backed by**: `LinkedHashMap<E, Object>`
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `LinkedHashSet()` | Empty set; default capacity 16, load factor 0.75 |
+| `LinkedHashSet(int initialCapacity)` | Specified initial capacity |
+| `LinkedHashSet(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `LinkedHashSet(Collection<? extends E> c)` | From a collection; preserves insertion order, removes duplicates |
+
+#### Internal Structure
+- Extends `HashSet`, backed by `LinkedHashMap`.
+- Maintains a **doubly-linked list** through all entries — ensures insertion-order iteration.
+- Each entry stores `before` and `after` pointer references in addition to the hash bucket link.
+
+#### Methods
+All methods are inherited from `HashSet`. The key behavioral difference is **guaranteed insertion-order iteration**.
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `add(E e)` | Adds element at tail of linked list; no-op if duplicate | O(1) avg |
+| `remove(Object o)` | Removes element, updates linked order | O(1) avg |
+| `contains(Object o)` | Checks element presence | O(1) avg |
+| `size()` | Number of elements | O(1) |
+| `isEmpty()` | `true` if set has no elements | O(1) |
+| `clear()` | Removes all elements | O(n) |
+| `iterator()` | Returns iterator in **insertion order** | O(1) |
+
+```java
+LinkedHashSet<String> lhs = new LinkedHashSet<>();
+lhs.add("Banana"); lhs.add("Apple"); lhs.add("Mango"); lhs.add("Apple"); // dup
+System.out.println(lhs); // [Banana, Apple, Mango] — insertion order preserved
+```
+
+#### Advantages
+- **Insertion-order iteration** — predictable, reproducible ordering unlike `HashSet`
+- O(1) average for add, remove, contains — same performance as `HashSet`
+- Eliminates duplicates while preserving **first-seen order**
+- Drop-in replacement for `HashSet` when order matters
+
+#### Disadvantages
+- **Higher memory** than `HashSet` — each entry has additional `before`/`after` pointer fields
+- **Not thread-safe**
+- Slightly slower than `HashSet` due to maintaining the linked list on every insertion/removal
 
 ---
 
 ### TreeSet & NavigableSet
 
-- **Internal Structure**: Backed by a Red-Black Tree (`TreeMap`).
-- **Ordering**: Elements are sorted according to natural ordering (`Comparable`) or a supplied `Comparator`.
-- **Time Complexity**: $O(\log n)$ guaranteed for `add`, `remove`, `contains`.
-- **Navigable APIs**:
-  - `ceiling(e)`: Smallest element $\ge e$.
-  - `floor(e)`: Largest element $\le e$.
-  - `higher(e)`: Smallest element $> e$.
-  - `lower(e)`: Largest element $< e$.
-  - `subSet(from, fromInclusive, to, toInclusive)`: Sorted slice view.
+**Package**: `java.util.TreeSet<E>` | **Implements**: `NavigableSet<E>`, `SortedSet<E>` | **Backed by**: `TreeMap<E, Object>` (Red-Black Tree)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `TreeSet()` | Empty set using natural ordering (`Comparable`) |
+| `TreeSet(Comparator<? super E> comparator)` | Empty set with custom sort order |
+| `TreeSet(Collection<? extends E> c)` | From a collection, sorted by natural order |
+| `TreeSet(SortedSet<E> s)` | From another `SortedSet`, preserving comparator |
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `add(E e)` | Inserts element in sorted position | O(log n) |
+| `remove(Object o)` | Removes element | O(log n) |
+| `contains(Object o)` | Checks element presence | O(log n) |
+| `first()` | Returns the lowest element | O(log n) |
+| `last()` | Returns the highest element | O(log n) |
+| `ceiling(E e)` | Smallest element ≥ e (or `null`) | O(log n) |
+| `floor(E e)` | Largest element ≤ e (or `null`) | O(log n) |
+| `higher(E e)` | Smallest element > e strictly | O(log n) |
+| `lower(E e)` | Largest element < e strictly | O(log n) |
+| `pollFirst()` | Removes and returns the lowest | O(log n) |
+| `pollLast()` | Removes and returns the highest | O(log n) |
+| `headSet(E to)` | View of elements < to | O(log n) |
+| `tailSet(E from)` | View of elements ≥ from | O(log n) |
+| `subSet(E from, E to)` | View of elements [from, to) | O(log n) |
+| `size()` | Number of elements | O(1) |
+| `iterator()` | Iterator in ascending order | O(1) |
+| `descendingIterator()` | Iterator in descending order | O(1) |
+| `descendingSet()` | Reverse-order view of the set | O(1) |
+
+```java
+TreeSet<Integer> ts = new TreeSet<>(List.of(30, 10, 50, 20, 40));
+System.out.println(ts);                         // [10, 20, 30, 40, 50]
+System.out.println(ts.ceiling(25));             // 30
+System.out.println(ts.floor(25));               // 20
+System.out.println(ts.subSet(20, true, 40, true)); // [20, 30, 40]
+System.out.println(ts.pollFirst());             // 10 (removed)
+```
+
+#### Advantages
+- **Always sorted** — no manual sorting needed
+- **Rich navigation API** — `floor`, `ceiling`, `higher`, `lower`, `subSet`, `headSet`, `tailSet`
+- **Guaranteed O(log n)** — no hash collision worst-case unlike `HashSet`
+- **Range queries** — ideal for interval problems, sliding window with sorted order
+
+#### Disadvantages
+- **O(log n) per operation** — slower than `HashSet` O(1) for basic add/remove/contains
+- **Not thread-safe** — use `ConcurrentSkipListSet` for concurrent sorted set
+- **Null elements prohibited** — throws `NullPointerException` (comparison fails on null)
+- Higher constant factor than `HashSet` due to Red-Black Tree rebalancing
 
 ---
 
@@ -3545,28 +3680,162 @@ It exposes **two sets of methods** for every fundamental operation:
 
 ### PriorityQueue Deep Dive
 
-`PriorityQueue<E>` is an unbounded priority queue backed by an **Array-Based Binary Min-Heap**.
-- **Internal Storage**: `Object[] queue` where for any node at index $k$:
-  - Left Child: $2k + 1$
-  - Right Child: $2k + 2$
-  - Parent: $(k - 1) \gg 1$
-- **Algorithms**:
-  - `offer(e)`: Inserts at end of array, runs `siftUp()` $\rightarrow O(\log n)$.
-  - `poll()`: Replaces root with last array element, runs `siftDown()` $\rightarrow O(\log n)$.
-  - `peek()`: Inspects `queue[0]` $\rightarrow O(1)$.
-- **Heapify Construction**: Constructing `new PriorityQueue<>(collection)` executes the bottom-up Floyd's heap construction algorithm in **$O(n)$ time**, rather than $O(n \log n)$ sequential insertions.
-- **Iteration Order**: Iterating with `iterator()` or for-each traverses raw array storage — **elements are NOT returned in sorted order**. To process in priority order, you must repeatedly invoke `poll()`.
+**Package**: `java.util.PriorityQueue<E>` | **Implements**: `Queue<E>` | **Backed by**: Array-Based Binary Min-Heap
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `PriorityQueue()` | Default capacity 11, natural ordering |
+| `PriorityQueue(int initialCapacity)` | Specified initial capacity |
+| `PriorityQueue(Comparator<? super E> comparator)` | Default capacity, custom ordering |
+| `PriorityQueue(int initialCapacity, Comparator<? super E> comparator)` | Specified capacity and comparator |
+| `PriorityQueue(Collection<? extends E> c)` | From collection; heapified in O(n) via Floyd's algorithm |
+| `PriorityQueue(PriorityQueue<? extends E> c)` | From another PriorityQueue |
+
+#### Internal Structure — Binary Min-Heap
+- Backed by `Object[] queue`. For any node at index $k$: Left = $2k+1$, Right = $2k+2$, Parent = $(k-1) \gg 1$.
+- `offer(e)`: Appends to end, runs `siftUp()` → **O(log n)**.
+- `poll()`: Replaces root with last element, runs `siftDown()` → **O(log n)**.
+- `peek()`: Reads `queue[0]` → **O(1)**.
+- **Heapify Construction**: `new PriorityQueue<>(collection)` uses Floyd's bottom-up algorithm → **O(n)**.
+- **Iteration Order**: `iterator()` traverses raw array — **NOT in sorted order**. Use repeated `poll()` for ordered output.
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `offer(E e)` | Inserts element (preferred; returns false on failure) | O(log n) |
+| `add(E e)` | Inserts element (throws `IllegalStateException` on failure) | O(log n) |
+| `poll()` | Removes and returns the minimum element; `null` if empty | O(log n) |
+| `remove()` | Same as `poll()`; throws `NoSuchElementException` if empty | O(log n) |
+| `peek()` | Returns minimum without removing; `null` if empty | O(1) |
+| `element()` | Same as `peek()`; throws if empty | O(1) |
+| `remove(Object o)` | Removes a specific element (linear scan) | O(n) |
+| `contains(Object o)` | Checks if element exists | O(n) |
+| `size()` | Number of elements | O(1) |
+| `isEmpty()` | `true` if no elements | O(1) |
+| `clear()` | Removes all elements | O(n) |
+| `toArray()` | Returns heap array in heap order (NOT sorted) | O(n) |
+| `comparator()` | Returns comparator, or `null` if natural order | O(1) |
+
+```java
+// Min-Heap (default — natural ordering)
+PriorityQueue<Integer> minHeap = new PriorityQueue<>();
+minHeap.offer(30); minHeap.offer(10); minHeap.offer(20);
+System.out.println(minHeap.peek()); // 10
+System.out.println(minHeap.poll()); // 10 (removed)
+
+// Max-Heap
+PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Comparator.reverseOrder());
+maxHeap.offer(30); maxHeap.offer(10); maxHeap.offer(20);
+System.out.println(maxHeap.poll()); // 30
+
+// Custom comparator — sort strings by length
+PriorityQueue<String> byLength = new PriorityQueue<>(Comparator.comparingInt(String::length));
+byLength.offer("Banana"); byLength.offer("Apple"); byLength.offer("Fig");
+System.out.println(byLength.poll()); // Fig
+```
+
+#### Advantages
+- **Efficient Min/Max extraction** — O(log n) poll, O(1) peek
+- **O(n) bulk construction** — `new PriorityQueue<>(collection)` is faster than n insertions
+- **Custom ordering** via `Comparator` — min-heap or max-heap with one line
+- Ideal for: **Top-K problems**, Dijkstra's algorithm, task scheduling, merge K sorted arrays
+
+#### Disadvantages
+- **Does NOT iterate in sorted order** — `for-each` traverses raw heap array, not sorted
+- **Not thread-safe** — use `PriorityBlockingQueue` for concurrent access
+- **Null elements prohibited** — throws `NullPointerException`
+- `contains()` and element-specific `remove(Object)` are **O(n)** — no index structure
+- **Not stable** — equal-priority elements have arbitrary relative ordering
 
 ---
 
 ### ArrayDeque (Circular Buffer)
 
-`ArrayDeque<E>` implements both `Queue` and `Deque` (Double-Ended Queue).
-- **Internal Structure**: Resizable circular array `Object[] elements` with head and tail pointers: `int head`, `int tail`.
-- **Bitwise Index Wrap-around**: Capacity is always forced to be a power of two ($2^k$). Index wrapping is computed using bitwise masking:
-  $$\text{head} = (\text{head} - 1) \ \& \ (\text{elements.length} - 1)$$
-- **Zero Allocations**: Adding/removing from both ends allocates zero new node objects, providing superior CPU cache performance.
-- **Null Elements**: Prohibits `null` elements (throws `NullPointerException`).
+**Package**: `java.util.ArrayDeque<E>` | **Implements**: `Deque<E>`, `Queue<E>` | **Backed by**: Resizable circular array
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `ArrayDeque()` | Default initial capacity of 16 |
+| `ArrayDeque(int numElements)` | Capacity large enough to hold `numElements` |
+| `ArrayDeque(Collection<? extends E> c)` | Initialized from a collection |
+
+#### Internal Structure
+- Resizable circular array `Object[] elements` with `int head` and `int tail` pointers.
+- Capacity always forced to a **power of two** ($2^k$) — index wrapping uses bitwise masking:
+  $\text{head} = (\text{head} - 1) \ \& \ (\text{elements.length} - 1)$
+- **Zero per-operation allocations** — no `Node` objects created per push/offer.
+- **Null elements prohibited** — null is used as sentinel for empty slots.
+
+#### Methods — As Stack (LIFO)
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `push(E e)` | Pushes element to head (`addFirst`) | O(1) amortized |
+| `pop()` | Removes and returns head (`removeFirst`) | O(1) |
+| `peek()` / `peekFirst()` | Returns head without removing | O(1) |
+
+#### Methods — As Queue (FIFO)
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `offer(E e)` / `offerLast(E e)` | Adds element to tail | O(1) amortized |
+| `poll()` / `pollFirst()` | Removes and returns from head | O(1) |
+| `peek()` / `peekFirst()` | Inspects head without removing | O(1) |
+
+#### Methods — As Deque (Both Ends)
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `addFirst(E e)` / `offerFirst(E e)` | Inserts at head | O(1) amortized |
+| `addLast(E e)` / `offerLast(E e)` | Inserts at tail | O(1) amortized |
+| `removeFirst()` / `pollFirst()` | Removes from head | O(1) |
+| `removeLast()` / `pollLast()` | Removes from tail | O(1) |
+| `peekFirst()` | Inspects head | O(1) |
+| `peekLast()` | Inspects tail | O(1) |
+| `size()` | Number of elements | O(1) |
+| `isEmpty()` | `true` if empty | O(1) |
+| `contains(Object o)` | Checks presence (linear scan) | O(n) |
+| `remove(Object o)` | Removes first occurrence | O(n) |
+| `clear()` | Removes all elements | O(n) |
+| `iterator()` | Forward iterator | O(1) |
+| `descendingIterator()` | Reverse iterator | O(1) |
+
+```java
+// As Stack (LIFO)
+Deque<Integer> stack = new ArrayDeque<>();
+stack.push(10); stack.push(20); stack.push(30);
+System.out.println(stack.pop()); // 30
+
+// As Queue (FIFO)
+Queue<String> queue = new ArrayDeque<>();
+queue.offer("A"); queue.offer("B"); queue.offer("C");
+System.out.println(queue.poll()); // A
+
+// As Deque (both ends)
+ArrayDeque<Integer> deque = new ArrayDeque<>();
+deque.addFirst(1); deque.addLast(2); deque.addFirst(0);
+System.out.println(deque); // [0, 1, 2]
+System.out.println(deque.peekLast()); // 2
+```
+
+#### Advantages
+- **Most versatile** — serves as Stack, Queue, and Deque in one class
+- **Faster than `LinkedList`** at both ends — zero heap allocations per operation
+- **Faster than legacy `Stack`** — no synchronization overhead
+- **Excellent cache locality** — circular array fits in CPU cache lines
+- Preferred by JDK team over `Stack` and `LinkedList` for stack/queue use
+
+#### Disadvantages
+- **Null elements prohibited** — throws `NullPointerException`
+- **Not thread-safe** — use `ConcurrentLinkedDeque` for concurrent access
+- `contains()` and `remove(Object)` are **O(n)** — no index structure
+- Resize copies entire array — amortized O(1) but worst-case O(n) per add
+- **No random access** — can only access head/tail efficiently
 
 ---
 
@@ -3738,6 +4007,67 @@ int top = stack.pop(); // removeFirst() -> 20
 
 ### HashMap Internal Architecture
 
+**Package**: `java.util.HashMap<K,V>` | **Implements**: `Map<K,V>` | **Backed by**: Hash table (array of linked nodes / Red-Black trees)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `HashMap()` | Default capacity 16, load factor 0.75 |
+| `HashMap(int initialCapacity)` | Specified initial capacity |
+| `HashMap(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `HashMap(Map<? extends K, ? extends V> m)` | Initializes from another map |
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Associates key with value; returns old value | O(1) avg |
+| `get(Object key)` | Returns value for key; `null` if absent | O(1) avg |
+| `remove(Object key)` | Removes key-value pair | O(1) avg |
+| `containsKey(Object key)` | Returns `true` if key exists | O(1) avg |
+| `containsValue(Object value)` | Returns `true` if value exists (linear scan) | O(n) |
+| `size()` | Number of key-value mappings | O(1) |
+| `isEmpty()` | `true` if no entries | O(1) |
+| `clear()` | Removes all entries | O(n) |
+| `keySet()` | Returns `Set<K>` of all keys | O(1) |
+| `values()` | Returns `Collection<V>` of all values | O(1) |
+| `entrySet()` | Returns `Set<Map.Entry<K,V>>` — fastest way to iterate | O(1) |
+| `putIfAbsent(K key, V value)` | Inserts only if key not already mapped | O(1) avg |
+| `getOrDefault(Object key, V def)` | Returns value or default if absent | O(1) avg |
+| `merge(K key, V value, BiFunction f)` | Merges value with existing (e.g., frequency count) | O(1) avg |
+| `computeIfAbsent(K key, Function f)` | Computes and stores value if key absent | O(1) avg |
+| `forEach(BiConsumer action)` | Applies action to each entry | O(n) |
+| `replace(K key, V value)` | Replaces value only if key already mapped | O(1) avg |
+
+```java
+HashMap<String, Integer> map = new HashMap<>();
+map.put("Apple", 1); map.put("Mango", 2); map.put("Apple", 3); // overwrites
+System.out.println(map.get("Apple"));              // 3
+System.out.println(map.getOrDefault("Grape", 0));  // 0
+map.merge("Apple", 1, Integer::sum);               // Apple -> 4
+map.computeIfAbsent("Banana", k -> k.length());    // Banana -> 6
+
+// Fastest iteration pattern
+for (Map.Entry<String, Integer> e : map.entrySet()) {
+    System.out.println(e.getKey() + " -> " + e.getValue());
+}
+```
+
+#### Advantages
+- **O(1) average** for put, get, remove — fastest Map for unsorted data
+- Allows **one null key** and **multiple null values**
+- Rich Java 8+ functional API: `merge`, `computeIfAbsent`, `getOrDefault`, `forEach`
+- Default choice for most DSA key-value problems
+
+#### Disadvantages
+- **No ordering** — iteration order is unpredictable and changes on rehash
+- **Not thread-safe** — use `ConcurrentHashMap` for concurrent access
+- **Worst-case O(n)** on hash collisions (mitigated by treeification in Java 8+)
+- Memory overhead: each entry is a `Node` object with key, value, hash, and next reference
+
+#### Internal Architecture
+
 A standard `HashMap<K, V>` is an array of hash buckets (`Node<K, V>[] table`).
 
 ```text
@@ -3782,6 +4112,34 @@ Because $n$ is always a power of 2, `(n - 1)` is a bitmask of all 1s (e.g., $16 
 
 ### LinkedHashMap & LRU Cache
 
+**Package**: `java.util.LinkedHashMap<K,V>` | **Extends**: `HashMap<K,V>` | **Extra**: Doubly-linked list through all entries
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `LinkedHashMap()` | Default capacity 16, load factor 0.75, insertion-order |
+| `LinkedHashMap(int initialCapacity)` | Specified capacity, insertion-order |
+| `LinkedHashMap(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `LinkedHashMap(Map<? extends K, ? extends V> m)` | From another map, insertion-order |
+| `LinkedHashMap(int capacity, float loadFactor, boolean accessOrder)` | `true` = access-order (LRU), `false` = insertion-order |
+
+#### Methods
+All methods inherited from `HashMap`. Key behavioral difference: predictable **insertion-order** or **access-order** iteration.
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Inserts / updates; moves to tail in access-order mode | O(1) avg |
+| `get(Object key)` | Returns value; moves entry to tail in access-order mode | O(1) avg |
+| `remove(Object key)` | Removes entry, updates linked order | O(1) avg |
+| `containsKey(Object key)` | Checks key existence | O(1) avg |
+| `size()` | Number of entries | O(1) |
+| `keySet()` | Keys in insertion / access order | O(1) |
+| `values()` | Values in insertion / access order | O(1) |
+| `entrySet()` | Entries in insertion / access order | O(1) |
+| `removeEldestEntry(Map.Entry e)` | Override to evict oldest entry automatically | O(1) |
+
+#### Internal Structure & LRU Cache
 `LinkedHashMap<K, V>` extends `HashMap<K, V>`. Every node contains `before` and `after` pointers:
 ```java
 static class Entry<K,V> extends HashMap.Node<K,V> {
@@ -3809,14 +4167,77 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
 }
 ```
 
+#### Advantages
+- **Insertion or access-order iteration** — predictable ordering unlike `HashMap`
+- Same O(1) average performance as `HashMap`
+- **Natural LRU cache** — extend and override `removeEldestEntry()` — no extra library needed
+- Useful for: ordered iteration, deduplication with order, cache implementations
+
+#### Disadvantages
+- **Higher memory** than `HashMap` — `before`/`after` pointers per node
+- **Not thread-safe**
+- Slightly slower than `HashMap` due to linked list maintenance on each insertion
+
 ---
 
 ### TreeMap
 
-- Backed by a Red-Black Tree.
-- Keys are sorted according to natural ordering or a `Comparator`.
-- Basic operations (`get`, `put`, `remove`, `containsKey`) are guaranteed **$O(\log n)$**.
-- Implements `NavigableMap` (`firstKey()`, `lastKey()`, `headMap()`, `tailMap()`, `subMap()`).
+**Package**: `java.util.TreeMap<K,V>` | **Implements**: `NavigableMap<K,V>`, `SortedMap<K,V>` | **Backed by**: Red-Black Tree
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `TreeMap()` | Empty map using natural key ordering (`Comparable`) |
+| `TreeMap(Comparator<? super K> comparator)` | Empty map with custom key order |
+| `TreeMap(Map<? extends K, ? extends V> m)` | From another map, sorted by natural order |
+| `TreeMap(SortedMap<K, ? extends V> m)` | From another `SortedMap`, preserving comparator |
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Inserts key-value in sorted position | O(log n) |
+| `get(Object key)` | Returns value for key | O(log n) |
+| `remove(Object key)` | Removes key-value pair | O(log n) |
+| `containsKey(Object key)` | Checks key presence | O(log n) |
+| `firstKey()` | Returns the lowest key | O(log n) |
+| `lastKey()` | Returns the highest key | O(log n) |
+| `ceilingKey(K key)` | Smallest key ≥ given key | O(log n) |
+| `floorKey(K key)` | Largest key ≤ given key | O(log n) |
+| `higherKey(K key)` | Smallest key > given key | O(log n) |
+| `lowerKey(K key)` | Largest key < given key | O(log n) |
+| `pollFirstEntry()` | Removes and returns entry with lowest key | O(log n) |
+| `pollLastEntry()` | Removes and returns entry with highest key | O(log n) |
+| `headMap(K toKey)` | View of entries with keys < toKey | O(log n) |
+| `tailMap(K fromKey)` | View of entries with keys ≥ fromKey | O(log n) |
+| `subMap(K from, K to)` | View of entries with keys [from, to) | O(log n) |
+| `keySet()` | Keys in ascending sorted order | O(1) |
+| `descendingKeySet()` | Keys in descending order | O(1) |
+| `size()` | Number of entries | O(1) |
+
+```java
+TreeMap<String, Integer> tm = new TreeMap<>();
+tm.put("Banana", 2); tm.put("Apple", 1); tm.put("Mango", 3);
+
+System.out.println(tm);                  // {Apple=1, Banana=2, Mango=3} sorted!
+System.out.println(tm.firstKey());        // Apple
+System.out.println(tm.ceilingKey("B"));  // Banana
+System.out.println(tm.headMap("Mango")); // {Apple=1, Banana=2}
+System.out.println(tm.pollFirstEntry()); // Apple=1 (removed)
+```
+
+#### Advantages
+- **Always sorted by key** — no manual sorting needed
+- **Rich navigation API** — `ceilingKey`, `floorKey`, `headMap`, `tailMap`, `subMap`
+- **Guaranteed O(log n)** — no hash collision worst-case
+- **Range queries** — ideal for interval problems and time-series data
+
+#### Disadvantages
+- **O(log n) per operation** — slower than `HashMap` O(1) average
+- **Not thread-safe** — use `ConcurrentSkipListMap` for concurrent sorted map
+- **Null keys prohibited** — throws `NullPointerException` (comparison fails on null)
+- Higher constant factor due to Red-Black Tree rebalancing on every insert/delete
 
 ---
 
@@ -3836,7 +4257,32 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
 
 ### WeakHashMap (Detailed)
 
-`WeakHashMap<K, V>` is a `Map` implementation where **keys are held via `WeakReference<K>`**, allowing the GC to reclaim key objects when no strong reference to them exists.
+**Package**: `java.util.WeakHashMap<K,V>` | **Implements**: `Map<K,V>` | **Key storage**: `WeakReference<K>` (GC-reclaimable keys)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `WeakHashMap()` | Default capacity 16, load factor 0.75 |
+| `WeakHashMap(int initialCapacity)` | Specified initial capacity |
+| `WeakHashMap(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `WeakHashMap(Map<? extends K, ? extends V> m)` | From another map |
+
+#### Methods
+All standard `Map` methods are supported. Unique behavior: **entries silently disappear** when keys become GC-eligible.
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Associates key with value (key stored as WeakReference) | O(1) avg |
+| `get(Object key)` | Returns value; `null` if absent or GC-reclaimed | O(1) avg |
+| `remove(Object key)` | Explicitly removes entry | O(1) avg |
+| `containsKey(Object key)` | Returns `true` if key still alive and present | O(1) avg |
+| `size()` | Approximate size (may include not-yet-expunged entries) | O(n) |
+| `isEmpty()` | `true` if no live entries | O(n) |
+| `clear()` | Removes all entries | O(n) |
+| `keySet()` | Set of currently alive keys | O(n) |
+| `values()` | Collection of values for alive keys | O(n) |
+| `entrySet()` | Set of live entries | O(n) |
 
 #### How It Works
 - In a regular `HashMap`, a key in the map is a **strong reference** — the GC never collects it.
@@ -3862,6 +4308,17 @@ System.out.println(cache.size()); // 0 — entry auto-removed by GC!
 - **Listener registries**: Prevent memory leaks when listeners are never explicitly deregistered.
 - **Canonicalization caches**: Pool/intern objects but release them when unused elsewhere.
 
+#### Advantages
+- **Automatic memory management** — no explicit removal needed; GC-driven expiry
+- **Prevents memory leaks** — entries self-destruct when keys become unreachable
+- Same `Map` API as `HashMap` — drop-in for cache use cases
+
+#### Disadvantages
+- **Non-deterministic expiry** — entries are removed at GC discretion, not on a schedule
+- **Not thread-safe** — must synchronize externally
+- **`size()` may be inaccurate** — stale entries may not be expunged yet
+- **Cannot use intern'd constants as keys** — `String` literals, `Integer` cached values never get GC'd
+
 > [!CAUTION]
 > **Never use `WeakHashMap` with JVM-interned constants** — `String` literals, `Integer` cached values (−128 to +127), enum constants, and class literals are permanently strongly referenced by the JVM. `WeakHashMap` will behave identically to `HashMap` for such keys and the entries will never be collected.
 
@@ -3869,7 +4326,15 @@ System.out.println(cache.size()); // 0 — entry auto-removed by GC!
 
 ### IdentityHashMap (Detailed)
 
-`IdentityHashMap<K, V>` intentionally **violates the general `Map` contract** by using **reference equality (`==`)** instead of value equality (`equals()`) for key comparison.
+**Package**: `java.util.IdentityHashMap<K,V>` | **Implements**: `Map<K,V>` | **Key equality**: `==` (reference identity, not `equals()`)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `IdentityHashMap()` | Default expected max size of 21 |
+| `IdentityHashMap(int expectedMaxSize)` | Sized to hold expected number of mappings |
+| `IdentityHashMap(Map<? extends K, ? extends V> m)` | From another map |
 
 #### Key Differences from `HashMap`
 
@@ -3879,6 +4344,21 @@ System.out.println(cache.size()); // 0 — entry auto-removed by GC!
 | **Hash Code** | `key.hashCode()` | `System.identityHashCode(key)` (memory-address based) |
 | **Backing Structure** | Hash table with chaining (linked list / Red-Black tree) | Linear probing open-addressing table |
 | **Null Keys** | 1 allowed | 1 allowed |
+
+#### Methods
+All standard `Map` methods are supported. The unique behavior is **reference-based key lookup**.
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Stores entry; key equality by `==` | O(1) avg |
+| `get(Object key)` | Returns value; lookup by `==` | O(1) avg |
+| `remove(Object key)` | Removes entry by reference identity | O(1) avg |
+| `containsKey(Object key)` | Returns `true` if exact reference is present | O(1) avg |
+| `containsValue(Object value)` | Checks value by `==` (reference equality!) | O(n) |
+| `size()` | Number of entries | O(1) |
+| `keySet()` | Set of keys (identity-based) | O(1) |
+| `entrySet()` | Set of entries | O(1) |
+| `clear()` | Removes all entries | O(n) |
 
 ```java
 IdentityHashMap<String, Integer> imap = new IdentityHashMap<>();
@@ -3904,11 +4384,49 @@ System.out.println(imap.get(c)); // 1 — same reference, same key
 - **JVM agents / memory profilers**: Associate metadata with object instances by reference identity.
 - **Graph traversal cycle detection**: Use as a "visited" set where `==` identity matters, not `equals()`.
 
+#### Advantages
+- **Reference-identity keying** — the ONLY standard Java Map that uses `==`
+- **More memory-efficient** than `HashMap` — no `Node` chaining, uses open addressing
+- **Fast** for identity-based lookups
+
+#### Disadvantages
+- **Violates `Map` contract** — not a general-purpose Map; misuse causes subtle bugs
+- **Not thread-safe**
+- **Iteration order unpredictable**
+- Rarely needed — specialized use cases only
+
 ---
 
 ### HashTable (Detailed)
 
-`Hashtable<K, V>` is the **legacy synchronized Map** from Java 1.0, predating the JCF. It is considered obsolete.
+**Package**: `java.util.Hashtable<K,V>` | **Implements**: `Map<K,V>` | **Thread safety**: Full object lock on every method (obsolete)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `Hashtable()` | Default capacity 11, load factor 0.75 |
+| `Hashtable(int initialCapacity)` | Specified initial capacity |
+| `Hashtable(int initialCapacity, float loadFactor)` | Specified capacity and load factor |
+| `Hashtable(Map<? extends K, ? extends V> t)` | From another map |
+
+#### Methods
+
+| Method | Description | Thread Safety |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Inserts / updates entry | `synchronized` |
+| `get(Object key)` | Returns value; `null` if absent | `synchronized` |
+| `remove(Object key)` | Removes entry | `synchronized` |
+| `containsKey(Object key)` | Checks key presence | `synchronized` |
+| `containsValue(Object value)` | Checks value presence (linear scan) | `synchronized` |
+| `contains(Object value)` | Legacy alias for `containsValue()` | `synchronized` |
+| `size()` | Number of entries | `synchronized` |
+| `isEmpty()` | `true` if no entries | `synchronized` |
+| `clear()` | Removes all entries | `synchronized` |
+| `keys()` | Legacy `Enumeration<K>` of keys | `synchronized` |
+| `elements()` | Legacy `Enumeration<V>` of values | `synchronized` |
+| `keySet()` | Modern `Set<K>` of keys | `synchronized` |
+| `entrySet()` | Modern `Set<Map.Entry<K,V>>` | `synchronized` |
 
 #### Architecture
 - Every public method is declared `synchronized`, acquiring an intrinsic lock on the **entire `Hashtable` object**.
@@ -3944,6 +4462,16 @@ while (keys.hasMoreElements()) {
 | **Null support** | No nulls | No nulls |
 | **Iteration** | Legacy `Enumeration` | Weakly consistent `Iterator` |
 | **Use today?** | **No — never use in new code** | ✅ Preferred for thread-safe maps |
+
+#### Advantages
+- Thread-safe out of the box (no external synchronization needed)
+- Provides legacy `Enumeration` API for backward compatibility
+
+#### Disadvantages
+- **Coarse locking** — entire map locked for every operation, catastrophic throughput under concurrency
+- **No null keys or values** — throws `NullPointerException`
+- **Obsolete** — replaced by `ConcurrentHashMap` (concurrency) and `HashMap` (single-thread)
+- **Legacy API** — `Enumeration`-based iteration is verbose and read-only
 
 > [!CAUTION]
 > **Never use `Hashtable` in new code.** Use `ConcurrentHashMap` for concurrent access and `HashMap` for single-threaded use.
@@ -4140,7 +4668,52 @@ Enumeration<String> wrapped = Collections.enumeration(list);
 
 ### ConcurrentHashMap
 
-Designed for massive multi-threaded throughput.
+**Package**: `java.util.concurrent.ConcurrentHashMap<K,V>` | **Implements**: `ConcurrentMap<K,V>` | **Backed by**: Segmented hash table (Java 7) / Node array with CAS (Java 8+)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `ConcurrentHashMap()` | Default capacity 16, load factor 0.75, concurrency level 16 |
+| `ConcurrentHashMap(int initialCapacity)` | Specified capacity |
+| `ConcurrentHashMap(int capacity, float loadFactor)` | Specified capacity and load factor |
+| `ConcurrentHashMap(int capacity, float loadFactor, int concurrencyLevel)` | Controls parallelism level |
+| `ConcurrentHashMap(Map<? extends K, ? extends V> m)` | From another map |
+
+#### Methods
+
+| Method | Description | Thread Safety |
+| :--- | :--- | :--- |
+| `put(K key, V value)` | Inserts / updates entry | CAS or bin lock |
+| `get(Object key)` | Returns value; **lock-free** | Lock-free (volatile read) |
+| `remove(Object key)` | Removes entry | Bin-level lock |
+| `containsKey(Object key)` | Checks key presence; lock-free | Lock-free |
+| `size()` | Approximate total count (uses `LongAdder` pattern) | Eventually consistent |
+| `mappingCount()` | Same as `size()` but returns `long` (preferred) | Eventually consistent |
+| `isEmpty()` | Checks if map has no entries | Eventually consistent |
+| `putIfAbsent(K key, V value)` | Atomic conditional insert | Atomic |
+| `replace(K key, V old, V new)` | Atomic conditional replace | Atomic |
+| `remove(Object key, Object val)` | Atomic conditional remove | Atomic |
+| `compute(K key, BiFunction f)` | Atomic compute for key | Bin-level lock |
+| `merge(K key, V val, BiFunction f)` | Atomic merge (frequency counts etc.) | Bin-level lock |
+| `computeIfAbsent(K key, Function f)` | Atomic: compute only if absent | Bin-level lock |
+| `keySet()` | Returns weakly consistent key set | Weakly consistent |
+| `newKeySet()` (static) | Creates a thread-safe `Set` backed by `ConcurrentHashMap` | Thread-safe |
+| `entrySet()` | Weakly consistent entry set | Weakly consistent |
+| `forEach(BiConsumer action)` | Applies action (weakly consistent) | Lock-free traversal |
+
+```java
+ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>();
+map.put("Apple", 1);
+map.get("Apple");              // Lock-free read
+map.putIfAbsent("Mango", 2);  // Atomic
+map.merge("Apple", 1, Integer::sum); // Apple -> 2 (atomic frequency count)
+map.computeIfAbsent("Grape", k -> k.length()); // Grape -> 5
+
+// Thread-safe Set
+Set<String> keys = ConcurrentHashMap.newKeySet();
+keys.add("A"); keys.add("B");
+```
 
 #### Evolution: Java 7 vs Java 8+
 - **Java 7 (Segmented Locking)**: Divided map into 16 `Segment` arrays (each extending `ReentrantLock`). Supported concurrent writes across different segments, but locked entire segments.
@@ -4150,35 +4723,133 @@ Designed for massive multi-threaded throughput.
   - **Writes to Populated Bin**: Synchronizes only on the head `Node` of that specific bucket using intrinsic `synchronized(f)`. Locks are localized to a single hash bucket!
   - **No Nulls**: Prohibits `null` keys and values to prevent race conditions during `get()` vs `containsKey()`.
 
+#### Advantages
+- **Massive throughput** — lock-free reads, per-bucket writes instead of full map locking
+- **No full map lock** — multiple writers can operate on different buckets simultaneously
+- **Rich atomic operations** — `compute`, `merge`, `computeIfAbsent` are all atomic
+- **Thread-safe `Set`** via `ConcurrentHashMap.newKeySet()`
+
+#### Disadvantages
+- **No null keys or values** — throws `NullPointerException`
+- `size()` is approximate — not atomically consistent with concurrent writes (use `mappingCount()`)
+- **Not suitable for coarse-grained atomic operations** — multi-step conditional logic (check-then-act) must use `compute` / `merge`
+- More complex API than `HashMap`
+
 ---
 
 ### CopyOnWriteArrayList
 
-- **Principle**: Any mutative operation (`add`, `set`, `remove`) allocates a fresh copy of the internal array (`Arrays.copyOf()`).
-- **Iteration**: Iterators iterate over a stable, immutable **snapshot** taken at iterator creation time. Iterators never throw `ConcurrentModificationException` and do not support `remove()`.
-- **Ideal Use Case**: Event listener lists or configuration caches where **reads exceed writes by 1000:1**. Writes are extremely expensive ($O(n)$ array allocation and copy).
+**Package**: `java.util.concurrent.CopyOnWriteArrayList<E>` | **Implements**: `List<E>` | **Backed by**: Volatile array reference (new copy per write)
+
+#### Constructors
+
+| Constructor | Description |
+| :--- | :--- |
+| `CopyOnWriteArrayList()` | Empty list |
+| `CopyOnWriteArrayList(Collection<? extends E> c)` | Initialized from a collection |
+| `CopyOnWriteArrayList(E[] toCopyIn)` | Initialized from an array |
+
+#### Principle
+- Any mutative operation (`add`, `set`, `remove`) **allocates a fresh copy** of the internal array (`Arrays.copyOf()`).
+- The new array is atomically published via a `volatile Object[] array` field.
+- **Iterators** traverse a stable, immutable **snapshot** of the array taken at iterator creation time — never throw `ConcurrentModificationException`, never support `remove()`.
+
+#### Methods
+
+| Method | Description | Time Complexity |
+| :--- | :--- | :--- |
+| `add(E e)` | Appends; allocates new array copy | O(n) |
+| `add(int index, E e)` | Inserts at index; allocates new array | O(n) |
+| `set(int index, E e)` | Replaces element; allocates new array | O(n) |
+| `remove(int index)` | Removes element; allocates new array | O(n) |
+| `get(int index)` | Returns element at index (reads snapshot) | O(1) |
+| `size()` | Returns current element count | O(1) |
+| `contains(Object o)` | Linear scan of current snapshot | O(n) |
+| `iterator()` | Returns snapshot iterator (never throws CME) | O(1) |
+| `addIfAbsent(E e)` | Adds element only if not already present | O(n) |
+| `addAllAbsent(Collection c)` | Adds all elements not already present | O(n) |
+
+```java
+CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+list.add("A"); list.add("B"); list.add("C");
+
+// Safe to iterate while another thread modifies
+for (String s : list) {
+    System.out.println(s); // Iterates over snapshot
+    list.add("D");         // No ConcurrentModificationException!
+}
+
+list.addIfAbsent("A"); // No-op (A already present)
+```
+
+#### Advantages
+- **No `ConcurrentModificationException`** — iterators traverse stable snapshots
+- **Lock-free reads** — `get()` needs only a volatile read
+- **Thread-safe** without explicit locking for iteration
+- Ideal for: event listener registries, configuration lists, cache invalidation lists
+
+#### Disadvantages
+- **Every write is O(n)** — allocates and copies entire array
+- **High GC pressure** — frequent writes create many short-lived array objects
+- **Stale reads** — iterators see snapshot; concurrent mutations are invisible until next iterator
+- **Not suitable for write-heavy workloads** — use `ConcurrentLinkedQueue` or `LinkedBlockingQueue`
 
 ---
 
 ### BlockingQueue & Producer-Consumer Coordination
 
-`BlockingQueue<E>` coordinates producer and consumer threads:
-- `put(e)`: Blocks calling thread if queue is full until space becomes available.
-- `take()`: Blocks calling thread if queue is empty until an element is added.
+**Package**: `java.util.concurrent.BlockingQueue<E>` | **Extends**: `Queue<E>` | **Key property**: Blocking `put`/`take` operations
+
+#### Key Methods
+
+| Method | Behavior if Full / Empty | Returns |
+| :--- | :--- | :--- |
+| `put(E e)` | **Blocks** until space is available | `void` |
+| `take()` | **Blocks** until an element is available | `E` |
+| `offer(E e)` | Returns `false` immediately if full | `boolean` |
+| `poll()` | Returns `null` immediately if empty | `E` |
+| `offer(E e, long timeout, TimeUnit u)` | Waits up to timeout, returns `false` if still full | `boolean` |
+| `poll(long timeout, TimeUnit u)` | Waits up to timeout, returns `null` if still empty | `E` |
+| `peek()` | Inspects head without removing; `null` if empty | `E` |
+| `size()` | Current number of elements | `int` |
+| `remainingCapacity()` | Available slots before blocking | `int` |
+| `drainTo(Collection c)` | Removes all elements into collection atomically | `int` (count) |
 
 ```java
 BlockingQueue<Task> queue = new ArrayBlockingQueue<>(100);
 
-// Producer
+// Producer thread
 queue.put(new Task()); // Blocks if full
+queue.offer(new Task(), 500, TimeUnit.MILLISECONDS); // Timed wait
 
-// Consumer
+// Consumer thread
 Task task = queue.take(); // Blocks if empty
 ```
+
+#### Implementations Comparison
+
+| Implementation | Backing | Lock Strategy | Capacity | Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| `ArrayBlockingQueue` | Circular array | Single `ReentrantLock` | **Bounded** | Strict capacity control |
+| `LinkedBlockingQueue` | Linked nodes | `putLock` + `takeLock` (2 locks) | Bounded or Unbounded | High-throughput P-C pipeline |
+| `PriorityBlockingQueue` | Binary heap | Single lock | Unbounded | Priority-based scheduling |
+| `SynchronousQueue` | None (hand-off) | CAS | 0 (direct hand-off) | Thread-to-thread handoff |
+| `DelayQueue` | Priority heap | Single lock | Unbounded | Scheduled/delayed tasks |
 
 #### `ArrayBlockingQueue` vs `LinkedBlockingQueue`
 - **`ArrayBlockingQueue`**: Backed by a circular array buffer. Uses a **single `ReentrantLock`** for both `put` and `take`. Producers and consumers contend for the same lock.
 - **`LinkedBlockingQueue`**: Backed by linked nodes. Uses **two independent locks**: `putLock` and `takeLock`. Producers and consumers operate completely concurrently without contention!
+
+#### Advantages
+- **Automatic thread coordination** — no manual `wait()/notify()` needed
+- **Backpressure support** — producers automatically slow down when queue is full
+- **Decouples** producers from consumers — different speeds handled automatically
+- Foundation for **ThreadPoolExecutor** and most Java concurrency patterns
+
+#### Disadvantages
+- **Blocking** — threads block if queue is empty or full (can cause thread starvation)
+- **Bounded capacity** — must choose capacity carefully (`ArrayBlockingQueue`)
+- **Not for high-frequency non-blocking use** — use `ConcurrentLinkedQueue` instead
 
 ---
 
