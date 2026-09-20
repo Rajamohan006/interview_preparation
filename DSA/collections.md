@@ -3191,6 +3191,42 @@ private static class Node<E> {
 
 ---
 
+### AbstractSequentialList
+
+`AbstractSequentialList<E>` extends `AbstractList<E>` and is the skeletal implementation designed for **sequential-access** data structures such as linked lists.
+
+#### Design Principle
+- Requires implementing only **`listIterator(int index)`** and **`size()`**.
+- All positional access operations (`get`, `set`, `add`, `remove`) are implemented in terms of the list iterator — traversal is sequential, not random.
+- `LinkedList<E>` directly extends `AbstractSequentialList<E>`.
+
+```java
+// Minimal custom sequential list — only 2 abstract methods required:
+class MyLinkedList<E> extends AbstractSequentialList<E> {
+    @Override
+    public ListIterator<E> listIterator(int index) {
+        // implement forward/backward traversal
+        return ...;
+    }
+
+    @Override
+    public int size() {
+        return ...;
+    }
+}
+```
+
+| Feature | `AbstractList<E>` | `AbstractSequentialList<E>` |
+| :--- | :--- | :--- |
+| **Requires** | `get(int index)` + `size()` | `listIterator(int index)` + `size()` |
+| **Best for** | Random-access structures (arrays) | Sequential structures (linked lists) |
+| **Random Access?** | Yes — O(1) via `get()` | No — O(n) sequential traversal via iterator |
+| **Used by** | `ArrayList` | `LinkedList` |
+
+> **Interview Insight**: `AbstractSequentialList` implements the Template Method pattern — it provides final `get()`, `set()`, `add()`, and `remove()` methods that delegate all work to the `listIterator()` the subclass provides. This means you only write traversal logic once.
+
+---
+
 ### ArrayList vs LinkedList: Architecture & Hardware Comparison
 
 | Feature | `ArrayList<E>` | `LinkedList<E>` |
@@ -3293,6 +3329,153 @@ List<String> view = list.subList(0, 1); // Live sub-window view
 
 ---
 
+### SortedSet Interface
+
+`public interface SortedSet<E> extends Set<E>` maintains all elements in **ascending sorted order** (natural ordering or via a `Comparator`).
+
+#### Key Methods
+
+| Method | Description |
+| :--- | :--- |
+| `first()` | Returns the lowest element |
+| `last()` | Returns the highest element |
+| `headSet(toElement)` | View of elements **strictly less than** `toElement` |
+| `tailSet(fromElement)` | View of elements **≥ `fromElement`** |
+| `subSet(from, to)` | View from `from` (inclusive) to `to` (exclusive) |
+| `comparator()` | Returns the Comparator, or `null` if natural ordering |
+
+```java
+SortedSet<Integer> sorted = new TreeSet<>(List.of(10, 30, 20, 50, 40));
+System.out.println(sorted.first());         // 10
+System.out.println(sorted.last());          // 50
+System.out.println(sorted.headSet(30));     // [10, 20]
+System.out.println(sorted.tailSet(30));     // [30, 40, 50]
+System.out.println(sorted.subSet(20, 40));  // [20, 30]
+```
+
+> `SortedSet` is the foundation for all range-based Set queries. The primary implementation is `TreeSet`.
+
+---
+
+### NavigableSet
+
+`public interface NavigableSet<E> extends SortedSet<E>` extends `SortedSet` with **navigation methods** that find the closest match to a given target.
+
+#### Key Methods
+
+| Method | Description |
+| :--- | :--- |
+| `ceiling(e)` | Smallest element **≥ e** (or `null`) |
+| `floor(e)` | Largest element **≤ e** (or `null`) |
+| `higher(e)` | Smallest element **> e** strictly (or `null`) |
+| `lower(e)` | Largest element **< e** strictly (or `null`) |
+| `pollFirst()` | Retrieves **and removes** the lowest element |
+| `pollLast()` | Retrieves **and removes** the highest element |
+| `descendingSet()` | Returns a reverse-order view of the set |
+| `descendingIterator()` | Iterator in descending order |
+
+```java
+NavigableSet<Integer> ns = new TreeSet<>(List.of(10, 20, 30, 40, 50));
+
+System.out.println(ns.ceiling(25));       // 30
+System.out.println(ns.floor(25));         // 20
+System.out.println(ns.higher(30));        // 40
+System.out.println(ns.lower(30));         // 20
+System.out.println(ns.pollFirst());       // 10 (removes it)
+System.out.println(ns.descendingSet());   // [50, 40, 30, 20]
+```
+
+**Implemented by**: `TreeSet` (single-threaded), `ConcurrentSkipListSet` (thread-safe)
+
+---
+
+### EnumSet
+
+`EnumSet<E extends Enum<E>>` is a **specialized, high-performance `Set`** implementation exclusively for `enum` types.
+
+#### Internal Architecture — Bit Vector
+- Backed by a **bit vector** — a single `long` field (for enums with ≤ 64 constants) or a `long[]` array (for larger enums).
+- Each bit position corresponds to an enum constant's `ordinal()`.
+- All operations use **bitwise instructions** — `add`, `contains`, `remove` are all `O(1)` with zero hashing overhead.
+
+#### Key Characteristics
+- All elements must come from a **single enum type** — enforced at compile time.
+- **Null elements are prohibited** — throws `NullPointerException`.
+- **Not thread-safe** — wrap with `Collections.synchronizedSet()` if needed.
+- **Iteration order** = enum declaration order (ordinal order).
+- No public constructors — use static factory methods.
+
+```java
+enum Day { MON, TUE, WED, THU, FRI, SAT, SUN }
+
+// Static factory methods
+EnumSet<Day> weekdays = EnumSet.range(Day.MON, Day.FRI);       // [MON, TUE, WED, THU, FRI]
+EnumSet<Day> weekend  = EnumSet.complementOf(weekdays);        // [SAT, SUN]
+EnumSet<Day> workDays = EnumSet.of(Day.MON, Day.WED, Day.FRI); // [MON, WED, FRI]
+EnumSet<Day> allDays  = EnumSet.allOf(Day.class);              // [MON, TUE, WED, THU, FRI, SAT, SUN]
+EnumSet<Day> noDays   = EnumSet.noneOf(Day.class);             // []
+
+// Set operations (bitwise under the hood)
+weekdays.retainAll(workDays);  // Bitwise AND
+weekdays.addAll(weekend);      // Bitwise OR
+```
+
+| Feature | `EnumSet` | `HashSet` |
+| :--- | :--- | :--- |
+| **Performance** | `O(1)` via bitwise ops | `O(1)` average via hashing |
+| **Memory** | ~1 `long` per 64 constants | Full `HashMap` backing |
+| **Ordering** | Enum declaration order | Unpredictable |
+| **Null support** | No (NPE) | Yes (1 null) |
+| **Type restriction** | Enum only | Any type |
+
+> **Interview Insight**: When the value domain is a fixed `enum`, `EnumSet` is always the correct choice — it is significantly faster and more memory-efficient than any other `Set`.
+
+---
+
+### ConcurrentSkipListSet
+
+`ConcurrentSkipListSet<E>` is a **thread-safe, sorted set** backed by a `ConcurrentSkipListMap<E, Object>` from `java.util.concurrent`.
+
+#### Internal Architecture — Skip List
+A Skip List is a probabilistic data structure of layered linked lists enabling fast lookup:
+
+```text
+Level 3:  HEAD ─────────────────────────────> 50 ──> null
+Level 2:  HEAD ─────────> 20 ──────────────> 50 ──> null
+Level 1:  HEAD ──> 10 ──> 20 ──> 30 ──> 40 ──> 50 ──> null
+```
+
+- Lookups traverse upper "express lane" levels, skipping over many nodes.
+- Each level is a subset of the level below — built probabilistically.
+- **Lock-free**: All mutations use CAS (Compare-And-Swap) operations.
+
+#### Key Characteristics
+- **Thread-safe** — concurrent reads and writes without locking.
+- **Sorted** — iteration is in ascending element order.
+- **Null elements prohibited** (NullPointerException).
+- Implements `NavigableSet` — supports `ceiling()`, `floor()`, `higher()`, `lower()`, `pollFirst()`, `pollLast()`.
+- **Expected complexity**: `O(log n)` for add, remove, contains.
+
+```java
+ConcurrentSkipListSet<Integer> set = new ConcurrentSkipListSet<>();
+set.add(30); set.add(10); set.add(50); set.add(20);
+
+System.out.println(set);              // [10, 20, 30, 50]
+System.out.println(set.first());      // 10
+System.out.println(set.ceiling(25));  // 30
+System.out.println(set.pollLast());   // 50 (removed)
+```
+
+| Feature | `TreeSet` | `ConcurrentSkipListSet` |
+| :--- | :--- | :--- |
+| **Thread-Safe** | No | **Yes** |
+| **Backing** | Red-Black Tree | Skip List (CAS-based) |
+| **Complexity** | O(log n) guaranteed | O(log n) expected |
+| **Null support** | Prohibited | Prohibited |
+| **Use case** | Single-threaded sorted set | Concurrent sorted set |
+
+---
+
 ### List vs Set
 
 | Feature | `List<E>` | `Set<E>` |
@@ -3384,6 +3567,105 @@ It exposes **two sets of methods** for every fundamental operation:
   $$\text{head} = (\text{head} - 1) \ \& \ (\text{elements.length} - 1)$$
 - **Zero Allocations**: Adding/removing from both ends allocates zero new node objects, providing superior CPU cache performance.
 - **Null Elements**: Prohibits `null` elements (throws `NullPointerException`).
+
+---
+
+### AbstractQueue
+
+`AbstractQueue<E>` is the **skeletal base class** for Queue implementations. It implements the Queue interface's *throwing* methods in terms of the *special-value* methods.
+
+#### Design — Template Method Pattern
+
+| Implemented (throws on failure) | Delegates to (returns special value) |
+| :--- | :--- |
+| `add(e)` | `offer(e)` — throws `IllegalStateException` if rejected |
+| `remove()` | `poll()` — throws `NoSuchElementException` if empty |
+| `element()` | `peek()` — throws `NoSuchElementException` if empty |
+| `addAll(c)` | Iterates `c` and calls `add(e)` for each element |
+| `clear()` | Repeatedly calls `poll()` until empty |
+
+```java
+// To implement a custom Queue, extend AbstractQueue and provide:
+//   offer(E e), poll(), peek(), size(), iterator()
+class BoundedQueue<E> extends AbstractQueue<E> {
+    private final Object[] data;
+    private int head = 0, tail = 0, count = 0;
+    private final int capacity;
+
+    BoundedQueue(int capacity) {
+        this.capacity = capacity;
+        this.data = new Object[capacity];
+    }
+
+    @Override
+    public boolean offer(E e) {
+        if (count == capacity) return false;
+        data[tail++ % capacity] = e;
+        count++;
+        return true;
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    public E poll() {
+        if (count == 0) return null;
+        E val = (E) data[head++ % capacity];
+        count--;
+        return val;
+    }
+
+    @Override @SuppressWarnings("unchecked")
+    public E peek() { return count == 0 ? null : (E) data[head % capacity]; }
+
+    @Override public int size() { return count; }
+    @Override public Iterator<E> iterator() { throw new UnsupportedOperationException(); }
+}
+```
+
+**Known concrete subclasses**: `PriorityQueue`, `ArrayBlockingQueue`, `LinkedBlockingQueue`, `PriorityBlockingQueue`, `DelayQueue`.
+
+---
+
+### ConcurrentLinkedQueue
+
+`ConcurrentLinkedQueue<E>` is an **unbounded, thread-safe, non-blocking FIFO queue** based on the **Michael-Scott lock-free linked queue** algorithm.
+
+#### Internal Architecture
+- Backed by singly-linked `Node<E>` objects with `volatile` `item` and `next` fields.
+- Uses **CAS (Compare-And-Swap)** on the `tail` pointer for enqueue and `head` pointer for dequeue.
+- Multiple threads can enqueue and dequeue **simultaneously without acquiring any lock**.
+
+```text
+head (sentinel)              tail
+      ↓                        ↓
+  [null] ──> [A] ──> [B] ──> [C] ──> null
+```
+
+#### Key Characteristics
+- **Thread-safe** — lock-free via CAS.
+- **Unbounded** — grows dynamically; never blocks.
+- **Null elements prohibited** — throws `NullPointerException`.
+- `size()` is **O(n)** — traverses the entire linked chain! Use `isEmpty()` for size checks.
+- Implements **weakly consistent** iterator — never throws `ConcurrentModificationException`.
+- No blocking methods (`put`/`take`) — use `BlockingQueue` when coordination is needed.
+
+```java
+ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<>();
+queue.offer("Task1");
+queue.offer("Task2");
+queue.offer("Task3");
+
+String task = queue.poll();         // "Task1" — removed
+System.out.println(queue.peek());   // "Task2" — not removed
+System.out.println(queue.isEmpty()); // false  — prefer over size() > 0
+```
+
+| Feature | `ConcurrentLinkedQueue` | `ArrayBlockingQueue` | `LinkedBlockingQueue` |
+| :--- | :--- | :--- | :--- |
+| **Blocking** | Non-blocking | Blocking (`put`, `take`) | Blocking (`put`, `take`) |
+| **Capacity** | Unbounded | Bounded | Bounded or Unbounded |
+| **Locking** | CAS (lock-free) | Single `ReentrantLock` | `putLock` + `takeLock` |
+| **`size()`** | O(n) traversal | O(1) | O(1) |
+| **Best for** | High-throughput async tasks | Strict capacity control | Producer-consumer pipelines |
 
 ---
 
@@ -3552,6 +3834,122 @@ public class LRUCache<K, V> extends LinkedHashMap<K, V> {
 
 ---
 
+### WeakHashMap (Detailed)
+
+`WeakHashMap<K, V>` is a `Map` implementation where **keys are held via `WeakReference<K>`**, allowing the GC to reclaim key objects when no strong reference to them exists.
+
+#### How It Works
+- In a regular `HashMap`, a key in the map is a **strong reference** — the GC never collects it.
+- In `WeakHashMap`, each key is wrapped in a `WeakReference<K>`. When the key has **no other strong reference** in the JVM, the GC may reclaim it.
+- After GC reclaims the key, the entry is placed in a `ReferenceQueue`. On subsequent map operations (`put`, `get`, `size`), `WeakHashMap` polls this queue and **automatically expunges stale entries**.
+
+```java
+WeakHashMap<Object, String> cache = new WeakHashMap<>();
+Object key = new Object();
+cache.put(key, "metadata");
+
+System.out.println(cache.size()); // 1
+
+key = null; // Remove the only strong reference to the key
+System.gc(); // Suggest GC run
+Thread.sleep(100);
+
+System.out.println(cache.size()); // 0 — entry auto-removed by GC!
+```
+
+#### Use Cases
+- **Metadata caches**: Attach rendering state or computed properties to objects without preventing GC.
+- **Listener registries**: Prevent memory leaks when listeners are never explicitly deregistered.
+- **Canonicalization caches**: Pool/intern objects but release them when unused elsewhere.
+
+> [!CAUTION]
+> **Never use `WeakHashMap` with JVM-interned constants** — `String` literals, `Integer` cached values (−128 to +127), enum constants, and class literals are permanently strongly referenced by the JVM. `WeakHashMap` will behave identically to `HashMap` for such keys and the entries will never be collected.
+
+---
+
+### IdentityHashMap (Detailed)
+
+`IdentityHashMap<K, V>` intentionally **violates the general `Map` contract** by using **reference equality (`==`)** instead of value equality (`equals()`) for key comparison.
+
+#### Key Differences from `HashMap`
+
+| Feature | `HashMap` | `IdentityHashMap` |
+| :--- | :--- | :--- |
+| **Key Equality** | `key1.equals(key2)` | `key1 == key2` (reference identity) |
+| **Hash Code** | `key.hashCode()` | `System.identityHashCode(key)` (memory-address based) |
+| **Backing Structure** | Hash table with chaining (linked list / Red-Black tree) | Linear probing open-addressing table |
+| **Null Keys** | 1 allowed | 1 allowed |
+
+```java
+IdentityHashMap<String, Integer> imap = new IdentityHashMap<>();
+
+String a = new String("hello"); // New heap object
+String b = new String("hello"); // Another new heap object
+
+imap.put(a, 1);
+imap.put(b, 2);
+
+// a.equals(b) == true, but a != b (different references)
+System.out.println(imap.size()); // 2 — treated as DIFFERENT keys!
+System.out.println(imap.get(a)); // 1
+System.out.println(imap.get(b)); // 2
+
+String c = a; // Same reference
+System.out.println(imap.get(c)); // 1 — same reference, same key
+```
+
+#### Use Cases
+- **Object graph serialization/deserialization**: Track already-visited objects by identity to detect cycles.
+- **Proxy and instrumentation frameworks**: Map original objects to their proxy counterparts by reference.
+- **JVM agents / memory profilers**: Associate metadata with object instances by reference identity.
+- **Graph traversal cycle detection**: Use as a "visited" set where `==` identity matters, not `equals()`.
+
+---
+
+### HashTable (Detailed)
+
+`Hashtable<K, V>` is the **legacy synchronized Map** from Java 1.0, predating the JCF. It is considered obsolete.
+
+#### Architecture
+- Every public method is declared `synchronized`, acquiring an intrinsic lock on the **entire `Hashtable` object**.
+- **No null keys or null values** — throws `NullPointerException`.
+- Resizes by formula: `newCapacity = (oldCapacity × 2) + 1`.
+- Backed by a `Entry<K,V>[]` array with separate chaining (linked list buckets).
+- Provides legacy `Enumeration`-based iteration (`keys()`, `elements()`) in addition to the modern `Iterator`.
+
+```java
+Hashtable<String, Integer> table = new Hashtable<>();
+table.put("one", 1);
+table.put("two", 2);
+// table.put(null, 3);      // NullPointerException!
+// table.put("key", null);  // NullPointerException!
+
+int val = table.get("one"); // 1
+table.remove("two");
+
+// Legacy enumeration (pre-Iterator)
+Enumeration<String> keys = table.keys();
+while (keys.hasMoreElements()) {
+    System.out.println(keys.nextElement());
+}
+```
+
+#### Why `Hashtable` Is Deprecated
+
+| Dimension | `Hashtable` | `ConcurrentHashMap` |
+| :--- | :--- | :--- |
+| **Locking** | Full object lock on **every** operation | Per-bucket lock / CAS on empty bins |
+| **Read throughput** | Serialized — only 1 thread reads at a time | **Lock-free reads** via `volatile` |
+| **Write concurrency** | 1 writer at a time across entire map | Many concurrent writers (different buckets) |
+| **Null support** | No nulls | No nulls |
+| **Iteration** | Legacy `Enumeration` | Weakly consistent `Iterator` |
+| **Use today?** | **No — never use in new code** | ✅ Preferred for thread-safe maps |
+
+> [!CAUTION]
+> **Never use `Hashtable` in new code.** Use `ConcurrentHashMap` for concurrent access and `HashMap` for single-threaded use.
+
+---
+
 ### Curated Essential Map Operations (Java 8+)
 
 ```java
@@ -3688,6 +4086,53 @@ Map<String, Integer> map = Map.of("K1", 1, "K2", 2);
 | **Null Elements** | Allows `null` if backing list has `null` | **Rejects `null`** (throws NPE immediately) |
 | **Memory Allocation** | Wraps existing list object | Compact, zero-allocation internal representation |
 | **Thread Safety** | Not safe if underlying list is concurrently modified | 100% Thread-safe |
+
+---
+
+### Enumeration Interface (Legacy)
+
+`java.util.Enumeration<E>` is the **legacy iteration interface** from Java 1.0, predating `Iterator<E>`. It is the predecessor to `Iterator` and is now considered obsolete for new code.
+
+#### Interface Definition
+
+```java
+public interface Enumeration<E> {
+    boolean hasMoreElements();
+    E nextElement();
+}
+```
+
+#### Enumeration vs Iterator
+
+| Feature | `Enumeration<E>` | `Iterator<E>` |
+| :--- | :--- | :--- |
+| **Java version** | Java 1.0 | Java 1.2 |
+| **Method names** | `hasMoreElements()`, `nextElement()` | `hasNext()`, `next()` |
+| **Remove support** | **No** — read-only traversal only | Yes — `iterator.remove()` |
+| **Fail-fast?** | No | Yes (for most non-concurrent collections) |
+| **Used by** | `Vector`, `Hashtable`, `Stack`, `Properties` | All modern JCF collections |
+
+```java
+// Legacy usage with Vector
+Vector<String> vector = new Vector<>(List.of("A", "B", "C"));
+Enumeration<String> e = vector.elements();
+while (e.hasMoreElements()) {
+    System.out.println(e.nextElement()); // A, B, C
+}
+
+// Legacy usage with Hashtable
+Hashtable<String, Integer> table = new Hashtable<>();
+table.put("x", 1); table.put("y", 2);
+
+Enumeration<String> keys   = table.keys();     // Key enumeration
+Enumeration<Integer> values = table.elements(); // Value enumeration
+
+// Wrapping a modern Collection as Enumeration (for legacy API compatibility)
+List<String> list = List.of("X", "Y", "Z");
+Enumeration<String> wrapped = Collections.enumeration(list);
+```
+
+> **Interview Insight**: `Enumeration` is read-only — it has no `remove()` method, making it impossible to safely remove elements during traversal. This was a major design flaw that motivated the introduction of `Iterator` in Java 1.2. In all modern code, use `Iterator`, the enhanced for-loop, or Stream API. `Enumeration` appears only in legacy APIs and library compatibility bridges.
 
 ---
 
