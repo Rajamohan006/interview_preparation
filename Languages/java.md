@@ -1720,6 +1720,65 @@ Dog d = new Dog("Labrador");
 | Inheritance | ❌ Not inherited | ✅ Inherited |
 | Overriding | ❌ Cannot be overridden | ✅ Can be overridden |
 
+### Constructor Overloading vs. Overriding
+
+A popular senior-level interview question involves explaining how constructors behave regarding overloading and overriding.
+
+#### 1. Constructor Overloading (Supported)
+* **Definition:** Defining multiple constructors within the same class, each having a unique parameter list (different number, order, or types of parameters).
+* **Purpose:** Allows initializing class instances in different ways depending on what data is available at instantiation.
+* **Rules:**
+  * Same name (must match class name).
+  * Different parameter signatures.
+  * Constructors can call other overloaded constructors in the same class using **`this(...)`** (Constructor Chaining).
+
+```java
+class Account {
+    String owner;
+    double balance;
+
+    // Overloaded Constructor 1: No arguments
+    Account() {
+        this("Guest", 0.0); // Delegate to Constructor 2
+    }
+
+    // Overloaded Constructor 2: Parameterized
+    Account(String owner, double balance) {
+        this.owner = owner;
+        this.balance = balance;
+    }
+}
+```
+
+#### 2. Constructor Overriding (Not Supported)
+* **Can you override a constructor in Java? No.**
+* **Why it is impossible:**
+  1. **Inheritance Rule:** Subclasses do *not* inherit constructors from their parent classes. Overriding requires redefining an inherited method from the parent. Since constructors are not inherited, they cannot be overridden.
+  2. **Name Constraint:** A constructor must have the exact same name as the class defining it. If class `Dog` inherits from class `Animal`, `Dog`'s constructors must be named `Dog()`, while `Animal`'s constructors are named `Animal()`. Because their names differ, `Dog` cannot override `Animal`'s constructor.
+
+#### 3. Subclass Constructor Delegation (super)
+Instead of overriding, child class constructors must **delegate** to a parent class constructor:
+* If the parent class has a default/no-argument constructor, the compiler automatically inserts **`super()`** as the first statement of the child constructor.
+* If the parent class only defines parameterized constructors, the child class constructor **must explicitly call** `super(...)` with appropriate arguments as its very first statement, or the code will fail to compile.
+
+```java
+class Animal {
+    String species;
+    Animal(String species) { this.species = species; } // No default constructor!
+}
+
+class Cat extends Animal {
+    String color;
+    
+    Cat(String color) {
+        super("Feline"); // Required: Explicit delegation to parent constructor
+        this.color = color;
+    }
+}
+```
+
+---
+
 ### Constructor Execution Order (Inheritance)
 ```java
 class A {
