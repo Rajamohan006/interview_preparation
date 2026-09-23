@@ -1,11 +1,11 @@
-# 🎨 Android XML & Layout Architecture — Complete Interview Preparation Guide
+# 🎨 Android XML, Manifest & Architecture — Complete Interview Preparation Guide
 
 > **Authoritative Technical Reference**
 > Every topic follows the same structure — **Definition → Why It Is Used → How It Works Internally → Code Example → Common Pitfalls**.
 >
-> Covers the View system: layouts, resources, styles, themes, drawables, Data Binding, MotionLayout, and Navigation graphs.
+> Covers the View system, layouts, resources, styles, themes, drawables, Data Binding, MotionLayout, Navigation graphs, **AndroidManifest.xml architecture**, and **Specialized System XML configurations**.
 >
-> **30 View-system interview questions:** [Section 12](#12-ui-views--xml-interview-questions-30-questions)
+> **50 In-Depth View & Manifest Interview Questions:** [Section 14](#14-comprehensive-xml--manifest-interview-questions-50-questions)
 
 ---
 
@@ -24,7 +24,9 @@
 | 9 | [MotionLayout](#9-motionlayout) | MotionScene, keyframes, `OnSwipe`, transition listeners |
 | 10 | [Navigation Graphs & Safe Args](#10-navigation-graphs-and-safe-args) | Destinations, actions, typed arguments, nested graphs |
 | 11 | [Dark Theme & Qualifiers](#11-dark-theme-theme-overlays-and-resource-qualifiers) | `values-night`, theme overlays, qualifier precedence |
-| 12 | [Interview Questions](#12-interview-questions) | Pointer to the question bank |
+| 12 | [AndroidManifest.xml Architecture](#12-androidmanifestxml-architecture-components--system-declarations) | Manifest parsing, `<application>` flags, components, permissions, multi-process, `<queries>` |
+| 13 | [Specialized Android XML Configurations](#13-specialized-android-xml-configurations) | Network Security Config, FileProvider, Shortcuts, App Widgets, Fonts |
+| 14 | [Interview Questions Bank (50 Questions)](#14-comprehensive-xml--manifest-interview-questions-50-questions) | Core & Senior questions with follow-ups on Views, Layouts, Manifest, and Security |
 
 ---
 
@@ -1001,10 +1003,549 @@ Qualifiers are evaluated in a defined priority: MCC/MNC → locale → layout di
 
 ---
 
-# 12. UI, Views & XML Interview Questions (30 Questions)
 
-> Core topics: Rendering pipeline, RecyclerView internals & optimizations, custom views, touch dispatch, drawables, styles vs themes, MotionLayout, and ViewBinding.
-> Difficulty: `[Junior]` `[Mid]` `[Senior]`
+# 12. AndroidManifest.xml Architecture, Components & System Declarations
+
+## 12.1 Manifest Role & Architecture
+
+### Definition
+* **Simple:** The `AndroidManifest.xml` is the master blueprint and identity file of an Android application. It tells the Android OS what components the app has (Activities, Services, Broadcast Receivers, Content Providers), what permissions it needs, and how it interacts with other apps and hardware.
+* **Senior / Advanced:** The Manifest is the declarative system contract parsed by the **`PackageManagerService` (PMS)** during package installation (`pm install`). During the build process, **`AAPT2` (Android Asset Packaging Tool 2)** compiles the XML into binary XML format (`res/raw` or root binary `AndroidManifest.xml` in the APK). PMS extracts this binary metadata to construct in-memory component registries, security sandbox definitions (UID/GID), intent-filter routing tables, and process isolation boundaries before any app code executes.
+
+```mermaid
+graph TD
+    SourceManifest[Source AndroidManifest.xml + Library Manifests] -->|AGP ManifestMerger2| MergedManifest[Merged AndroidManifest.xml]
+    MergedManifest -->|AAPT2 Compilation| BinaryXML[Binary AndroidManifest.xml in APK]
+    BinaryXML -->|APK Install / Boot| PMS[PackageManagerService (System Server)]
+    PMS --> ComponentRegistry[Component Registry & Intent Tables]
+    PMS --> SecuritySandbox[UID / GID & Permission Grant Tables]
+    PMS --> PackageQueries[Package Visibility Filter Rules]
+```
+
+### `<manifest>` Root Element Attributes
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.myapp"
+    android:versionCode="100"
+    android:versionName="1.0.0"
+    android:installLocation="auto">
+```
+* **`package` vs `namespace` / `applicationId`:** 
+  * In modern AGP (Android Gradle Plugin 7.0+), `package` in the manifest defines the Kotlin/Java package for generated `R` and `BuildConfig` classes (now configured via `android.namespace` in `build.gradle.kts`).
+  * `applicationId` in `build.gradle.kts` defines the unique application identity on Google Play and on the Android OS package manager.
+* **`android:versionCode`:** An integer used by Google Play and the OS to evaluate upgrade sequences (must increment for updates).
+* **`android:versionName`:** A user-visible version string (e.g., `"2.4.1"`).
+* **`android:sharedUserId` (DEPRECATED & DANGEROUS):** Historically allowed two APKs signed with the same certificate to share the same Linux UID and access each other’s internal sandboxes. Deprecated in API 29 because it causes package-upgrade deadlocks, security vulnerabilities, and breaks multi-user support.
+
+---
+
+## 12.2 `<application>` Configuration & Process Architecture
+
+### Definition
+The `<application>` tag declares application-wide metadata, themes, global process behaviors, hardware acceleration, and security boundaries.
+
+```mermaid
+graph LR
+    AppLaunch[User taps App Icon] --> Zygote[Zygote Fork Process]
+    Zygote --> CustomApp[Instantiate Custom Application class]
+    Zygote --> ContentProviders[Initialize Content Providers via initOrder]
+    CustomApp --> AppOnCreate[Application.onCreate]
+    AppOnCreate --> LaunchActivity[Launch Root Activity]
+```
+
+### Core Application Attributes
+
+| Attribute | Purpose | Security / Performance Impact |
+|---|---|---|
+| **`android:name`** | Specifies custom `Application` class subclass. | Instantiated before any Activity or Service; used for DI initialization (Hilt, Koin) and crash logging. |
+| **`android:allowBackup`** | Enables ADB backup and Google Cloud Auto Backup. | **Security Risk:** If `true` without strict rules, sensitive app data can be extracted via `adb backup`. Must pair with `dataExtractionRules`. |
+| **`android:dataExtractionRules`** | (Android 12+ API 31+) Defines explicit XML rules for cloud backup and device-to-device transfers. | Replaces legacy `fullBackupContent`. Allows excluding Keystore-encrypted tokens, databases, or cache directories. |
+| **`android:hardwareAccelerated`** | Enables 2D GPU rendering for all views in the app (default `true` on API 14+). | Drastically improves rendering performance. Disabling forces software rasterization via CPU Skia canvas. |
+| **`android:largeHeap`** | Requests a larger Dalvik/ART heap limit (e.g. 512MB instead of 192MB). | **Pitfall:** Often misused to mask memory leaks. Does not prevent OOM on low-RAM devices; only legitimate for photo/video editing apps. |
+| **`android:usesCleartextTraffic`** | Allows unencrypted plain HTTP network connections (default `false` on API 28+). | Leaving `true` exposes network communication to Man-in-the-Middle (MitM) attacks. Should use `network_security_config.xml` instead. |
+| **`android:networkSecurityConfig`** | Points to `@xml/network_security_config` file. | Configures Certificate Pinning, custom trust anchors (debug certs), and per-domain cleartext policies. |
+| **`android:extractNativeLibs`** | Whether the installer extracts `.so` files from the APK to the filesystem. | If `false` (uncompressed in APK aligned to page boundaries), saves disk space and reduces install time. |
+| **`android:supportsRtl`** | Declares support for Right-to-Left (RTL) locales (Arabic, Hebrew, Persian). | Must be `true` for `start`/`end` layout mirroring to take effect at runtime. |
+
+### Multi-Process Execution (`android:process`)
+By default, all components of an app run in a single Linux process named after the package name. Using `android:process` assigns a component to run in a separate process.
+
+```xml
+<!-- Private Process (colon prefix): only accessible by this app -->
+<service 
+    android:name=".services.BackgroundSyncService"
+    android:process=":sync_process" />
+
+<!-- Global / Shared Process (lowercase without colon): accessible across apps sharing UID -->
+<service 
+    android:name=".services.GlobalLocationService"
+    android:process="com.example.myapp.shared_location" />
+```
+
+#### Senior Architectural Considerations for Multi-Process:
+1. **Separate `Application` Instance:** Every process spawns its own Linux process from `Zygote` and calls `Application.onCreate()` independently. Any singleton or static variable is **not shared** between processes.
+2. **IPC Required:** Inter-process communication must use Binder mechanisms (AIDL, Messenger, Broadcasts, or ContentProviders).
+3. **Memory Footprint:** Spawning an extra process incurs a baseline ART runtime overhead (~20–40 MB RAM).
+
+---
+
+## 12.3 App Components in Manifest
+
+### 1. Activity Declaration (`<activity>`)
+```xml
+<activity
+    android:name=".ui.MainActivity"
+    android:exported="true"
+    android:launchMode="singleTop"
+    android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+    android:windowSoftInputMode="adjustResize"
+    android:screenOrientation="portrait">
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent-filter>
+</activity>
+```
+
+#### Key Activity Attributes:
+* **`android:exported` (MANDATORY in Android 12+ API 31):**
+  * `true`: Accessible to other apps and system launchers (required for launcher activities, broadcast receivers handling system intents, etc.).
+  * `false`: Private to this application only.
+  * **Critical Rule:** If an activity defines an `<intent-filter>`, `android:exported` **must be explicitly declared** or the app fails to install (`INSTALL_PARSE_FAILED_MANIFEST_MALFORMED`).
+* **`android:launchMode`:**
+  * `standard`: Creates a new instance every time an intent is dispatched.
+  * `singleTop`: Reuses the instance at the top of the current task stack and routes the intent to `onNewIntent(intent)`.
+  * `singleTask`: Creates a new task or brings the existing task to the foreground, clearing all activities above it (pops stack) and delivering the intent to `onNewIntent()`.
+  * `singleInstance`: Runs in an exclusive task with no other activities ever allowed in that task.
+  * `singleInstancePerTask` (API 31+): Creates a new task if no task with matching affinity exists; reuses the task root if it exists.
+* **`android:configChanges`:**
+  * Tells the OS that the Activity handles the specified configuration changes **manually** instead of being destroyed and recreated.
+  * Overrides: `onConfigurationChanged(newConfig: Configuration)` is invoked.
+  * *Senior Warning:* Avoid abusing this solely to prevent Activity recreation on rotation; properly handling `ViewModel` and `SavedStateHandle` is the recommended architecture.
+* **`android:windowSoftInputMode`:** Controls soft keyboard interaction with the window (e.g. `adjustResize` resizes layout to fit above keyboard, `adjustPan` shifts window focus).
+
+---
+
+### 2. Service Declaration (`<service>`)
+```xml
+<service
+    android:name=".media.MusicPlaybackService"
+    android:exported="false"
+    android:foregroundServiceType="mediaPlayback"
+    android:permission="android.permission.BIND_JOB_SERVICE" />
+```
+
+#### Key Service Attributes:
+* **`android:foregroundServiceType` (MANDATORY in Android 14+ API 34):**
+  * Must declare explicit types: `location`, `camera`, `microphone`, `mediaPlayback`, `dataSync`, `health`, `connectedDevice`, `remoteMessaging`, `shortService`, `specialUse`.
+  * In Android 14, calling `startForeground()` without declaring the matching `foregroundServiceType` in the manifest throws `MissingForegroundServiceTypeException` or `SecurityException`.
+* **Background Service Execution Limits (Android 8.0+ API 26):** Apps in the background cannot start standard background services via `startService()`; they must use `WorkManager`, `JobScheduler`, or start a foreground service with `startForegroundService()`.
+
+---
+
+### 3. Broadcast Receiver Declaration (`<receiver>`)
+```xml
+<receiver
+    android:name=".receivers.BootCompletedReceiver"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+    </intent-filter>
+</receiver>
+```
+
+#### Static vs Dynamic Broadcast Receivers:
+* **Static (Manifest-registered):** Registered with the OS at install time. The OS can wake up the app process to deliver matching broadcasts.
+  * *Android 8.0 (API 26) Restriction:* Apps cannot register static receivers for **implicit broadcasts** (e.g. `ACTION_SCREEN_ON`, `ACTION_BATTERY_CHANGED`) with few exceptions (e.g. `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`).
+* **Dynamic (Context-registered):** Registered at runtime via `context.registerReceiver()`. Bound to the lifecycle of the registering component (Activity/Service). Required for all non-exempt implicit broadcasts.
+
+---
+
+### 4. Content Provider Declaration (`<provider>`)
+```xml
+<provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="${applicationId}.fileprovider"
+    android:exported="false"
+    android:grantUriPermissions="true">
+    <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths" />
+</provider>
+```
+
+#### Content Provider Initialization Internals:
+* **`android:initOrder`:** Controls provider initialization sequence before any Activity starts.
+* **Execution Order:** Providers are initialized on the main thread **before** `Application.onCreate()`.
+* **Jetpack App Startup:** Leverages this mechanism (using `androidx.startup.InitializationProvider`) to initialize multiple libraries with a single ContentProvider, avoiding provider startup latency.
+
+---
+
+## 12.4 Intent Filters, Deep Links & App Links
+
+### Definition
+An `<intent-filter>` specifies the types of explicit or implicit intents that a component can respond to. It defines the actions, categories, and data formats accepted by the component.
+
+```mermaid
+graph TD
+    IncomingIntent[Incoming Intent] --> MatchAction{Action Matches?}
+    MatchAction -- No --> Rejected[Rejected]
+    MatchAction -- Yes --> MatchCategory{Categories Match?}
+    MatchCategory -- No --> Rejected
+    MatchCategory -- Yes --> MatchData{Data URI & MIME Match?}
+    MatchData -- No --> Rejected
+    MatchData -- Yes --> Accepted[Intent Dispatched to Component]
+```
+
+### Deep Links vs Web Links vs Android App Links
+
+| Type | URI Scheme | User Experience | Verification Required |
+|---|---|---|---|
+| **Custom Scheme Deep Link** | `myapp://checkout/123` | Directly opens app if installed; fails if not installed. | None |
+| **Web Link** | `https://example.com/item/123` | Shows Android **Disambiguation Dialog** ("Open with Chrome or MyApp?"). | None |
+| **Android App Link** | `https://example.com/item/123` | **Instantly opens the app** directly without asking the user. | **Yes:** Requires `android:autoVerify="true"` and digital asset links on domain. |
+
+### Android App Link Configuration
+```xml
+<activity
+    android:name=".ui.ProductDetailsActivity"
+    android:exported="true">
+    
+    <!-- App Link Filter -->
+    <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW" />
+        
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        
+        <data
+            android:scheme="https"
+            android:host="www.example.com"
+            android:pathPrefix="/products" />
+    </intent-filter>
+</activity>
+```
+
+#### Digital Asset Links Verification:
+1. When the APK is installed, the OS checks `android:autoVerify="true"`.
+2. The OS issues an HTTPS request to `https://www.example.com/.well-known/assetlinks.json`.
+3. The server must return the SHA-256 fingerprint matching the app's signing certificate:
+   ```json
+   [{
+     "relation": ["delegate_permission/common.handle_all_urls"],
+     "target": {
+       "namespace": "android_app",
+       "package_name": "com.example.myapp",
+       "sha256_cert_fingerprints": ["14:6D:E9:...:B4:72"]
+     }
+   }]
+   ```
+4. If verification succeeds, all matching URLs bypass the disambiguation dialog and open the app natively.
+
+---
+
+## 12.5 Permissions System & Hardware Features
+
+### `<uses-permission>` vs Custom `<permission>`
+```xml
+<!-- Standard Permission Request -->
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+<!-- Custom Permission Definition -->
+<permission
+    android:name="com.example.myapp.permission.INTERNAL_SYNC"
+    android:protectionLevel="signature"
+    android:label="Internal Sync Permission" />
+```
+
+### Permission Protection Levels
+
+| Protection Level | Meaning & Behavior | Typical Use Case |
+|---|---|---|
+| **`normal`** | Granted automatically at install time without prompting user (low risk). | `INTERNET`, `ACCESS_NETWORK_STATE` |
+| **`dangerous`** | Runtime permissions requiring explicit user approval via prompt dialog. | `CAMERA`, `ACCESS_FINE_LOCATION`, `RECORD_AUDIO` |
+| **`signature`** | Granted automatically **only if** requesting app is signed with the same signing key. | Secure inter-app communication between proprietary apps. |
+| **`signatureOrSystem`** | Granted to system image apps or apps with the same signature. | OEM / System platform integrations. |
+
+### Hardware Filtering (`<uses-feature>`)
+```xml
+<!-- App requires Camera hardware; Google Play hides app from devices without camera -->
+<uses-feature
+    android:name="android.hardware.camera"
+    android:required="true" />
+
+<!-- App can use BLE if available, but can still be installed on devices without BLE -->
+<uses-feature
+    android:name="android.hardware.bluetooth_le"
+    android:required="false" />
+```
+
+* **Play Store Filtering:** Setting `android:required="true"` automatically hides your application on Google Play Store from devices lacking that physical hardware module.
+* **Implicit Feature Requests:** Certain `<uses-permission>` declarations (e.g. `CAMERA`, `RECORD_AUDIO`) implicitly add `<uses-feature android:required="true">` unless explicitly overridden with `android:required="false"`.
+
+---
+
+## 12.6 Package Visibility (`<queries>`) in Android 11+ (API 30+)
+
+### Definition
+Starting in Android 11 (API 30), apps can no longer inspect or query the full list of installed apps on the device using `getInstalledPackages()` or `queryIntentActivities()`. Apps must declare what other apps or intent actions they intend to interact with via the `<queries>` element in the Manifest.
+
+### Why It Was Introduced
+To protect user privacy by preventing apps from fingerprinting users based on their installed app inventory or harvesting competitive intelligence.
+
+### Code Example: Declaring `<queries>`
+```xml
+<manifest package="com.example.myapp">
+
+    <queries>
+        <!-- 1. Specific Package Query -->
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.whatsapp" />
+
+        <!-- 2. Intent Action Query (e.g. Browser or Email Clients) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+
+        <!-- 3. Content Provider Authority Query -->
+        <provider android:authorities="com.example.customprovider" />
+    </queries>
+
+</manifest>
+```
+
+* **`QUERY_ALL_PACKAGES` Permission:** A broad permission (`android.permission.QUERY_ALL_PACKAGES`) restoring pre-Android 11 visibility. **Google Play strictly restricts this** to apps whose core functionality requires full package visibility (e.g. Antivirus, File Managers, Device Launchers). Using it without approval leads to app removal from Play Store.
+
+---
+
+## 12.7 Manifest Merging Rules & Tools Markers
+
+### Definition
+When building an Android APK, the Gradle build system combines manifests from multiple sources into a single merged `AndroidManifest.xml`.
+
+```mermaid
+graph TD
+    BuildType[Build Type Manifest (e.g., debug/AndroidManifest.xml)] -->|Priority 1| MergedManifest
+    ProductFlavor[Flavor Manifest (e.g., free/AndroidManifest.xml)] -->|Priority 2| MergedManifest
+    MainManifest[Main Manifest (src/main/AndroidManifest.xml)] -->|Priority 3| MergedManifest
+    LibManifests[Library Manifests (AAR / AndroidX / 3rd-Party)] -->|Priority 4| MergedManifest
+```
+
+### Manifest Merge Conflict Resolution with `tools:`
+When a library manifest declares an attribute that contradicts your main app manifest (e.g., conflicting `android:theme` or `android:allowBackup`), Gradle fails the build with a merge collision error.
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.myapp">
+
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="false"
+        android:theme="@style/Theme.MyApp"
+        tools:replace="android:allowBackup,android:theme">
+
+        <!-- Remove a component injected by a third-party library -->
+        <service
+            android:name="com.thirdparty.analytics.TrackingService"
+            tools:node="remove" />
+
+        <!-- Forcefully replace whole node declaration -->
+        <receiver
+            android:name="com.thirdparty.sdk.OldReceiver"
+            tools:node="replace"
+            android:exported="false" />
+
+    </application>
+</manifest>
+```
+
+### Summary of `tools:node` Markers
+
+| Marker | Behavior |
+|---|---|
+| **`tools:replace="attr1,attr2"`** | Overrides conflicting attributes from lower-priority manifests with the main manifest's value. |
+| **`tools:node="remove"`** | Completely deletes the component or permission so it does not appear in the final merged manifest. |
+| **`tools:node="merge"`** | Merges attributes (default behavior when no conflict exists). |
+| **`tools:node="removeAll"`** | Removes all matching elements from lower-priority manifests. |
+| **`tools:node="strict"`** | Causes build to fail if lower-priority manifest does not match exactly. |
+
+---
+
+# 13. Specialized Android XML Configurations
+
+## 13.1 Network Security Configuration (`res/xml/network_security_config.xml`)
+
+### Definition
+A declarative XML file linked via `android:networkSecurityConfig` in the `<application>` tag that defines app-wide transport layer security (TLS) policies, certificate pinning, and custom trust anchors.
+
+```xml
+<!-- res/xml/network_security_config.xml -->
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+
+    <!-- Global Base Policy: Enforce HTTPS / Disable Cleartext -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Domain Specific Override with Certificate Pinning -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.mybank.com</domain>
+        <pin-set expiration="2027-12-31">
+            <!-- SHA-256 Public Key Pin -->
+            <pin digest="SHA-256">7HIpactkIAq2Y49orFOOQKurWxmmSFZhBCoQYcRhJ3Y=</pin>
+            <!-- Backup Pin (Mandatory for key rotation) -->
+            <pin digest="SHA-256">k2v657xBsOwg11eLqK9SraNiJ4qxgqLBEU7VJBRuFxw=</pin>
+        </pin-set>
+    </domain-config>
+
+    <!-- Debug Override: Allow Charles / Proxyman Interception on Debug Builds -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+            <certificates src="system" />
+        </trust-anchors>
+    </debug-overrides>
+
+</network-security-config>
+```
+
+---
+
+## 13.2 FileProvider Paths XML (`res/xml/file_paths.xml`)
+
+### Definition
+Declares the directories exposed to other applications via secure `content://` URIs generated by `androidx.core.content.FileProvider`. Prevents `FileUriExposedException` on Android 7.0+ (API 24+).
+
+```xml
+<!-- res/xml/file_paths.xml -->
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Maps to context.filesDir (internal storage /data/data/pkg/files) -->
+    <files-path name="internal_files" path="documents/" />
+
+    <!-- Maps to context.cacheDir (/data/data/pkg/cache) -->
+    <cache-path name="internal_cache" path="temp_images/" />
+
+    <!-- Maps to context.getExternalFilesDir(null) (/storage/emulated/0/Android/data/pkg/files) -->
+    <external-files-path name="ext_files" path="photos/" />
+
+    <!-- Maps to Environment.getExternalStorageDirectory() -->
+    <external-path name="ext_storage" path="." />
+</paths>
+```
+
+### Kotlin Code to Share URI:
+```kotlin
+val file = File(context.filesDir, "documents/invoice.pdf")
+val contentUri: Uri = FileProvider.getUriForFile(
+    context,
+    "${context.packageName}.fileprovider",
+    file
+)
+
+val shareIntent = Intent(Intent.ACTION_SEND).apply {
+    type = "application/pdf"
+    putExtra(Intent.EXTRA_STREAM, contentUri)
+    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+}
+context.startActivity(Intent.createChooser(shareIntent, "Share Invoice"))
+```
+
+---
+
+## 13.3 App Shortcuts XML (`res/xml/shortcuts.xml`)
+
+### Definition
+Defines static deep-linked shortcuts that appear when the user long-presses the application launcher icon.
+
+```xml
+<!-- res/xml/shortcuts.xml -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="scan_qr"
+        android:enabled="true"
+        android:icon="@drawable/ic_qr_scanner"
+        android:shortcutShortLabel="@string/shortcut_scan_short"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.myapp"
+            android:targetClass="com.example.myapp.ui.ScannerActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>
+```
+* Linked in Manifest under main launcher Activity:
+  ```xml
+  <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+  ```
+
+---
+
+## 13.4 App Widget Provider Info XML (`res/xml/appwidget_info.xml`)
+
+### Definition
+Declares metadata for Home Screen widgets, including layout, minimum resizing dimensions, update intervals, and preview images.
+
+```xml
+<!-- res/xml/crypto_widget_info.xml -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_crypto_tracker"
+    android:previewLayout="@layout/widget_crypto_tracker"
+    android:previewImage="@drawable/widget_preview"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen|keyguard" />
+```
+
+---
+
+## 13.5 Fonts & Typography XML (`res/font/`)
+
+### Definition
+Defines downloadable or bundled font families in XML with different weights and font styles, usable across both XML layouts and global themes.
+
+```xml
+<!-- res/font/outfit_family.xml -->
+<?xml version="1.0" encoding="utf-8"?>
+<font-family xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        app:font="@font/outfit_regular"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        app:font="@font/outfit_medium"
+        app:fontStyle="normal"
+        app:fontWeight="500" />
+    <font
+        app:font="@font/outfit_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+</font-family>
+```
+
+---
+
+# 14. Comprehensive XML & Manifest Interview Questions (50 Questions)
+
+> Core topics: Rendering pipeline, Layout inflation, RecyclerView internals, Custom views, Touch dispatch, Drawables, Styles vs Themes, MotionLayout, AndroidManifest architecture, Intent filters & App Links, Security configs, FileProvider, and Multi-Process.
+> Difficulty: `[Junior]` `[Mid]` `[Senior]` `[Staff]`
 
 ---
 
@@ -1467,6 +2008,495 @@ Then, in order of expected payoff:
 
 ---
 
+### Q31. Why is `android:exported` mandatory in Android 12+ (API 31)? What happens if you omit it? `[Junior]`
+
+**Definition**
+`android:exported` is a boolean attribute on `<activity>`, `<service>`, and `<receiver>` declaring whether the component is accessible to external applications, system services, or inter-process intents outside its own UID sandbox.
+
+**Answer**
+Prior to Android 12, components containing `<intent-filter>` were implicitly set to `android:exported="true"`. This caused widespread security vulnerabilities where developers accidentally exposed internal screens, sync services, or broadcast receivers to arbitrary invocation and intent-injection attacks by malicious apps on the device.
+
+In Android 12 (API 31+):
+* If any component declares an `<intent-filter>`, `android:exported` **must be explicitly declared** as `true` or `false`.
+* **Build/Install Failure:** If omitted when targeting API 31+, the app build will fail with `Manifest merger failed` or installation will fail with `INSTALL_PARSE_FAILED_MANIFEST_MALFORMED`.
+
+```xml
+<!-- MUST explicitly declare exported -->
+<activity
+    android:name=".ui.DeepLinkActivity"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="https" android:host="example.com" />
+    </intent-filter>
+</activity>
+```
+
+**Follow-up:** *How do you prevent third-party apps from launching an exported Activity if you only want your own companion apps to access it?*
+> Protect the exported Activity with a custom permission using `android:protectionLevel="signature"`. The OS will block any app whose signing certificate does not match yours.
+
+---
+
+### Q32. Compare Deep Links, Web Links, and Android App Links. How does `android:autoVerify="true"` work? `[Mid]`
+
+**Definition**
+* **Deep Link:** A URI of any custom scheme (e.g., `myapp://product/42`) routing to a specific destination in the app.
+* **Web Link:** An HTTP/HTTPS URL (`https://example.com/product/42`) opening in a browser or showing the Android Disambiguation Dialog ("Open with Browser or App").
+* **Android App Link:** A verified HTTPS web link that **instantly opens the app directly** without ever presenting the disambiguation dialog.
+
+**Answer**
+Android App Links require three things:
+1. `android:autoVerify="true"` inside the `<intent-filter>`.
+2. Both `android.intent.category.DEFAULT` and `android.intent.category.BROWSABLE` categories.
+3. Hosting a valid `assetlinks.json` file at `https://domain.com/.well-known/assetlinks.json` containing the app's package name and SHA-256 certificate fingerprint.
+
+```xml
+<activity android:name=".ui.ProductActivity" android:exported="true">
+    <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="https" android:host="www.example.com" android:pathPrefix="/product" />
+    </intent-filter>
+</activity>
+```
+
+**Follow-up:** *What happens if `autoVerify` verification fails (e.g., server was down during app installation)?*
+> The OS falls back to treating the link as a standard **Web Link**, prompting the user with the disambiguation dialog instead of automatically opening the app.
+
+---
+
+### Q33. Explain the four Activity `launchMode`s and their task back-stack behavior. `[Senior]`
+
+**Definition**
+`launchMode` dictates how a new instance of an Activity is associated with the current task and whether an existing instance should be reused.
+
+**Answer**
+
+| Mode | Behavior | Stack Re-use | Method Called |
+|---|---|---|---|
+| **`standard`** (Default) | Always creates a new instance on top of the calling task stack. | None (multiple instances allowed everywhere). | `onCreate()` |
+| **`singleTop`** | If instance already exists **at the very top** of the stack, reuses it; otherwise creates a new instance. | Reused only if at top. | `onNewIntent()` |
+| **`singleTask`** | Creates a new task (or locates existing task with same `taskAffinity`), then **pops all activities above it** so it becomes top of stack. | Root of task; clears stack above. | `onNewIntent()` |
+| **`singleInstance`** | Same as `singleTask`, but the system permits **no other activities** in that task. Any new activity launched from it opens in a separate task. | Exclusive solitary task instance. | `onNewIntent()` |
+
+**Follow-up:** *What is the difference between declaring `launchMode="singleTop"` in XML vs passing `FLAG_ACTIVITY_SINGLE_TOP` in code?*
+> XML sets the permanent static behavior for every launch of that Activity. Intent flags (`Intent.FLAG_ACTIVITY_*`) override or customize behavior dynamically at the specific call site (`startActivity`). Dynamic flags always take precedence over XML declarations.
+
+---
+
+### Q34. What is `android:configChanges` and why is using it to bypass Activity recreation considered an anti-pattern? `[Senior]`
+
+**Definition**
+`android:configChanges` lists configuration change events (e.g. `orientation|screenSize|locale`) that the Activity will handle manually, preventing the system from destroying and recreating the Activity.
+
+**Answer**
+When declared:
+```xml
+<activity
+    android:name=".MainActivity"
+    android:configChanges="orientation|screenSize|screenLayout" />
+```
+The OS bypasses `onDestroy()` → `onCreate()` and instead calls `onConfigurationChanged(newConfig: Configuration)`.
+
+**Why It Is an Anti-Pattern:**
+1. **Resource Loading Failure:** The app does not automatically reload configuration-qualified resources (`layout-land/`, `values-sw600dp/`, `drawable-night/`). Developers must manually re-inflate views and update drawable references in code.
+2. **False Sense of Security:** It does not protect against **Process Death** (OS killing background process under memory pressure). An app that handles configuration changes manually still crashes when restored from process death if `SavedStateHandle` / `onSaveInstanceState` is neglected.
+
+**Legitimate Use Cases:** Real-time video playback or camera feeds where recreation overhead causes unacceptable audio/frame drop stutter.
+
+---
+
+### Q35. How does AndroidManifest merging work during Gradle builds? How do you resolve conflicts with `tools:replace` and `tools:node`? `[Mid]`
+
+**Definition**
+The Gradle Manifest Merger combines manifests from the Main source set, Product Flavors, Build Types, and imported AAR libraries into a single unified binary manifest based on a strict priority hierarchy.
+
+**Priority Hierarchy:**
+`Build Type (debug/release)` > `Product Flavor` > `Main (src/main)` > `Imported Libraries (AARs)`
+
+**Answer**
+If a third-party library defines `android:allowBackup="true"` and your app defines `android:allowBackup="false"`, Gradle aborts with a merge collision error.
+
+To resolve:
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="false"
+        tools:replace="android:allowBackup"> <!-- Overrides library's value -->
+
+        <!-- Remove a rogue service registered by a dependency -->
+        <service
+            android:name="com.adnetwork.TrackingService"
+            tools:node="remove" />
+    </application>
+</manifest>
+```
+
+**Follow-up:** *Where can you inspect the final combined manifest in Android Studio?*
+> Open `AndroidManifest.xml` in Android Studio and switch to the **Merged Manifest** tab at the bottom, or check `app/build/intermediates/merged_manifests/<variant>/AndroidManifest.xml`.
+
+---
+
+### Q36. Explain Package Visibility (`<queries>`) in Android 11+ and why Google Play restricts `QUERY_ALL_PACKAGES`. `[Senior]`
+
+**Definition**
+`<queries>` is a top-level manifest element introduced in Android 11 (API 30) that declares which other installed packages or intent filters the application needs to inspect at runtime.
+
+**Answer**
+Prior to Android 11, calling `packageManager.getInstalledPackages(0)` returned every single app on the user's phone, allowing ad trackers to fingerprint users based on their installed app inventory.
+
+Under Package Visibility:
+* Apps can only see their own package, system packages, and packages declared inside `<queries>`.
+* If an app calls `startActivity(intent)` or `packageManager.queryIntentActivities(intent)` for an undeclared action, `queryIntentActivities` returns an empty list, and `startActivity` throws `ActivityNotFoundException`.
+
+```xml
+<queries>
+    <package android:name="com.google.android.apps.maps" />
+    <intent>
+        <action android:name="android.intent.action.DIAL" />
+        <data android:scheme="tel" />
+    </intent>
+</queries>
+```
+
+**Follow-up:** *What happens if an app declares `<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />`?*
+> It bypasses `<queries>` filtering, but Google Play policy strictly rejects any app with this permission unless its core user-facing functionality requires discovering all installed apps (e.g. Launchers, Antivirus scanners, File Managers).
+
+---
+
+### Q37. What is `NetworkSecurityConfig` and how do you implement Certificate Pinning and Debug Overrides in XML? `[Senior]`
+
+**Definition**
+`network_security_config.xml` is a declarative configuration file linked via `android:networkSecurityConfig` in `<application>` that centralizes TLS trust anchors, cleartext policies, and public key pinning without requiring custom `X509TrustManager` code in OkHttp.
+
+**Answer**
+```xml
+<!-- res/xml/network_security_config.xml -->
+<network-security-config>
+    <!-- 1. Enforce HTTPS app-wide -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- 2. Certificate Pinning for sensitive API -->
+    <domain-config>
+        <domain includeSubdomains="true">api.payments.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">primaryPinHashBase64=</pin>
+            <pin digest="SHA-256">backupPinHashBase64=</pin>
+        </pin-set>
+    </domain-config>
+
+    <!-- 3. Debug Overrides for Charles / Proxyman SSL Proxying -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" /> <!-- Trust user-installed CA certs in debug only -->
+            <certificates src="system" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
+```
+
+**Follow-up:** *Why is providing a backup pin mandatory in `<pin-set>`?*
+> If your primary TLS certificate expires or gets revoked and you do not ship a backup pin, all HTTPS requests will immediately fail until an app update is approved and downloaded by the user.
+
+---
+
+### Q38. Why did Android 7.0 introduce `FileProvider` and how does `file_paths.xml` prevent `FileUriExposedException`? `[Mid]`
+
+**Definition**
+`FileProvider` is a specialized subclass of `ContentProvider` that securely shares private app files with other applications by generating content URIs (`content://...`) instead of raw filesystem paths (`file://...`).
+
+**Answer**
+In Android 7.0 (API 24+), passing a `file://` URI outside the package domain triggers a `FileUriExposedException` because:
+1. The receiving app lacks file permissions to read another app's private sandbox directory (`/data/data/pkg/`).
+2. Raw file paths expose internal directory structures.
+
+`FileProvider` converts paths into scoped URIs with temporary read/write access granted via `Intent.FLAG_GRANT_READ_URI_PERMISSION`.
+
+```xml
+<!-- res/xml/file_paths.xml -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="internal_docs" path="invoices/" />
+    <cache-path name="temp_images" path="camera/" />
+</paths>
+```
+
+```kotlin
+val file = File(context.filesDir, "invoices/order_123.pdf")
+val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+```
+
+---
+
+### Q39. What happens when an app defines `android:process=":remote"` on a Service? `[Senior]`
+
+**Definition**
+`android:process=":remote"` instructs the Android OS to run that Service in a separate private Linux process.
+
+**Answer**
+* **Memory & Lifecycle:** Spawns an independent Linux PID. The OS creates a whole new ART runtime and executes `Application.onCreate()` a second time for that process.
+* **State Isolation:** Memory, singletons, static variables, and in-memory caches are **completely separate**. Modifying a static variable in the main process has zero effect in `:remote`.
+* **IPC Requirement:** Calling methods between the Activity (main process) and the Service (`:remote`) requires Inter-Process Communication via **AIDL / Messenger / Binder**.
+* **Crash Isolation:** If the `:remote` service crashes, the main UI process remains alive.
+
+**Follow-up:** *Why do apps often experience duplicate analytics events or double initialization when using `:remote`?*
+> Because `Application.onCreate()` runs in **every** process. Developers must check the current process name (via `Application.getProcessName()` in API 28+ or reading `/proc/self/cmdline`) and initialize heavy SDKs only in the main process.
+
+---
+
+### Q40. What are Foreground Service Types in Android 14 (API 34) and what happens if a type is missing in the manifest? `[Mid]`
+
+**Definition**
+Foreground Service Types categorize why a foreground service needs to keep the application alive, enforcing strict system policies and runtime permission requirements.
+
+**Answer**
+In Android 14 (API 34+), every foreground service must declare at least one explicit type in `AndroidManifest.xml`:
+
+```xml
+<service
+    android:name=".location.TrackingService"
+    android:exported="false"
+    android:foregroundServiceType="location" />
+```
+
+Supported types: `camera`, `connectedDevice`, `dataSync`, `health`, `location`, `mediaPlayback`, `mediaProjection`, `microphone`, `phoneCall`, `remoteMessaging`, `shortService`, `specialUse`, `systemExempted`.
+
+**If Missing:**
+Calling `ServiceCompat.startForeground(this, id, notification, type)` with a type not declared in the manifest throws `MissingForegroundServiceTypeException` or `SecurityException`, immediately crashing the app.
+
+---
+
+### Q41. Explain the initialization order of ContentProviders relative to `Application.onCreate()` and how Jetpack App Startup leverages it. `[Senior]`
+
+**Definition**
+A `ContentProvider` is an Android component designed for sharing structured data across applications. During process initialization, the OS instantiates all declared ContentProviders before invoking the custom `Application` class.
+
+```mermaid
+sequenceDiagram
+    participant OS as OS / Zygote
+    participant CP as ContentProvider.onCreate()
+    participant App as Application.onCreate()
+    participant Act as Activity.onCreate()
+
+    OS->>CP: Calls ContentProvider.onCreate() (initOrder sorted)
+    OS->>App: Calls Application.onCreate()
+    OS->>Act: Calls Activity.onCreate()
+```
+
+**Answer**
+1. When an app process starts, the system creates the `Application` instance.
+2. The system calls `ContentProvider.onCreate()` for every manifest-declared provider (ordered by `android:initOrder`).
+3. Only **after** all providers return does the system invoke `Application.onCreate()`.
+
+**Jetpack App Startup (`androidx.startup`):**
+Historically, libraries like Firebase and WorkManager used invisible ContentProviders for automatic setup. Having 10 libraries each running a separate ContentProvider introduced measurable cold-start latency. Jetpack App Startup uses a **single shared `InitializationProvider`** that initializes all registered initializers in a centralized, dependency-ordered graph.
+
+---
+
+### Q42. Compare `<uses-permission>` protection levels: `normal`, `dangerous`, `signature`, and `signatureOrSystem`. `[Junior]`
+
+**Definition**
+Protection levels define the risk level of a permission and the procedure the OS uses to grant it.
+
+**Answer**
+
+| Level | Prompt Mechanism | User Interaction | Examples |
+|---|---|---|---|
+| **`normal`** | Granted automatically at install time. | None (listed on app store details). | `INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK` |
+| **`dangerous`** | Granted at runtime by user prompt. | Explicit permission dialog displayed when requested. | `ACCESS_FINE_LOCATION`, `CAMERA`, `READ_CONTACTS` |
+| **`signature`** | Granted automatically if caller has the **same signing certificate**. | Zero user prompts; fully verified by PMS during install. | Internal cross-app proprietary communication. |
+| **`signatureOrSystem`** | Granted if app is pre-installed in `/system/priv-app` OR signed with platform key. | System platform level only. | Low-level hardware control, telephony settings. |
+
+---
+
+### Q43. What is the difference between `android:allowBackup="true"` and `android:dataExtractionRules`? What are the security risks? `[Mid]`
+
+**Definition**
+* `android:allowBackup`: Controls whether application data can be backed up and extracted via Android Debug Bridge (`adb backup`) and Google Drive Auto Backup.
+* `android:dataExtractionRules`: Introduced in Android 12 (API 31) to specify fine-grained XML rules separating Cloud Backups from Device-to-Device (D2D) transfers.
+
+**Answer**
+* **Security Risk:** Leaving `android:allowBackup="true"` without rules allows attackers to plug an unlocked device into a computer and dump plaintext SQLite databases, SharedPreferences, and private app files via `adb backup`.
+
+```xml
+<!-- res/xml/data_extraction_rules.xml -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude path="databases/secure_credentials.db" />
+        <exclude path="shared_prefs/auth_token.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include path="databases/" />
+    </device-transfer>
+</data-extraction-rules>
+```
+
+---
+
+### Q44. What is `android:largeHeap`? When is it justified, and why is it dangerous? `[Mid]`
+
+**Definition**
+`android:largeHeap="true"` requests that the system allocate a larger maximum heap size (e.g. 512 MB instead of the standard 192 MB) for the app's ART process.
+
+**Answer**
+* **Why It Is Dangerous:**
+  1. It slows down Garbage Collection (GC) pauses because a larger heap takes longer to scan and compact.
+  2. It does not prevent OutOfMemory (OOM) errors; it merely delays them if the app has an underlying memory leak (e.g., leaking Activities in static references).
+  3. Low-end devices may ignore the request or aggressively kill the app when memory pressure increases.
+* **When Justified:** Legitimate only for memory-intensive data operations, such as high-resolution photo/video editing, CAD rendering, or local ML models.
+
+---
+
+### Q45. How does `<uses-feature android:required="false">` prevent Google Play Store from filtering out incompatible devices? `[Junior]`
+
+**Definition**
+`<uses-feature>` specifies the hardware or software capabilities (e.g. Camera autofocus, BLE, NFC, Telephony) that the application utilizes.
+
+**Answer**
+* By default, declaring `<uses-permission android:name="android.permission.CAMERA" />` implicitly flags `android.hardware.camera` as **`required="true"`**.
+* Devices without physical camera hardware (e.g., Android TV, ChromeOS, tablets) are automatically **hidden from installing the app** on Google Play Store.
+* To support devices without the hardware:
+  ```xml
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
+  ```
+* In code, the app must dynamically verify hardware presence:
+  ```kotlin
+  val hasCamera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+  ```
+
+---
+
+### Q46. Explain the difference between `ViewStub`, `<include>`, and `<merge>` tags in layout XML. `[Mid]`
+
+**Definition**
+* **`<include>`:** Reuses a common layout file inside another layout at layout inflation time.
+* **`<merge>`:** Eliminates redundant parent ViewGroups when an included layout or custom view already provides its own container root.
+* **`ViewStub`:** A lightweight, invisible, zero-dimension placeholder View that defers layout inflation until explicitly inflated or made visible (`visibility = View.VISIBLE`).
+
+**Comparison Table:**
+
+| Tag | Inflated When? | Memory Footprint | Hierarchy Impact | Best For |
+|---|---|---|---|---|
+| **`<include>`** | Instantly during parent inflation | Full view tree allocated immediately | Adds nested ViewGroup unless `<merge>` used | Toolbars, recurring cards |
+| **`<merge>`** | Merged directly into parent | Zero wrapper overhead | Flattens tree, removes duplicate ViewGroup | Root of custom Compound Views |
+| **`ViewStub`** | Only upon `stub.inflate()` | Negligible until inflated | Replaced by inflated layout at runtime | Error states, empty views, payment modals |
+
+---
+
+### Q47. What is `ConstantState` in Android Drawables and why does changing a drawable tint affect other views unless `mutate()` is called? `[Senior]`
+
+**Definition**
+`ConstantState` is a shared cache object stored in `Resources` holding the immutable visual data (bitmaps, colors, shader configurations) for all Drawables loaded from the same resource ID.
+
+**Answer**
+When two `ImageView`s reference `@drawable/ic_star`, Android creates two `Drawable` instances sharing the **same underlying `ConstantState`** to save RAM:
+
+```mermaid
+graph TD
+    ResStar[R.drawable.ic_star] --> CS[Shared ConstantState]
+    CS --> D1[Drawable Instance 1 (View A)]
+    CS --> D2[Drawable Instance 2 (View B)]
+```
+
+If you call `imageViewA.drawable.setTint(Color.RED)`, the color filter modifies the shared `ConstantState`, causing **`ImageViewB` to turn red as well**.
+
+**The Fix:** Call **`drawable.mutate()`**:
+```kotlin
+// Clones the ConstantState so changes remain private to this instance
+imageViewA.drawable.mutate().setTint(Color.RED)
+```
+
+---
+
+### Q48. How do you implement a Two-Way Data Binding custom attribute using `@InverseBindingAdapter`? `[Senior]`
+
+**Definition**
+Two-way Data Binding allows changes in the UI to automatically update the ViewModel data model (`@={viewModel.value}`), and changes in the ViewModel to reflect in the UI.
+
+**Answer**
+1. **Getter / Setter Binding Adapters:**
+```kotlin
+object CustomSliderBindingAdapters {
+    // 1. Model -> View (Push updates to UI)
+    @JvmStatic
+    @BindingAdapter("sliderValue")
+    fun setSliderValue(slider: CustomSlider, newValue: Float) {
+        if (slider.value != newValue) {
+            slider.value = newValue
+        }
+    }
+
+    // 2. View -> Model (Read value from UI)
+    @JvmStatic
+    @InverseBindingAdapter(attribute = "sliderValue", event = "sliderValueAttrChanged")
+    fun getSliderValue(slider: CustomSlider): Float {
+        return slider.value
+    }
+
+    // 3. Event Listener (Notify binding system when UI changes)
+    @JvmStatic
+    @BindingAdapter("sliderValueAttrChanged")
+    fun setSliderListener(slider: CustomSlider, listener: InverseBindingListener?) {
+        slider.setOnValueChangedListener {
+            listener?.onChange()
+        }
+    }
+}
+```
+
+2. **Usage in Layout XML:**
+```xml
+<com.example.CustomSlider
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:sliderValue="@={viewModel.temperature}" />
+```
+
+---
+
+### Q49. What is the difference between `android:hardwareAccelerated="true"` vs `View.setLayerType(LAYER_TYPE_HARDWARE)`? `[Senior]`
+
+**Definition**
+* `hardwareAccelerated`: Configures whether the window rendering pipeline uses OpenGL ES / Vulkan via `RenderThread` to draw View display lists on the GPU.
+* `setLayerType(LAYER_TYPE_HARDWARE, paint)`: Backs an individual View by an off-screen GPU texture (Hardware Buffer / Framebuffer Object).
+
+**Answer**
+* **Global Hardware Acceleration:** The standard mode where view draw commands are recorded into a `DisplayList` and executed directly onto the window frame.
+* **Hardware Layer (`LAYER_TYPE_HARDWARE`):** Renders the view once into an off-screen GPU texture cache. When the view animates (e.g. `translationX`, `alpha`, `rotation`), the GPU merely transforms the cached texture without re-executing `onDraw()`.
+* **Pitfall:** If the view's content is changing continuously (e.g. a scrolling list or progress bar), using `LAYER_TYPE_HARDWARE` causes severe frame drops because the off-screen texture must be continuously re-rendered and uploaded to the GPU every frame.
+
+---
+
+### Q50. A production crash report shows `SecurityException: Permission Denial` when launching an Activity via an explicit intent from another app. How do you debug and fix this? `[Staff]`
+
+**Definition**
+A `SecurityException: Permission Denial` occurs when an external caller attempts to bind to or launch a private component without necessary permissions or export visibility.
+
+**Root Causes & Systematic Debugging:**
+1. **`android:exported="false"` Collision:** The target Activity is marked `exported="false"`. An external app (or notification pending intent with wrong flags) attempts to launch it directly.
+   * *Fix:* If intended to be public, set `android:exported="true"`. If private, route the intent through an exported Dispatcher Activity or use a broadcast with signed permissions.
+2. **Missing Custom Permission:** The target component requires a `<permission>` that the caller has not declared via `<uses-permission>`:
+   ```xml
+   <activity
+       android:name=".InternalApiActivity"
+       android:exported="true"
+       android:permission="com.example.myapp.INTERNAL_ACCESS" />
+   ```
+   * *Fix:* Ensure both apps are signed with the same keystore if using `protectionLevel="signature"`, or declare the required `<uses-permission>`.
+3. **`grantUriPermissions` on Content Providers:** An external app is passed a `content://` URI without `Intent.FLAG_GRANT_READ_URI_PERMISSION` or `FLAG_GRANT_WRITE_URI_PERMISSION`.
+   * *Fix:* Pass `addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)` when invoking the chooser.
+
+---
+
 ## 📚 Related Guides
 
 | Guide | Covers |
@@ -1474,3 +2504,5 @@ Then, in order of expected payoff:
 | [`android.md`](./android.md) | Custom views, touch dispatch, rendering pipeline, ViewBinding, accessibility, i18n |
 | [`compose.md`](./compose.md) | The declarative replacement for this entire system |
 | [`architecture_patterns.md`](./architecture_patterns.md) | MVVM/MVI with the View system |
+| [`testing_security.md`](./testing_security.md) | App security, Keystore, ProGuard/R8, encryption |
+
