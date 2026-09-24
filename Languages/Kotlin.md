@@ -3855,158 +3855,73 @@ numbers.filter { it >= 0 }.forEach(::println)
 * **Labelled returns in deeply nested lambdas.** If you need them, the code is usually asking for extraction into a named function.
 
 ---
-# 7. Functions — Overview
+# 7. Functions
 
-A function is a named, reusable unit of behavior. It can accept input through parameters and can optionally produce an output through its return type.
+> **Overview**: Functions in Kotlin are **first-class values**—they can be stored in variables, passed as arguments, and returned from other functions. This section serves as the complete technical reference for function declarations, extensions, closures, inlining mechanics, operator overloading, and senior interview traps.
 
-Kotlin functions are more powerful than traditional Java methods because functions are **first-class values**: they can be stored in variables, passed as arguments, and returned from other functions.
-
-### Major Function Types / Concepts
+### Major Function Types & Concepts
 
 | Type / Concept | Purpose |
 |---|---|
-| **Regular function** | Encapsulates reusable logic |
-| **Expression-body function** | Concise function whose body is one expression |
-| **Local function** | Function declared inside another function |
-| **Default-parameter function** | Provides optional parameter values |
-| **Named-argument call** | Makes call sites explicit and readable |
-| **`vararg` function** | Accepts zero or more arguments |
+| **Regular function** | Encapsulates reusable logic with standard block syntax |
+| **Expression-body function** | Concise function whose body is a single expression |
+| **Local function** | Function declared inside another function; captures outer scope |
+| **Default-parameter function** | Provides fallback parameter values, eliminating overloads |
+| **Named-argument call** | Disambiguates call sites and permits order-independent arguments |
+| **`vararg` function** | Accepts zero or more arguments of the same type |
 | **Extension function** | Adds callable behavior to an existing type without modifying it |
-| **Extension property** | Adds a computed property to an existing type |
-| **Lambda** | Anonymous function value |
+| **Extension property** | Adds a computed property to an existing type (no backing field) |
+| **Lambda** | Anonymous function value / literal (`{ it * 2 }`) |
 | **Higher-order function** | Takes functions as parameters and/or returns a function |
 | **Function reference** | Refers to an existing named function using `::` |
-| **`inline` function** | Requests compile-time inlining of the function/lambda body |
-| **`noinline`** | Prevents a selected lambda parameter from being inlined |
-| **`crossinline`** | Allows inlining but prohibits non-local returns |
+| **`inline` function** | Directs compiler to inline function and lambda bodies at call sites |
+| **`noinline`** | Prevents a selected lambda parameter from being inlined (to store/pass) |
+| **`crossinline`** | Inlines lambda while prohibiting non-local returns |
 | **`infix` function** | Enables readable operator-like calls without `.` and parentheses |
-| **`operator` function** | Defines behavior for Kotlin operators such as `+`, `[]`, and `in` |
-| **`tailrec` function** | Allows eligible tail recursion to be compiled as iteration |
+| **`operator` function** | Overloads Kotlin operators such as `+`, `[]`, and `in` |
+| **`tailrec` function** | Compiles eligible tail recursion into iteration to prevent stack overflow |
 
 ---
 
 ## 7.1 Declaring Functions
 
 ### Definition
-A function is declared using the `fun` keyword.
+* **Function** — A named, reusable unit of behavior declared using the `fun` keyword.
+* **Block body** — `fun add(a: Int, b: Int): Int { return a + b }`. Uses `{ }` and requires an explicit return type for non-`Unit` functions.
+* **Expression body** — `fun multiply(a: Int, b: Int) = a * b`. The body is a single expression, and the return type is inferred by the compiler.
+* **`Unit` return** — A function that produces no meaningful value returns `Unit`. Unlike Java's `void` (a primitive keyword), `Unit` is a real singleton object (`Unit.INSTANCE`) and subtype of `Any`.
+* **Local function** — A function declared inside another function's body. Useful for small helpers meaningful only in that scope. Local functions can access and mutate variables from their enclosing lexical scope (closure).
+* **First-class functions** — Kotlin treats functions as first-class values: they can be stored in variables (`val add: (Int, Int) -> Int = { a, b -> a + b }`), passed as arguments, and returned from functions.
 
-### General Syntax
-```kotlin
-fun functionName(parameter1: Type, parameter2: Type): ReturnType {
-    // function body
-    return value
-}
-```
+### How It Works Internally
+A top-level Kotlin function is not a member of a class. On the JVM, top-level functions compile into `public static final` methods of a generated file-facade class named `<FileName>Kt` (e.g., `Utils.kt` → `UtilsKt.greet()`). `@file:JvmName("CustomName")` can be used to customize the facade class name for Java consumers.
 
-**Example:**
+### Code Example
 ```kotlin
+// Block body: explicit return type required (unless Unit)
 fun add(a: Int, b: Int): Int {
     return a + b
 }
-```
 
-### Function Components
-
-```kotlin
-fun add(a: Int, b: Int): Int {
-    return a + b
-}
-```
-
-| Part | Meaning |
-|---|---|
-| `fun` | Keyword used to declare a function |
-| `add` | Function name |
-| `a, b` | Parameters |
-| `Int` | Parameter types |
-| `: Int` | Return type |
-| `{ ... }` | Function body |
-| `return` | Returns a value to the caller |
-
-### Types of Function Bodies
-
-#### 1. Block Body
-A block-body function uses `{ }`.
-```kotlin
-fun add(a: Int, b: Int): Int {
-    return a + b
-}
-```
-For a non-`Unit` block-body function, the return type is normally declared explicitly.
-
-#### 2. Expression Body
-If the function body consists of a single expression, Kotlin allows:
-```kotlin
+// Expression body: return type inferred
 fun multiply(a: Int, b: Int) = a * b
-```
-The compiler can infer the return type. Equivalent conceptual type:
-```kotlin
-fun multiply(a: Int, b: Int): Int = a * b
-```
 
-#### 3. Unit Return
-A function that does not return a meaningful value has return type `Unit`:
-```kotlin
+// Unit return: type can be omitted (equivalent to `: Unit`)
 fun log(message: String) {
     println(message)
 }
-```
-This is equivalent in return type to:
-```kotlin
-fun log(message: String): Unit {
-    println(message)
-}
-```
-Unlike Java's `void`, `Unit` is an actual Kotlin type.
 
-### Local Functions
-A function can be declared inside another function:
-```kotlin
+// Local function — closes over outer scope, keeps helpers private
 fun validate(username: String, email: String) {
-    fun tooShort(value: String): Boolean {
-        return value.length < 4
-    }
-
-    require(!tooShort(username))
-    require(email.contains('@'))
+    fun tooShort(s: String) = s.length < 4
+    require(!tooShort(username)) { "Username too short" }
+    require(email.contains('@')) { "Invalid email" }
 }
 ```
-A local function is useful when a helper is meaningful only inside one surrounding function.
 
-> [!NOTE]
-> **Important property:** A local function can access variables from its enclosing scope.
-
-### First-Class Functions
-Kotlin treats functions as values. They can be:
-- Stored in variables
-- Passed as parameters
-- Returned from functions
-
-```kotlin
-val add: (Int, Int) -> Int = { a, b -> a + b }
-```
-
-### Internal / JVM Representation
-A top-level Kotlin function is not a member of a Kotlin class. For JVM targets, a top-level function is typically compiled into a static method of a generated file-facade class.
-
-For example:
-```kotlin
-// Utils.kt
-fun greet() = "Hello"
-```
-Java code may access it through a generated class such as:
-```java
-UtilsKt.greet();
-```
-`@JvmName` can be used when a different JVM-facing name is required.
-
-### Common Mistakes
-* **Mistake 1: Removing a public expression-body return type carelessly:**
-  ```kotlin
-  fun calculate() = someExpression()
-  ```
-  For public APIs, explicitly documenting the return type can make API contracts clearer and prevent an implementation change from silently changing the inferred signature.
-* **Mistake 2: Excessive local functions:** Local functions are useful for small, private helpers, but deeply nested local functions can reduce readability.
+### Common Pitfalls
+* **Omitting the return type on public expression-bodied functions:** In public APIs, omitting the return type allows an internal implementation change to silently change the public API contract. Always write explicit return types on public APIs.
+* **Deeply nested local functions:** Excessive nesting hurts readability more than a private top-level or class-private helper. Keep local functions small and limited to one level of nesting.
 
 ---
 
@@ -4611,209 +4526,85 @@ Understanding lambdas, function types, higher-order functions, and inline behavi
 
 ---
 
-## 7.10 Senior / Lead Engineer Interview Questions
+## 7.10 Senior Interview Traps & Scenarios
 
-### A. Function Fundamentals
+### Trap 1: Static Dispatch in Extension Functions
+**Question**: What does this code print, and why?
+```kotlin
+open class Base
+class Derived : Base()
 
-**Q1. What is a function in Kotlin?**
-> **Expected answer:** A function is a reusable unit of behavior declared with `fun`. It can accept parameters and return a value. Kotlin additionally treats functions as first-class values, allowing them to be stored in variables, passed as arguments, and returned from other functions.
+fun Base.printName() = println("Base")
+fun Derived.printName() = println("Derived")
 
-**Q2. What is the difference between block-body and expression-body functions?**
-> **Expected answer:** A block body uses `{ }` and normally declares an explicit return type for non-Unit functions. An expression body consists of a single expression (`fun f() = 42`) and can infer its return type.
+val instance: Base = Derived()
+instance.printName()
+```
+> **Answer**: It prints **`Base`**. Extension functions do not use virtual method tables (dynamic dispatch). The compiler compiles extensions into static methods and resolves them based on the **declared compile-time type** (`Base`), not the runtime instance type (`Derived`).
 
-**Q3. What is Unit? How is it different from Java void?**
-> **Expected answer:** `Unit` is Kotlin's return type for functions whose meaningful result is absent. It is an actual Kotlin type (a singleton object instance), whereas Java `void` is a special JVM language keyword and not an object type.
+### Trap 2: Lambda Capture and Memory Leaks in Android
+**Question**: Why is passing a lambda to a singleton or background manager an Android memory leak hazard?
+```kotlin
+class UserActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        SyncManager.registerListener {
+            updateUi() // Captures outer UserActivity instance!
+        }
+    }
+}
+```
+> **Answer**: Lambdas are closures. Because `updateUi()` references the outer class, the lambda implicitly holds a strong reference to `UserActivity`. If `SyncManager` is a singleton or outlives the activity, the entire Activity, its Views, and its resources are leaked. Fix by unregistering on destruction or using lifecycle-aware observers.
 
-**Q4. What is a local function and when would you use one?**
-> **Expected answer:** A local function is declared inside another function and is visible only within that scope. It is useful for small helpers that should not become part of the surrounding class or file API, and it can access variables from its enclosing scope.
+### Trap 3: `inline` Function Bytecode Bloat
+**Question**: If `inline` eliminates lambda allocations, why shouldn't every function be marked `inline`?
+> **Answer**: Inlining copies the bytecode of both the function and its lambda arguments directly into every single call site. Inlining large functions or functions called from many places leads to severe bytecode and DEX size explosion, which degrades instruction-cache locality and harms runtime performance. Inlining should only be applied to small higher-order functions that accept lambdas or require `reified` generics.
 
----
+### Trap 4: `crossinline` vs `noinline`
+**Question**: What is the practical difference between `crossinline` and `noinline`?
+> **Answer**:
+> - `noinline`: The lambda is **not inlined**. It remains a concrete `Function` instance on the heap, allowing you to store it in a field or pass it to another non-inlined function.
+> - `crossinline`: The lambda **is inlined**, but the compiler forbids non-local returns from it. This is mandatory when the lambda is called inside an asynchronous callback, coroutine, or runnable, where a non-local `return` would attempt to jump out of a different call stack.
 
-### B. Parameters
-
-**Q5. Why does Kotlin provide default arguments if Java has method overloading?**
-> **Expected answer:** Default arguments allow one Kotlin function to express optional parameters without creating multiple overloads. This reduces boilerplate and makes APIs easier to evolve.
-
-**Q6. What happens to Kotlin default arguments on the JVM?**
-> **Expected answer:** Kotlin generates JVM support code (a synthetic `$default` method using bitmasks) to select default values when arguments are omitted. Java does not directly call a Kotlin function using Kotlin's omitted-argument syntax; `@JvmOverloads` can generate Java-visible overloads when required.
-
-**Q7. What is the difference between named arguments and default arguments?**
-> **Expected answer:** A default argument defines a value used when the caller omits a parameter. A named argument identifies a parameter explicitly at the call site. They can be used together to skip optional parameters.
-
-**Q8. How does `vararg` work internally?**
-> **Expected answer:** A `vararg` parameter is represented as an array-like parameter inside the function (`IntArray` for primitive `Int`, `Array<T>` for objects). The caller can provide individual values, while the spread operator `*` can pass an existing array's elements as vararg arguments.
-
----
-
-### C. Extension Functions
-
-**Q9. Are extension functions really added to the class?**
-> **Expected answer:** No. An extension does not modify the receiver class. It is resolved statically and is compiled on the JVM as a static method that receives the receiver as an argument.
-
-**Q10. Are extension functions polymorphic?**
-> **Expected answer:** No. Extension functions are statically dispatched. The compiler uses the expression's declared compile-time type rather than its runtime type.
-
-**Q11. What happens if a member function and extension function have the same signature?**
-> **Expected answer:** The member function wins.
-
-**Q12. Can an extension function access private members of the receiver?**
-> **Expected answer:** No. An extension is not actually a member of the class, so it does not receive privileged access to private state.
-
-**Q13. When would you prefer an extension over a member function?**
-> **Expected answer:** Use an extension when the behavior is conceptually associated with a type but does not need access to its private implementation, especially when you do not own the type or want to keep the class API small.
+### Trap 5: Function Clean Architecture Call Sites (`operator fun invoke`)
+**Question**: How does `operator fun invoke` improve clean architecture Use Cases / Interactors?
+```kotlin
+class AuthenticateUserUseCase {
+    operator fun invoke(credentials: Credentials): Result<User> { /* ... */ }
+}
+```
+> **Answer**: By defining `operator fun invoke`, the Use Case instance can be invoked directly as if it were a function (`authenticateUser(creds)`), while still remaining an injectable class that can hold dependencies.
 
 ---
 
-### D. Lambdas and Higher-Order Functions
-
-**Q14. What is a lambda in Kotlin?**
-> **Expected answer:** A lambda is an anonymous function value. It has a function type such as `(Int) -> String` and can be stored in variables or passed to other functions.
-
-**Q15. What is a higher-order function?**
-> **Expected answer:** A function that accepts another function as a parameter, returns a function, or both.
-
-**Q16. What is a closure?**
-> **Expected answer:** A closure is a function value that captures variables from its surrounding lexical scope. The captured state remains available as long as the function value requires it.
-
-**Q17. What is the difference between a lambda and an anonymous function?**
-> **Expected answer:** Both create function values, but anonymous functions have their own explicit return semantics and can explicitly declare their return type. Lambda return behavior, especially non-local returns, differs when used with inline higher-order functions.
-
-**Q18. What is a trailing lambda?**
-> **Expected answer:** When the last parameter of a function is a function type, Kotlin allows the lambda to be placed outside the parentheses. This is heavily used by collection APIs and Compose.
-
----
-
-### E. Function References
-
-**Q19. What is the difference between a lambda and a function reference?**
-> **Expected answer:** A lambda (`{ transform(it) }`) creates a function expression that invokes `transform`, while a function reference (`::transform`) directly refers to the existing function. Function references are often clearer when the lambda only forwards its argument.
-
-**Q20. What is the difference between bound and unbound references?**
-> **Expected answer:** An unbound reference does not have a fixed receiver, such as `String::toInt`. A bound reference captures a particular receiver, such as `logger::log`.
-
-**Q21. What is a potential Android concern with bound references?**
-> **Expected answer:** A bound reference captures its receiver. If a long-lived object stores a reference to an `Activity`, `Fragment`, or `View`, it can contribute to retaining that lifecycle-bound object and cause a memory leak.
-
----
-
-### F. inline, noinline, and crossinline
-
-**Q22. Why does Kotlin have inline functions?**
-> **Expected answer:** Inlining can eliminate lambda object allocation and function-call overhead by copying the function/lambda body into the call site. It also enables features such as reified type parameters and non-local returns.
-
-**Q23. Does inline always improve performance?**
-> **Expected answer:** No. Inlining increases code size because the body is copied into call sites. For large functions or functions called from many locations, code-size growth can outweigh the benefit.
-
-**Q24. Why can't every lambda parameter of an inline function be stored?**
-> **Expected answer:** An inlined lambda is copied into the call site rather than retained as a normal function object. If a lambda must be stored or passed as a value, it may need to be marked `noinline`.
-
-**Q25. What problem does crossinline solve?**
-> **Expected answer:** It prevents a lambda from using a non-local return while still allowing the lambda to be inlined. This is needed when the lambda is invoked from another execution context, such as another lambda or an anonymous object.
-
-**Q26. Why is reified normally combined with inline?**
-> **Expected answer:** On the JVM, generic type arguments are normally erased. An inline reified type parameter allows the compiler to substitute the concrete type information at the call site.
-
----
-
-### G. infix, operator, and tailrec
-
-**Q27. What are the restrictions on an infix function?**
-> **Expected answer:** It must be a member or extension function and have exactly one required value parameter. It cannot use a `vararg` parameter or default values for the infix call.
-
-**Q28. What is operator overloading in Kotlin?**
-> **Expected answer:** It allows specific functions with recognized names to define the behavior of Kotlin operators. For example, `plus` maps to `+`, `get` maps to indexing `[]`, and `contains` maps to `in`.
-
-**Q29. What is the danger of excessive operator overloading?**
-> **Expected answer:** Operators carry conventional meanings. Giving them unrelated business semantics can make code difficult to understand and maintain.
-
-**Q30. What is tail recursion?**
-> **Expected answer:** Tail recursion occurs when the recursive call is the final operation of the function. Kotlin's `tailrec` modifier allows eligible tail-recursive functions to be compiled as iteration, avoiding recursive stack growth.
-
-**Q31. Does tailrec make every recursive function stack-safe?**
-> **Expected answer:** No. Only eligible tail-recursive functions are optimized. If additional work occurs after the recursive call, the compiler cannot apply tail-recursion optimization.
-
----
-
-## 7.11 Advanced Scenario-Based Interview Questions
-
-**Q32. You have a function with five Boolean parameters. How would you improve the call site?**
-> Use named arguments:
-> ```kotlin
-> configure(
->     enabled = true,
->     animate = false,
->     cache = true,
->     debug = false,
->     retry = true
-> )
-> ```
-> Then consider whether the API itself should use a dedicated configuration data class or builder when the number of parameters becomes difficult to maintain.
-
-**Q33. An extension function behaves differently from what you expect when a subclass is passed. What would you check?**
-> Check whether the behavior is coming from an extension function. Extensions use static dispatch, so the declared compile-time type determines which extension is selected, not the runtime type.
-
-**Q34. A hot Android code path creates many temporary lambda objects. What would you investigate?**
-> 1. Check whether the higher-order function is `inline`.
-> 2. Check whether the lambda is capturing state (capturing lambdas allocate a new object on each invocation).
-> 3. Profile using Android Studio Profiler before blindly adding `inline`.
-> 4. Ensure code-size growth would be acceptable.
-
-**Q35. You need to keep a callback for later execution inside an inline function. What modifier might be necessary?**
-> Mark that callback parameter with `noinline`, because it needs to remain a real function object that can be stored in a field or passed to another method.
-
-**Q36. Why can a lambda cause an Android memory leak?**
-> A lambda is a closure that captures objects from its surrounding scope. If the lambda is retained by a longer-lived object (like a singleton or repository), the captured `Activity`, `View`, or `Context` will remain in memory and leak.
-> ```kotlin
-> someLongLivedManager.register {
->     activity.doSomething()
-> }
-> ```
-
-**Q37. You need a readable DSL-like API with one operation and one argument. Which Kotlin feature could you consider?**
-> An `infix` function can be appropriate when the operation has a clear domain meaning (e.g. `2 pow 3`).
-
-**Q38. You need custom behavior for `+` between two domain objects. Which feature should you use?**
-> An `operator fun plus(...)` can be used if `+` has an intuitive and conventional meaning for that domain.
-
-**Q39. Why might you choose a normal loop instead of map, filter, or other higher-order APIs in performance-critical code?**
-> Higher-order collection functions create intermediate collection allocations (`ArrayList`) at each step. In performance-critical tight loops, a normal `for` loop or `asSequence()` avoids intermediate allocations.
-
-**Q40. Design question: How would you design a reusable Kotlin API that accepts customizable behavior?**
-> - Use function types for callbacks and strategies.
-> - Provide default arguments for optional behavior.
-> - Use named arguments for readability at call sites.
-> - Provide extension functions when behavior naturally belongs to an external type.
-> - Use `inline` where there is a measured performance reason or reified type need.
-> - Ensure Java interoperability (`@JvmOverloads`) if the library has Java consumers.
-
----
-
-## 7.12 Quick Revision Summary
+## 7.11 Quick Revision Summary
 
 ```
 Function Architecture
- ├── Regular / block body
- ├── Expression body
- ├── Local function (captures enclosing scope)
- ├── Default arguments (reduces overloads; @JvmOverloads for Java)
- ├── Named arguments (clarity, parameter reordering)
- ├── vararg (zero or more items; * spread operator)
- │
- ├── Extension function/property (statically resolved, no backing field)
- │
- ├── Function type: (Param) -> Return
- ├── Lambda: { it * it }
- ├── Higher-order function: accepts/returns functions
- ├── Closure: captures surrounding variables
- ├── Function reference: ::isEven, bound (logger::log), unbound (String::toInt)
- │
- ├── inline: eliminates lambda allocations & enables reified types
- │    ├── noinline: prevents inlining to allow storing/passing lambda
- │    └── crossinline: inlines while prohibiting non-local returns
- │
- ├── infix: single-argument syntax without '.' and '()'
- ├── operator: defines +, [], in, invoke, etc.
- └── tailrec: compiles eligible tail-recursive functions into iterative loops
+ ├── Syntax & Bodies
+ │    ├── Regular / block body: fun add(a: Int, b: Int): Int { return a + b }
+ │    ├── Expression body: fun add(a: Int, b: Int) = a + b
+ │    └── Local function: declared inside another function; captures outer scope
+ ├── Parameters
+ │    ├── Default arguments: eliminates telescoping overloads; @JvmOverloads for Java
+ │    ├── Named arguments: improves call-site readability; reorders parameters safely
+ │    └── vararg: zero or more items; spread operator (*) unpacks arrays
+ ├── Extensions
+ │    ├── Extension functions & properties: static dispatch (no polymorphism); member always wins
+ │    └── Cannot access private/protected members; nullable receiver (Type?) handles nulls cleanly
+ ├── Functional Programming
+ │    ├── Function types: (Param) -> Return
+ │    ├── Lambdas: { it * it }; single parameter implicit 'it'
+ │    ├── Higher-order functions: accept/return functions; trailing lambda syntax
+ │    └── References: ::namedFunction, bound (obj::method), unbound (Class::method)
+ ├── Inlining Optimization
+ │    ├── inline: copies body & lambda to call site; enables reified types
+ │    ├── noinline: keeps parameter as an object to store or pass
+ │    └── crossinline: inlines lambda but prohibits non-local returns
+ └── Specialized Modifiers
+      ├── infix: single-argument syntax without '.' and '()'
+      ├── operator: overrides +, [], in, invoke, compareTo, etc.
+      └── tailrec: compiles eligible tail-recursive functions into iterative loops
 ```
 
 ---
