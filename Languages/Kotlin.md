@@ -4702,97 +4702,153 @@ class Rect(val w: Int, val h: Int) {
 ## 8.3 Data Classes
 
 ### Definition
-* **Data class** — a class whose purpose is to *hold values* rather than to perform behavior. Declaring it `data` asks the compiler to generate the members such a type always needs, from the properties in its **primary constructor**.
-* **`equals()` / `hashCode()`** — give the type **structural equality**: two instances are equal when their property values are equal, rather than only when they are the same object. This is what makes a data class usable as a `Map` key or in a `Set`.
-* **`toString()`** — produces a readable form (`User(id=1, name=Ada)`) instead of the default identity hash, which is what makes logs and test failures legible.
-* **`copy()`** — creates a new instance with the same values except the ones you name: `user.copy(name = "Ada L")`. It is the standard way to "modify" an immutable object.
-* **`componentN()`** — one function per constructor property (`component1()`, `component2()`, …), which is what enables **destructuring**: `val (id, name) = user`.
-* **The boundary that causes most bugs** — only properties in the **primary constructor** take part. A property declared in the class body is invisible to every generated member.
+* **Data class** — A class whose primary purpose is to *hold data* rather than perform complex behavior. Declared with `data class`, the compiler automatically generates standard data-manipulation methods based on properties declared in the **primary constructor**.
+* **Generated methods** — The compiler synthesizes:
+  - `equals()` and `hashCode()` — Structural equality based on primary-constructor values.
+  - `toString()` — Human-readable representation (e.g., `User(id=1, name=Ada)`).
+  - `copy()` — Creates a new instance, copying primary-constructor properties while allowing selective overrides.
+  - `componentN()` — Positional functions (`component1()`, `component2()`, etc.) that power **destructuring declarations**.
+* **Structural equality (`==`)** — Evaluates logical equality using `equals()`. Two separate instances with identical constructor properties evaluate to `true`.
+* **Referential equality (`===`)** — Evaluates memory identity: checks if two references point to the exact same heap object.
+* **Shallow copy** — `copy()` duplicates the outer object, but references to nested objects or collections are copied by reference, not cloned.
 
 ### Why It Is Used
-Value-holding types need structural equality and readable printing. Writing those by hand is boilerplate that goes stale the moment a field is added.
+Data classes eliminate repetitive boilerplate for DTOs, API models, database records, and UI state objects. In modern architectures (Jetpack Compose, MVVM, MVI), data classes represent immutable state, where state transitions are modeled via `copy()`.
 
 ### How It Works Internally
-Only properties **declared in the primary constructor** participate. A property declared in the body is excluded from `equals`, `hashCode`, `toString`, and `copy` — a subtle and frequently-hit trap.
+The Kotlin compiler generates bytecode for `equals`, `hashCode`, `toString`, `copy`, and `componentN` **only** for properties declared in the **primary constructor**.
+
+```kotlin
+data class User(
+    val id: Long,
+    val name: String
+) {
+    var lastSeen: Long = 0 // Class body property: EXCLUDED from generated members
+}
+```
+- `id` and `name` are included in `equals()`, `hashCode()`, `toString()`, `copy()`, and `componentN()`.
+- `lastSeen` is completely **excluded**. Two `User` instances with different `lastSeen` values will compare as equal (`==`), and calling `copy()` resets `lastSeen` to its initializer (`0`), rather than copying it from the original instance!
 
 ### Code Example
 ```kotlin
-data class User(val id: Long, val name: String) {
-    var lastSeen: Long = 0            // NOT in equals/hashCode/toString/copy
+data class User(
+    val id: Long,
+    val name: String,
+    val tags: MutableList<String> = mutableListOf()
+) {
+    var lastSeen: Long = 0 // Body property
 }
 
-val a = User(1, "Ada").apply { lastSeen = 100 }
-val b = User(1, "Ada").apply { lastSeen = 999 }
-println(a == b)          // true  — lastSeen is ignored
-println(a.copy())        // lastSeen resets to 0, NOT copied
+val user1 = User(1, "Ada", mutableListOf("Kotlin")).apply { lastSeen = 100 }
+val user2 = User(1, "Ada", mutableListOf("Kotlin")).apply { lastSeen = 999 }
 
-// copy for immutable updates
-val updated = a.copy(name = "Ada Lovelace")
+// 1. Structural vs Referential Equality
+println(user1 == user2)  // true: body property 'lastSeen' is ignored by equals()
+println(user1 === user2) // false: different heap references
 
-// Destructuring uses componentN, which is POSITIONAL
-val (id, name) = a
-// Reordering the constructor properties silently changes every destructuring site.
+// 2. copy() is a SHALLOW copy
+val user3 = user1.copy(name = "Ada Lovelace")
+println(user3.lastSeen)  // 0: body properties are re-initialized, NOT copied!
 
-// Requirements and restrictions
-// - At least one primary constructor parameter
-// - All primary constructor parameters must be val/var
-// - Cannot be open, abstract, sealed, or inner
+user3.tags.add("Android")
+println(user1.tags)      // [Kotlin, Android]: nested mutable collection reference is shared!
+
+// 3. Positional Destructuring via componentN()
+val (id, name) = user1   // id = user1.component1(), name = user1.component2()
 ```
 
+### Data Class Requirements and Restrictions
+1. The primary constructor must have **at least one** parameter.
+2. All primary constructor parameters must be explicitly marked `val` or `var` (`val` is strongly recommended).
+3. Data classes **cannot** be `open`, `abstract`, `sealed`, or `inner`.
+4. Data classes may implement interfaces and extend non-final classes (as long as constructor parameter rules are respected).
+
 ### Common Pitfalls
-* **Body properties excluded from `equals`.** Two "different" objects compare equal, and `copy()` silently drops the value. Put everything meaningful in the primary constructor.
-* **A `data class` with a mutable collection property.** `hashCode` changes when the collection mutates, corrupting any `HashMap` or `HashSet` holding it.
-* **Destructuring by position.** Renaming is safe; **reordering** is not, and the compiler cannot warn you.
-* **Using a data class as a domain entity with identity.** Structural equality says two users with the same fields are the same user — often wrong for entities.
+* **Body properties in equality and copy:** Body properties are excluded from `equals` and `hashCode`, and `copy()` resets them to their initial declared values. Put all state affecting equality in the primary constructor.
+* **Mutating keys in hash collections (`HashMap`/`HashSet`):** If a `var` property or mutable collection inside a data class is mutated after being placed in a `HashMap` or `HashSet`, its `hashCode()` changes. The collection will look in the wrong bucket, making `contains()` and `remove()` fail.
+* **Positional destructuring trap:** Destructuring (`val (a, b) = user`) binds by **position**, not property name. Reordering primary constructor parameters silently reassigns destructuring variables without compiler errors.
+* **Domain entities vs Value objects:** Data classes implement structural equality. Domain entities where identity is determined by a unique ID (even if attributes change) should implement explicit `equals`/`hashCode` based solely on their ID rather than using a data class.
 
 ---
 
 ## 8.4 Sealed Classes and Interfaces
 
 ### Definition
-* **Sealed type** — a type whose set of direct subtypes is **closed**: every subtype must be declared in the same package and module, so the compiler knows them all.
-* **Why that matters** — because the set is complete, a `when` over a sealed type is checked for **exhaustiveness**: if you fail to handle a case, the code does not compile.
-* **`sealed class`** — can hold state and declare constructors; use it when the shared cases need common data.
-* **`sealed interface`** — carries no state and no constructor, but a single type may implement several of them, so a class can belong to more than one closed hierarchy.
+* **Sealed type** — A type whose direct inheritance hierarchy is **strictly restricted and known at compile time**. All direct subclasses must be declared within the same package and module.
+* **`sealed class`** — A restricted class hierarchy where the parent class can hold constructor state, properties, and shared function implementations. Subclasses can have multiple instances.
+* **`sealed interface`** — A restricted interface hierarchy. Cannot have constructors or state, but allows a single class to participate in **multiple closed hierarchies** (multiple interface inheritance).
+* **`data object`** — A singleton object with compiler-generated, human-readable `toString()`, `equals()`, and `hashCode()` implementations (Kotlin 1.9+). Ideal for stateless cases within a sealed hierarchy (e.g., `data object Loading : UiState`).
+* **Exhaustive `when`** — Because the compiler knows every permitted direct subtype, a `when` expression can verify that every case is handled at compile time without requiring an `else` branch.
 
 ### Why It Is Used
-It makes `when` **exhaustive**, so adding a new case becomes a compile error at every site that must handle it. This is the single most valuable modelling tool in Kotlin for UI state, results, and events.
+Sealed hierarchies model **restricted sets of possible states or outcomes** (such as UI state, network results, state machines, and navigation events). Adding a new state subtype breaks compilation at every unhandled `when` expression, preventing unhandled runtime fall-through bugs.
 
-### How It Works Internally
-Subtypes must be declared in the same **package and module** (same file, before Kotlin 1.5). The compiler therefore knows the full set and can verify exhaustiveness. At runtime they are ordinary classes.
+### Comparative Reference Tables
 
-| | `sealed` | `enum` |
+#### 1. `sealed class` vs `sealed interface`
+
+| Feature | `sealed class` | `sealed interface` |
 |---|---|---|
-| Instances | Many per subtype, each with its own state | One per constant |
-| Per-case data | Yes — different fields per subtype | Only fields shared by all |
-| Exhaustive `when` | Yes | Yes |
-| Use for | States/results carrying different payloads | A fixed set of simple constants |
+| **Constructors & State** | Yes (can hold constructor state) | No (no constructor parameters) |
+| **Inheritance Model** | Single-class inheritance | Multiple interface implementation |
+| **Best Used For** | Subclasses sharing common state / base logic | Types participating in multiple closed hierarchies |
 
-### Code Example
+#### 2. `sealed` Hierarchy vs `enum`
+
+| Feature | Sealed Hierarchy (`sealed class` / `interface`) | `enum class` |
+|---|---|---|
+| **Subtype Instances** | Multiple instances per subtype; can have state | Single constant instance per enum value |
+| **Per-Case Data** | Different subtypes can carry completely different payloads | All constants share the same parameter schema |
+| **Exhaustive `when`** | Yes (compile-time checked) | Yes (compile-time checked) |
+| **Best Used For** | Dynamic results, UI state models, event payloads | Simple, fixed constants (e.g., `Direction`, `DayOfWeek`) |
+
+#### 3. Data Class vs Sealed Hierarchy (When to Use Which)
+
+| Concept | Primary Question | Typical Use Cases |
+|---|---|---|
+| **Data Class** | *"What data values does this single object hold?"* | DTOs, API payloads, domain value objects, database rows |
+| **Sealed Type** | *"Which mutually exclusive state / outcome is this?"* | UI states (`Loading`, `Success`, `Error`), Operation results |
+
+### Real-World Architecture Example: Android MVI State Model
 ```kotlin
-sealed interface UiState {
-    data object Loading : UiState                         // `data object` gives a nice toString
-    data class Content(val items: List<Item>, val refreshing: Boolean = false) : UiState
-    data class Error(val message: String, val retryable: Boolean) : UiState
-}
-
-// Exhaustive: no `else`, so a new subtype breaks the build here
-fun render(state: UiState) = when (state) {
-    UiState.Loading -> showSpinner()
-    is UiState.Content -> showList(state.items, state.refreshing)
-    is UiState.Error -> showError(state.message, state.retryable)
-}
-
-// A sealed interface can be implemented by types in other hierarchies
+// Multiple sealed interfaces model independent capabilities
 sealed interface Cacheable
 sealed interface Syncable
-data class Note(val id: Long) : Cacheable, Syncable
+
+// Sealed interface for UI state
+sealed interface UiState {
+    data object Loading : UiState // data object generates clean toString() and structural equality
+    data class Content(val items: List<String>, val isRefreshing: Boolean = false) : UiState
+    data class Error(val message: String, val canRetry: Boolean) : UiState
+}
+
+// Exhaustive when: NO `else` branch!
+fun render(state: UiState): String = when (state) {
+    UiState.Loading -> "Loading spinner"
+    is UiState.Content -> "Displaying ${state.items.size} items (refreshing=${state.isRefreshing})"
+    is UiState.Error -> "Error: ${state.message} (canRetry=${state.canRetry})"
+}
+
+// A data class implementing multiple sealed capabilities
+data class CachedDocument(val id: Long, val title: String) : Cacheable, Syncable
 ```
 
+### The Exhaustiveness Trap: Why You Must Avoid `else`
+```kotlin
+// ❌ ANTI-PATTERN: Adding `else` silences the compiler exhaustiveness check
+fun handle(state: UiState) = when (state) {
+    UiState.Loading -> showLoading()
+    is UiState.Content -> showContent(state.items)
+    else -> showGenericError() // Dangerous!
+}
+```
+If a new state (`data object Empty : UiState`) is later added, the compiler will **not** warn you, and the new state will silently execute the fallback `else` branch in production. Omitting `else` turns state omissions into immediate compile errors.
+
 ### Common Pitfalls
-* **Adding `else` to an exhaustive `when`.** It disables the check that is the whole point. Leave it out and let the compiler find every site when the hierarchy grows.
-* **Using a sealed class where an enum suffices.** If no case carries data, an enum is simpler and cheaper.
-* **`object` instead of `data object` for a stateless case.** `data object` gives a readable `toString` and correct `equals` semantics for free (Kotlin 1.9+).
+* **Adding `else` to a sealed `when`:** Destroys compile-time exhaustiveness checking. Always write out all branches explicitly.
+* **Using `object` instead of `data object`:** A plain `object Loading` prints `com.example.UiState$Loading@3b22cdd0` in logs. `data object Loading` prints `Loading` and provides proper `equals`/`hashCode`.
+* **Using `sealed` when an `enum` suffices:** If every case is a stateless constant without differing data fields, prefer an `enum class`.
+* **Using `enum` when cases require distinct data payloads:** Trying to force heterogeneous data payloads into an enum creates nullable fields and unreadable code. Use a sealed hierarchy.
 
 ---
 
