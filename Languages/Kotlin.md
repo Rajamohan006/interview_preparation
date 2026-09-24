@@ -4953,53 +4953,69 @@ fun getNotificationPolicy(priority: TaskPriority): String = when (priority) {
 ## 8.6 `object`, `companion object`, and Nested vs Inner Classes
 
 ### Definition
-* **Singleton** — a type with exactly **one** instance for the whole process. Kotlin gives it first-class syntax rather than requiring the hand-written pattern Java needs.
-* **`object` declaration** — declares that singleton: `object Tracker { }`. The instance is created the first time it is touched (**lazily**) and the JVM's class-loading rules make that creation **thread-safe** without any locking you write.
-* **`object` expression** — an *anonymous* object created on the spot to implement an interface or extend a class: `object : OnClickListener { }`. It replaces Java's anonymous inner classes, and unlike a declaration a **new instance is created each time** the expression is evaluated.
-* **`companion object`** — a single object bound to a class, so its members are reached through the class name (`User.create()`). It is where Kotlin puts what Java would declare `static`, including factory functions and constants.
-* **Nested class** — a class declared inside another purely for **namespacing**. It holds **no reference** to the outer instance and can be created without one. This is Kotlin's default.
-* **`inner` class** — a nested class marked `inner`, which **does** hold a reference to the outer instance (so it can read the outer object's properties) and can only be created from one. That hidden reference is what makes `inner` a memory-leak risk.
+* **Singleton pattern** — An architectural pattern guaranteeing that a class has only one instance throughout the entire application lifecycle, with a global access point. Kotlin provides language-level support via `object`.
+* **`object` declaration** — Defines a thread-safe, lazily initialized singleton: `object NetworkClient { }`. The instance is created on the first access and managed by the JVM runtime.
+* **`data object` (Kotlin 1.9+)** — A singleton object with compiler-generated value-based `toString()`, `equals()`, and `hashCode()` implementations. Essential for stateless cases in sealed hierarchies.
+* **`object` expression** — An anonymous class instance created on the spot: `val listener = object : ClickListener { ... }`. Replaces Java's anonymous inner classes. **Crucial difference**: Evaluated and instantiated **anew each time** it is executed (NOT a singleton).
+* **`companion object`** — A single object tied to a class, accessed via the class name (`User.create()`). Serves as Kotlin's replacement for Java's `static` methods and factory functions. Can be named, implement interfaces, and have extension functions declared on it.
+* **Nested class (default)** — A class declared inside another class without any special modifier. It is **static by default** on the JVM: it holds **no reference** to the enclosing class instance, cannot access outer instance members, and cannot cause outer memory leaks.
+* **`inner` class** — A nested class marked with the `inner` modifier. Holds a synthetic hidden reference (`this$0`) to its outer instance, allowing it to access outer members. **Warning**: Holding onto an inner class instance prevents garbage collection of the outer object, making it a frequent source of Android memory leaks.
 
 ### How It Works Internally
-An `object` compiles to a class with a static `INSTANCE` field, initialized in a static initializer — so it is thread-safe and lazy by JVM class-loading rules. An `inner` class keeps a synthetic `this$0` field pointing at the outer instance, which is why non-static inner classes leak their outer object on Android.
+1. **`object` Thread-Safety & Laziness**: Compiles to a `public final class` with a `private` constructor and a `public static final <Type> INSTANCE` field. Initialized inside the `<clinit>` static initializer block. Under JVM specification §5.5, class loading is guaranteed to be thread-safe and lazy (executed only upon first access) without needing `synchronized` or double-checked locking (`volatile`).
+2. **`companion object` Bytecode**: Compiles to a static nested class named `Companion` with a static field in the outer class `public static final Outer.Companion Companion`. Methods are invoked via `Outer.Companion.method()`. Annotating with `@JvmStatic` generates a real `public static` bridge method in the outer class for direct Java access.
+3. **`inner` Class & `this$0`**: The compiler injects a `final Outer this$0` field into the inner class constructor. If an inner class is passed to a background thread, coroutine, or static listener, the entire outer class (e.g. `Activity`) cannot be garbage collected.
 
 ### Code Example
 ```kotlin
-// Singleton
-object AnalyticsTracker {
-    private val queue = mutableListOf<Event>()
-    fun track(e: Event) { queue += e }
-}
-AnalyticsTracker.track(event)
-
-// Anonymous object
-val listener = object : OnClickListener {
-    override fun onClick(v: View) { /* ... */ }
+// 1. Thread-safe Singleton
+object AnalyticsManager {
+    private val eventQueue = mutableListOf<String>()
+    fun logEvent(event: String) { eventQueue.add(event) }
 }
 
-// Companion: factory functions and constants
-class User private constructor(val id: Long, val name: String) {
-    companion object Factory {
-        const val ANONYMOUS_ID = -1L                 // Truly static, inlined
-        fun anonymous() = User(ANONYMOUS_ID, "Guest")
-        fun fromDto(dto: UserDto) = User(dto.id, dto.name)
+// 2. data object (clean toString and equality)
+sealed interface ScreenState {
+    data object Loading : ScreenState // prints "Loading", not "ScreenState$Loading@3b22"
+    data class Content(val data: String) : ScreenState
+}
+
+// 3. Companion Object with Factory, Constants, and @JvmStatic
+class DatabaseConnection private constructor(val url: String) {
+    companion object Factory : ConnectionFactory {
+        const val DEFAULT_TIMEOUT_MS = 5000L // Inlined primitive constant
+
+        @JvmStatic
+        fun create(url: String): DatabaseConnection = DatabaseConnection(url)
+
+        override fun default(): DatabaseConnection = DatabaseConnection("localhost:5432")
     }
 }
-val guest = User.anonymous()
 
-// Nested (default): no outer reference — prefer this
-class Outer(val value: Int) {
-    class Nested { fun describe() = "no access to Outer" }
-    inner class Inner { fun describe() = "outer value is $value" }   // Holds Outer
+// 4. Object Expression (Fresh instance on each evaluation)
+fun createListener(tag: String) = object : View.OnClickListener {
+    override fun onClick(v: View) {
+        println("Clicked $tag") // Captures local parameter 'tag'
+    }
 }
-Outer.Nested()                 // No outer instance needed
-Outer(1).Inner()               // Requires an outer instance
+
+// 5. Nested Class vs Inner Class
+class ActivityContainer(val activityId: String) {
+    // Nested: Static by default, NO outer reference (SAFE)
+    class CacheKey(val key: String)
+
+    // Inner: Holds 'this$0' reference to ActivityContainer (LEAK HAZARD)
+    inner class LifecycleObserver {
+        fun logId() = println("Active container: $activityId")
+    }
+}
 ```
 
 ### Common Pitfalls
-* **`inner` when `class` would do.** The outer reference is a leak source; Kotlin defaults to nested precisely for this reason.
-* **Expecting `companion object` members to be Java statics.** Java sees `User.Companion.anonymous()` unless the member is `@JvmStatic` or `const`.
-* **Mutable state in an `object`.** It is process-wide and shared across every caller and thread — a global variable with better syntax.
+* **`inner` class memory leaks:** Using `inner` when the class does not need to access outer instance members retains the outer object in memory. Default to plain `class` (nested).
+* **Companion object is not Java static by default:** Java callers must write `Class.Companion.method()` unless annotated with `@JvmStatic`.
+* **Mutable global state in singletons:** Putting mutable `var` collections inside an `object` creates a global variable accessible across threads, leading to concurrency bugs and difficult-to-test code.
+* **Assuming object expressions are singletons:** An `object : Interface { }` expression allocates a **new instance every time** the code executes.
 
 ---
 
@@ -5101,6 +5117,85 @@ class CountingList<T>(
 ### Common Pitfalls
 * **Assuming the delegate calls your overrides.** It does not. `delegate.save()` inside `NetworkRepository` calls *its own* method, never the decorator's — the forwarding is one-way.
 * **Delegating a large interface to hide one change.** The generated surface is still the whole interface; make sure that is genuinely the contract you want.
+
+---
+
+## 8.9 Senior / Lead Engineer Interview Questions (OOP in Kotlin)
+
+### Q1. What happens if a property is mutated after being used as a key in a `HashSet` or `HashMap`?
+> **Answer**: Hash collections compute the bucket index via `hashCode()` when the object is inserted. If a mutable property participating in `hashCode()` changes value later, the object's hash code changes. Future queries like `contains(obj)` or `remove(obj)` will look in a different bucket and return `false`, even though the object remains in the collection, creating a memory leak and corrupted state. **Rule**: Primary-constructor properties of data classes used in hash sets should always be immutable (`val`).
+
+### Q2. Is the generated `copy()` method in a data class a deep copy or shallow copy? What is the architectural implication?
+> **Answer**: `copy()` is strictly a **shallow copy**. It creates a new instance of the outer data class, but any referenced objects or mutable collections are copied by reference.
+> ```kotlin
+> data class User(val name: String, val roles: MutableList<String>)
+> val user1 = User("Raj", mutableListOf("ADMIN"))
+> val user2 = user1.copy()
+> user2.roles.add("USER") // Mutates the list shared with user1!
+> ```
+> In unidirectional architectures (MVI/Redux/Compose), state models should use read-only collections (`List<T>`) or persistent immutable collections to preserve state isolation.
+
+### Q3. Why is destructuring a data class considered fragile in large codebases?
+> **Answer**: Destructuring (`val (id, name) = user`) is compiled to positional `component1()`, `component2()` calls, **not property-name lookups**. If a developer reorders primary constructor parameters (`data class User(val name: String, val id: Long)`), the compiler will silently reassign the values without an error (unless types mismatch), leading to subtle runtime bugs.
+
+### Q4. How does Kotlin achieve thread-safe, lazy singleton initialization in `object` declarations without synchronized blocks?
+> **Answer**: The Kotlin compiler compiles an `object` into a final class with a static `INSTANCE` field initialized inside its `<clinit>` static initializer. Under JVM specification §5.5, the JVM class loader initializes classes lazily upon first access, and class loading is intrinsically synchronized and thread-safe. This achieves thread safety and laziness without double-checked locking overhead.
+
+### Q5. What is the fundamental difference between `sealed class` and `sealed interface`?
+> **Answer**:
+> - `sealed class`: Participates in single-class inheritance and can have constructors and hold state.
+> - `sealed interface`: Does not have constructors, but supports multiple inheritance. A single class can implement multiple independent sealed interfaces (e.g. `data class Document(...) : Cacheable, Syncable, Searchable`), allowing modular multi-hierarchy modeling.
+
+### Q6. Why is adding an `else` branch to a sealed `when` expression considered an anti-pattern?
+> **Answer**: The primary architectural benefit of sealed types is **compile-time exhaustiveness**. Omitting `else` turns any newly added subtype into a compile-time build break across the application. Adding an `else` branch satisfies the compiler, causing newly added states to fall through silently to the fallback handler at runtime.
+
+### Q7. Why does Kotlin make classes `nested` (static) by default instead of `inner`?
+> **Answer**: In Java, inner classes hold a hidden reference to the enclosing class by default. In Android, if an inner class (e.g., a background `Runnable`, `Handler`, or `Listener`) outlives an `Activity`, the hidden `this$0` reference prevents garbage collection and leaks the Activity and its entire View hierarchy. Kotlin defaults to static nested classes (`class Nested`) to prevent memory leaks by default. The `inner` keyword is required only when access to outer instance state is explicitly needed.
+
+### Q8. What is the "calling open member from init" trap?
+> **Answer**: In Kotlin, superclass constructors and `init` blocks run **before** subclass property initializers. If an `open` method is invoked from a base class constructor/`init` and overridden in a subclass, the subclass implementation executes against uninitialized subclass properties:
+> ```kotlin
+> open class Base {
+>     init { setup() }
+>     open fun setup() {}
+> }
+> class Derived : Base() {
+>     val prefix: String = "ID"
+>     override fun setup() { println(prefix.length) } // NullPointerException! prefix is null here
+> }
+> ```
+
+### Q9. How does class delegation (`by`) differ from inheritance in its internal dispatch mechanics?
+> **Answer**: Class delegation uses composition and forwarding under the hood. Forwarding is strictly **one-way**: calls go out to the delegate, but the delegate has no awareness of the delegating wrapper. If methods inside the delegate call each other, they invoke the delegate's own internal implementations—they will **never** call the overriding wrapper's methods.
+
+---
+
+## 8.10 Quick Revision Summary (OOP Architecture)
+
+```
+Object-Oriented Kotlin
+ ├── Core Philosophy
+ │    ├── Classes and members final by default (open required to inherit/override)
+ │    └── Properties = backing field + getter + setter (val = getter only)
+ ├── Class Hierarchy & State
+ │    ├── Abstract Class: single inheritance, can hold state & constructor
+ │    ├── Interface: multiple inheritance, no backing fields, can have default methods
+ │    └── Delegation (by): composition with forwarding; one-way dispatch rule
+ ├── Data Classes (data class)
+ │    ├── Generated: equals, hashCode, toString, copy, componentN (positional)
+ │    ├── Scope: ONLY primary constructor properties participate
+ │    └── Copying: shallow copy; body properties reset to initializers
+ ├── Restricted Hierarchies (Exhaustive when)
+ │    ├── sealed class: constructor state, single-class inheritance
+ │    ├── sealed interface: stateless, multiple sealed hierarchy implementation
+ │    ├── data object: value-oriented singleton for stateless states (Kotlin 1.9+)
+ │    └── enum class: fixed constant values with shared parameter schema
+ └── Object & Scoping
+      ├── object declaration: thread-safe, lazy singleton via JVM classloader (<clinit>)
+      ├── object expression: freshly allocated anonymous instance per execution
+      ├── companion object: class-bound singleton; @JvmStatic for Java static interop
+      └── Nested vs Inner: static by default (no leak); inner holds this$0 outer reference
+```
 
 ---
 
