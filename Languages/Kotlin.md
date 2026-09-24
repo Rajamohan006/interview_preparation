@@ -4855,45 +4855,98 @@ If a new state (`data object Empty : UiState`) is later added, the compiler will
 ## 8.5 Enum Classes
 
 ### Definition
-* **Enum class** — a type whose set of possible values is a **fixed list of named constants** written at declaration. A variable of that type can hold nothing else.
-* **Constant** — each name in the list (`OK`, `ERROR`) is a **singleton instance** of the enum type, created once by the runtime. Comparing with `==` therefore behaves like identity comparison.
-* **Constructor parameters** — an enum may carry data, so each constant supplies its own values: `OK(200, retryable = false)`.
-* **Per-constant behavior** — declaring an `abstract` member on the enum forces each constant to provide its own implementation, giving different behavior per case.
-* **`ordinal`** — the constant's zero-based **position** in the declaration list. It is positional, so reordering the declarations changes it.
-* **`entries`** — the cached, immutable list of all constants (Kotlin 1.9+), replacing `values()`, which returned a freshly allocated array on every call.
+* **Enum class** — A specialized class declared with `enum class` representing a **strictly closed, finite collection of discrete named constants**. Enums implicitly inherit from `java.lang.Enum<T>` and cannot extend any other class.
+* **Enum constant** — Each entry declared inside the enum body is a **singleton instance** of the enum class, instantiated once during static class initialization (`<clinit>`). Because instances are singletons, comparing with `==` (structural) or `===` (referential) yields identical results.
+* **Built-in properties**:
+  - `name: String` — The exact declared identifier name of the constant as a string.
+  - `ordinal: Int` — The zero-based position of the constant in declaration order (`0`, `1`, `2`, ...).
+* **Collection access (`entries` vs `values()`)**:
+  - **`entries` (Kotlin 1.9+)** — A modern, pre-allocated, immutable `EnumEntries<E>` list implementing `List<E>`. It is cached statically and **does not allocate heap memory** when accessed.
+  - **`values()` (Legacy)** — Synthesized JVM method that **allocates a defensive array clone on every single invocation**, causing unnecessary garbage collection churn in hot paths.
+* **Parsing (`valueOf()` vs `enumValueOf<T>()`)**:
+  - `valueOf(name: String)` and `enumValueOf<T>(name: String)` return the matching constant by exact case-sensitive name, throwing an `IllegalArgumentException` if no match exists.
+* **Custom properties and constructors** — Enum constants can pass arguments to primary or secondary constructors, allowing each constant to carry immutable metadata (e.g., status codes, display labels, timeout durations).
+* **Per-constant behavior** — An enum class can declare `abstract` functions or properties that each individual constant overrides through an anonymous class body.
+* **Interface implementation** — While enums cannot inherit from a superclass, they can implement one or more interfaces, allowing them to participate in polymorphic contracts and strategy patterns.
+
+### Why It Is Used
+Enums provide type-safe representations of fixed sets of domain values (e.g., HTTP methods, order statuses, network environments, permissions, card suits). They eliminate error-prone "magic strings" and "magic numbers", provide IDE autocomplete, and guarantee compile-time exhaustiveness in `when` expressions.
+
+### How It Works Internally
+1. **JVM Class Structure**: The Kotlin compiler compiles an `enum class Status` into a `public final class Status extends java.lang.Enum<Status>`.
+2. **Static Singletons**: Every constant is compiled as a `public static final Status <NAME>` field. All instances are initialized sequentially inside the `<clinit>` static block when the class is loaded.
+3. **Per-Constant Subclasses**: When an enum declares an `abstract` method and constants provide individual bodies, the compiler generates a synthetic nested inner class for each overriding constant (e.g., `Operation$PLUS.class`), deriving from the parent enum class.
+4. **Serialization Safety**: The JVM enforces special serialization rules for enums: only the constant's `name` is written to the stream. Upon deserialization, the JVM calls `Enum.valueOf()`, ensuring that the deserialized reference points to the exact same pre-existing singleton instance in memory, preventing duplicate objects without requiring `readResolve()`.
 
 ### Code Example
 ```kotlin
-enum class HttpStatus(val code: Int, val retryable: Boolean) {
-    OK(200, false),
-    TOO_MANY_REQUESTS(429, true),
-    SERVER_ERROR(500, true);
+interface Prioritized {
+    val priorityLevel: Int
+}
 
-    val isSuccess: Boolean get() = code in 200..299
+// 1. Enum with constructor parameters, interface implementation, and helper methods
+enum class TaskPriority(val level: Int, val colorHex: String) : Prioritized {
+    LOW(1, "#4CAF50"),
+    MEDIUM(2, "#FF9800"),
+    HIGH(3, "#F44336"),
+    CRITICAL(4, "#9C27B0");
+
+    override val priorityLevel: Int get() = level
+
+    val isUrgent: Boolean get() = level >= 3
 
     companion object {
-        fun fromCode(code: Int): HttpStatus? = entries.firstOrNull { it.code == code }
+        // Safe O(1) reverse-lookup cache
+        private val BY_LEVEL = entries.associateBy { it.level }
+
+        fun fromLevel(level: Int): TaskPriority? = BY_LEVEL[level]
+
+        // Safe case-insensitive name parser (avoids IllegalArgumentException)
+        fun fromNameOrNull(name: String?): TaskPriority? =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
     }
 }
 
-// Per-constant behavior via an abstract member
-enum class Operation {
-    PLUS  { override fun apply(a: Int, b: Int) = a + b },
-    TIMES { override fun apply(a: Int, b: Int) = a * b };
+// 2. Per-constant behavior via abstract method
+enum class MathOperation(val symbol: Char) {
+    ADD('+') {
+        override fun calculate(a: Double, b: Double) = a + b
+    },
+    SUBTRACT('-') {
+        override fun calculate(a: Double, b: Double) = a - b
+    },
+    MULTIPLY('*') {
+        override fun calculate(a: Double, b: Double) = a * b
+    },
+    DIVIDE('/') {
+        override fun calculate(a: Double, b: Double) =
+            if (b != 0.0) a / b else throw IllegalArgumentException("Division by zero")
+    };
 
-    abstract fun apply(a: Int, b: Int): Int
+    abstract fun calculate(a: Double, b: Double): Double
 }
 
-// entries (Kotlin 1.9+) replaces values() — no array allocation per call
-HttpStatus.entries.forEach { println(it.code) }
-val parsed = enumValueOf<HttpStatus>("OK")
-println(HttpStatus.OK.ordinal)      // 0 — position, not the code
+// 3. Modern iteration via entries (zero allocation)
+for (priority in TaskPriority.entries) {
+    println("${priority.name} at position ${priority.ordinal} has color ${priority.colorHex}")
+}
+
+// 4. Exhaustive when expression: compiler ensures every constant is handled without 'else'
+fun getNotificationPolicy(priority: TaskPriority): String = when (priority) {
+    TaskPriority.LOW -> "Silent log"
+    TaskPriority.MEDIUM -> "Show banner"
+    TaskPriority.HIGH -> "Push notification with sound"
+    TaskPriority.CRITICAL -> "Trigger emergency alarm & page on-call"
+}
 ```
 
 ### Common Pitfalls
-* **`values()` in a loop.** It allocates a fresh array on every call. Use `entries` (1.9+) or cache it.
-* **Persisting `ordinal`.** Reordering the constants silently changes stored data. Persist `name` or an explicit, stable `code`.
-* **`valueOf` on unvalidated input.** Throws `IllegalArgumentException`; use `entries.firstOrNull { it.name == input }`.
+* **Persisting `ordinal` to databases or APIs:** A constant's `ordinal` reflects its position in code. Reordering, inserting, or removing constants silently shifts ordinals, corrupting persisted database records or network payloads. Always persist the constant's `name` or an explicit immutable code (e.g. `val code: Int`).
+* **Using `values()` in tight loops:** `values()` allocates a new array clone on every call. In high-frequency code paths (e.g. Android draw loops, collection mapping), use the cached `entries` property (Kotlin 1.9+).
+* **Unsafe `valueOf()` crashes:** Calling `TaskPriority.valueOf(input)` throws an unhandled `IllegalArgumentException` if `input` does not match. Use `entries.firstOrNull()` or a companion object lookup helper.
+* **Mutable state inside enum constants:** Declaring `var` properties inside an enum creates shared mutable state across all threads, leading to race conditions and unpredictable bugs. Enum properties should **always** be immutable (`val`).
+* **Adding an `else` branch to an exhaustive `when`:** If you add an `else` branch, the compiler cannot warn you when a new enum constant is added in the future, allowing missing cases to silently fail at runtime.
+* **Attempting class inheritance:** Enums cannot extend classes because they implicitly extend `java.lang.Enum`. If hierarchical class inheritance or varying constructor properties across subtypes are needed, use a `sealed class` or `sealed interface`.
 
 ---
 
