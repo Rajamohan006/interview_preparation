@@ -25,7 +25,7 @@ Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Medi
 | [**testing_security.md**](./testing_security.md) | 12 | Testing pyramid, JUnit/MockK/Turbine, Robolectric, Espresso, UI Automator, coverage, CI, bug classification, pentesting, reverse engineering, BOLA, OAuth, Keystore, encrypted storage, TLS and pinning, app hardening, OWASP MASVS | **25 Questions** (§12) |
 | [**kmp_cmp.md**](./kmp_cmp.md) | 9 | KMP fundamentals, source sets, `expect`/`actual`, Skiko/Skia rendering, Ktor, SQLDelight, Koin, serialization, DataStore, Swift interop, memory model, XCFrameworks, testing, adoption strategy | **20 Questions** (§9) |
 | [**performance.md**](./performance.md) | 56 | Low-end hardware constraints (RAM/CPU/GPU/eMMC), ART Concurrent Copying GC, LMKD, memory leaks, bitmap management, ANR, frame budgets, overdraw, RecyclerView & Compose optimization, Studio Profiler vs Perfetto vs AGI, 4 scenario triages | **25 Questions** (§52) |
-| [**CD_Setup_Guide.md**](./CD_Setup_Guide.md) | 10 steps | A concrete CI/CD pipeline walkthrough: keystore encoding, Firebase, SonarCloud, Play service account, secrets, branch protection, verification, rollback, troubleshooting | Pipeline Walkthrough |
+| [**CD_Setup_Guide.md**](./CD_Setup_Guide.md) | 25 sections | Complete CI/CD architecture, Git workflows, GitHub Actions, keystore signing, Firebase, SonarCloud, Play Console, secrets, rollback, and 110+ interview questions | **110+ Questions** (§24) |
 
 ---
 
