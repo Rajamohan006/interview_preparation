@@ -1846,19 +1846,661 @@ graph TD
 
 ## 2.6 Intents, Deep Links, and App Links
 
-### Definition
-* **Simple:** An Intent is a message object asking the system to start a component or perform an action. A deep link is a URL that opens a specific screen inside your app.
-* **Advanced:** An `Intent` is a Parcelable message containing an action, data URI, category set, component name, flags, and an extras `Bundle`. The `PackageManagerService` resolves it against the intent filters declared by installed packages.
+> **Interview Context:** An Intent is one of the most fundamental Android concepts. Understanding explicit vs. implicit, Intent resolution, extras, flags, and how Intent relates to Binder/ContentProvider is expected at all experience levels.
 
-### Why It Is Used
-Intents decouple callers from implementations: your app can say "share this text" without knowing which app handles it. Deep links let notifications, web pages, and other apps land users on an exact screen, which is a direct conversion and retention lever.
+---
 
-### How It Works Internally
-1. **Explicit intent** — names a target `ComponentName`. Resolution skips the filter database and goes straight to the component. Always use this for internal navigation, because implicit resolution can be hijacked by another installed app.
-2. **Implicit intent** — carries only action, data, and categories. `PackageManagerService` scans registered `<intent-filter>` entries; a filter matches only if the action matches, **every** category in the intent is present in the filter, and the data scheme/host/mimeType matches.
-3. **Resolution outcome** — one match launches directly, multiple matches show the disambiguation chooser, and zero matches throws `ActivityNotFoundException`.
+### 1. What is an Intent?
 
-**Deep link vs. App Link.**
+#### Definition
+An **Intent** is a message object used by Android to **request an action from another Android component**.
+
+In simple words:
+> **Intent tells Android what you want to do and, optionally, what data you want to send.**
+
+For example:
+```text
+"Open this Activity"
+"Start this Service"
+"Send this Broadcast"
+"Open this URL"
+"Share this text"
+```
+
+**Advanced definition:** An `Intent` is a Parcelable message containing an action, data URI, category set, component name, flags, and an extras `Bundle`. The `PackageManagerService` resolves it against the intent filters declared by installed packages.
+
+Intents decouple callers from implementations: your app can say "share this text" without knowing which app handles it.
+
+---
+
+### 2. Where are Intents Used?
+
+Intents are mainly used to communicate with:
+
+```text
+Intent
+  │
+  ├── Activity
+  ├── Service
+  └── BroadcastReceiver
+```
+
+#### Start an Activity
+```kotlin
+val intent = Intent(this, DetailsActivity::class.java)
+startActivity(intent)
+```
+
+#### Start a Service
+```kotlin
+val intent = Intent(this, MyService::class.java)
+startService(intent)
+```
+
+#### Send a Broadcast
+```kotlin
+val intent = Intent("com.example.USER_LOGGED_IN")
+sendBroadcast(intent)
+```
+
+---
+
+### 3. Two Types of Intent
+
+There are two major types:
+
+```text
+Intent
+  │
+  ├── Explicit Intent
+  │
+  └── Implicit Intent
+```
+
+---
+
+### 4. Explicit Intent
+
+#### Definition
+An **explicit Intent** specifies the exact component that should handle the request.
+
+Example:
+```kotlin
+val intent = Intent(
+    this,
+    DetailsActivity::class.java
+)
+
+startActivity(intent)
+```
+
+Here Android knows exactly where the Intent should go:
+```text
+MainActivity
+     │
+     │ Explicit Intent
+     ↓
+DetailsActivity
+```
+
+#### When do we use it?
+Usually when communicating between components **inside your own application**.
+
+Examples:
+- Activity → Activity
+- Activity → Service
+- Activity → another component in your app
+
+Always use explicit Intents for internal navigation because implicit resolution can potentially be intercepted by another installed app.
+
+#### Easy definition
+> **Explicit Intent = "I know exactly which component I want."**
+
+---
+
+### 5. Implicit Intent
+
+#### Definition
+An **implicit Intent** does not specify a particular component.
+
+Instead, it describes the **action** you want to perform, and Android finds a component that can handle it.
+
+Example:
+```kotlin
+val intent = Intent(
+    Intent.ACTION_VIEW,
+    Uri.parse("https://www.google.com")
+)
+
+startActivity(intent)
+```
+
+You didn't say:
+```text
+Open Chrome
+```
+
+You said:
+```text
+I want to VIEW this URL.
+```
+
+Android looks for applications that can handle that action.
+
+```text
+Your App
+   │
+   │ ACTION_VIEW
+   │ https://...
+   ↓
+Android
+   │
+   ├── Chrome
+   ├── Firefox
+   └── Other browser
+```
+
+Android may ask the user which application should handle it if multiple suitable handlers exist.
+
+#### How resolution works internally
+`PackageManagerService` scans registered `<intent-filter>` entries. A filter matches only if:
+- The **action** matches
+- **Every** category in the intent is present in the filter
+- The **data** scheme/host/mimeType matches
+
+Resolution outcomes:
+- One match → launches directly
+- Multiple matches → shows disambiguation chooser
+- Zero matches → throws `ActivityNotFoundException`
+
+#### Easy definition
+> **Implicit Intent = "I know what I want to do, but I don't care which component does it."**
+
+---
+
+### 6. Explicit vs Implicit Intent
+
+| Explicit Intent | Implicit Intent |
+|---|---|
+| Specifies exact component | Does not specify exact component |
+| Android knows the destination | Android resolves a suitable handler |
+| Common within your app | Common for system/app-to-app actions |
+| `Intent(context, MyActivity::class.java)` | `Intent(ACTION_VIEW, uri)` |
+| More direct | Uses Intent resolution |
+
+#### Interview answer
+> An explicit Intent identifies a specific component, while an implicit Intent describes an action and lets Android resolve a suitable component using intent filters.
+
+---
+
+### 7. Intent Components
+
+An Intent can contain several pieces of information:
+
+```text
+Intent
+ ├── Action
+ ├── Data
+ ├── Type
+ ├── Category
+ ├── Extras
+ ├── Flags
+ └── Component
+```
+
+---
+
+### 8. Action
+
+#### Definition
+**Action** describes **what you want to do**.
+
+Example:
+```kotlin
+Intent.ACTION_VIEW
+```
+
+Common actions:
+```text
+ACTION_VIEW
+ACTION_SEND
+ACTION_DIAL
+ACTION_EDIT
+ACTION_MAIN
+```
+
+Example:
+```kotlin
+val intent = Intent(
+    Intent.ACTION_DIAL,
+    Uri.parse("tel:9876543210")
+)
+
+startActivity(intent)
+```
+
+Meaning:
+> "I want to dial this number."
+
+---
+
+### 9. Data
+
+#### Definition
+**Data** specifies the resource that the action should operate on.
+
+Example:
+```kotlin
+val intent = Intent(
+    Intent.ACTION_VIEW,
+    Uri.parse("https://example.com")
+)
+```
+
+Here:
+```text
+Action → ACTION_VIEW
+Data   → https://example.com
+```
+
+---
+
+### 10. Extras
+
+#### Definition
+**Extras** are additional key-value data attached to an Intent.
+
+Example:
+```kotlin
+val intent = Intent(
+    this,
+    DetailsActivity::class.java
+)
+
+intent.putExtra("USER_ID", 1001)
+
+startActivity(intent)
+```
+
+Receiving it:
+```kotlin
+val userId = intent.getIntExtra("USER_ID", -1)
+```
+
+Conceptually:
+```text
+Intent
+ ├── Destination → DetailsActivity
+ └── Extra
+       └── USER_ID = 1001
+```
+
+#### Important
+Extras are suitable for **small amounts of data**.
+
+Don't pass huge objects or large bitmaps through Intents because Intents can cross process boundaries through Binder, and Binder transactions have limited size.
+
+---
+
+### 11. Categories
+
+#### Definition
+A **Category** provides additional information about the kind of component that should handle an Intent.
+
+Example:
+```xml
+<category
+    android:name="android.intent.category.LAUNCHER" />
+```
+
+The famous:
+```xml
+<action android:name="android.intent.action.MAIN" />
+
+<category
+    android:name="android.intent.category.LAUNCHER" />
+```
+combination identifies the application's launcher Activity.
+
+Another common category:
+```text
+CATEGORY_DEFAULT
+```
+
+---
+
+### 12. Intent Filters
+
+An **IntentFilter** tells Android:
+> "This component can handle Intents matching these actions, categories, and data."
+
+Example:
+```xml
+<intent-filter>
+
+    <action android:name="android.intent.action.VIEW" />
+
+    <category
+        android:name="android.intent.category.DEFAULT" />
+
+    <category
+        android:name="android.intent.category.BROWSABLE" />
+
+    <data android:scheme="https" />
+
+</intent-filter>
+```
+
+#### Relationship
+```text
+Implicit Intent
+      │
+      ↓
+Android Intent Resolution
+      │
+      ↓
+Intent Filters
+      │
+      ↓
+Matching Component
+```
+
+---
+
+### 13. Intent Flags
+
+Intent **flags** modify how Android handles the Intent.
+
+Example:
+```kotlin
+intent.addFlags(
+    Intent.FLAG_ACTIVITY_CLEAR_TOP
+)
+```
+
+Common Activity-related flags include:
+```text
+FLAG_ACTIVITY_NEW_TASK
+FLAG_ACTIVITY_CLEAR_TOP
+FLAG_ACTIVITY_SINGLE_TOP
+FLAG_ACTIVITY_CLEAR_TASK
+FLAG_ACTIVITY_NO_HISTORY
+```
+
+These can affect:
+- Task/back-stack behavior
+- Activity creation
+- Existing Activity reuse
+- History/recents behavior
+
+#### Important interview distinction
+Don't confuse:
+```text
+Intent flags
+```
+with:
+```text
+Activity launchMode
+```
+They are related concepts but configured differently.
+
+---
+
+### 14. Intent vs IntentFilter
+
+This is a very common interview question.
+
+#### Intent
+> **The request/message.**
+
+Example:
+```text
+"I want to view this URL."
+```
+
+#### IntentFilter
+> **The declaration describing which requests a component can handle.**
+
+Example:
+```text
+"I can handle VIEW requests for HTTPS URLs."
+```
+
+Think:
+```text
+Intent
+"I want this action"
+       ↓
+Android
+       ↓
+IntentFilter
+"I can handle this action"
+```
+
+---
+
+### 15. `MAIN` + `LAUNCHER`
+
+```xml
+<intent-filter>
+
+    <action
+        android:name="android.intent.action.MAIN" />
+
+    <category
+        android:name="android.intent.category.LAUNCHER" />
+
+</intent-filter>
+```
+
+- **`MAIN`** → Indicates the Activity is a main entry point.
+- **`LAUNCHER`** → Indicates the Activity should appear as an application launch target in the launcher.
+
+Together:
+```text
+MAIN + LAUNCHER
+       ↓
+Application's launcher Activity
+```
+
+---
+
+### 16. Intent and BroadcastReceiver
+
+Broadcasts also use Intents.
+
+Example:
+```kotlin
+val intent = Intent("com.example.USER_LOGGED_IN")
+sendBroadcast(intent)
+```
+
+Receiver:
+```kotlin
+class LoginReceiver : BroadcastReceiver() {
+
+    override fun onReceive(
+        context: Context,
+        intent: Intent
+    ) {
+        // Handle event
+    }
+}
+```
+
+So:
+```text
+Intent
+   ↓
+Broadcast
+   ↓
+BroadcastReceiver
+```
+
+An Intent is the **message**, while the broadcast is the **delivery mechanism/event notification**.
+
+---
+
+### 17. Intent and ContentProvider
+
+They are different.
+
+#### Intent
+Used mainly to communicate/request actions involving:
+```text
+Activity
+Service
+BroadcastReceiver
+```
+
+#### ContentProvider
+Used to expose/access structured data through:
+```text
+content://
+```
+
+However, an Intent can carry a `content://` URI.
+
+For example, when sharing a file:
+```text
+Intent
+   │
+   ├── Action = ACTION_SEND
+   └── URI = content://...
+```
+
+So they can **work together**, but an Intent is not part of ContentProvider.
+
+---
+
+### 18. Intent and Binder
+
+At a deeper Android level:
+```text
+Your App
+   │
+   │ Intent
+   ↓
+Android framework
+   │
+   │ Binder IPC where process boundaries are involved
+   ↓
+System/Application process
+```
+
+An Intent is a **high-level messaging object**.
+
+Binder is an **IPC mechanism underneath the Android framework**.
+
+Don't say:
+> "Intent is Binder."
+
+Instead:
+> **Intents are high-level Android messages, and Binder is one of the underlying IPC mechanisms used by the Android framework when communication crosses process boundaries.**
+
+---
+
+### 19. Safe Implicit Intent Pattern
+
+Always guard implicit intent resolution:
+```kotlin
+fun Context.shareText(text: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    // createChooser never throws even when no handler exists
+    startActivity(Intent.createChooser(send, "Share via"))
+}
+```
+
+---
+
+### 20. Important Interview Questions: Intents
+
+#### Q1. What is an Intent?
+> An Intent is a messaging object used to request an action from another Android component, such as starting an Activity, starting a Service, or sending a Broadcast.
+
+#### Q2. What are the types of Intent?
+> Explicit and implicit Intents.
+
+#### Q3. Explicit vs implicit Intent?
+> An explicit Intent specifies the exact target component. An implicit Intent specifies an action and allows Android to find a suitable component using Intent resolution and intent filters.
+
+#### Q4. What is an IntentFilter?
+> An IntentFilter declares the types of implicit Intents that a component can handle based on action, category, and data.
+
+#### Q5. What are the main parts of an Intent?
+> Action, data, type, category, extras, flags, and optionally an explicit component.
+
+#### Q6. What are Extras?
+> Extras are key-value pairs used to pass additional small pieces of data with an Intent.
+
+#### Q7. Can we pass a large Bitmap through an Intent?
+> It should be avoided. Intent data can be transferred through Binder, which has transaction-size limitations. For large data, pass a URI, file identifier, or another lightweight reference instead.
+
+#### Q8. How does Android resolve an implicit Intent?
+> Android compares the Intent's action, data, and categories against the intent filters declared by available components and selects matching handlers.
+
+#### Q9. Can an Intent start another application's Activity?
+> Yes, an implicit Intent can request an action that another application's exported component is capable of handling. Explicit cross-application starts are also possible when the target component is accessible.
+
+#### Q10. What is the difference between Intent and IntentFilter?
+> Intent represents the request; IntentFilter describes what requests a component can handle.
+
+#### Q11. What is the difference between Intent and Binder?
+> Intent is a high-level Android messaging/request object. Binder is Android's underlying IPC mechanism used for communication between processes.
+
+#### Q12. What is the difference between Intent and ContentProvider?
+> Intent is primarily used to request actions or communicate with components, while ContentProvider provides controlled access to structured data through URI-based APIs.
+
+---
+
+### Final Mental Model
+
+Remember these four together:
+
+```text
+                    INTENT
+                      │
+             "I want to do something"
+                      │
+          ┌───────────┼───────────┐
+          ↓           ↓           ↓
+       Activity     Service    Broadcast
+          │                       │
+          │                       ↓
+          │               BroadcastReceiver
+          │
+          ↓
+    IntentFilter
+    (for implicit
+      matching)
+
+
+ContentProvider
+      │
+      └── "I want to access/share data"
+              │
+              ↓
+        content:// URI
+
+
+Binder
+      │
+      └── "Processes need to communicate"
+```
+
+**The most important sentence for an interview:**
+> **An Intent is a high-level message used to request an action or communicate with Android components. Explicit Intents identify the target component directly, while implicit Intents describe an action and rely on Android's Intent resolution mechanism and intent filters to find a suitable target.**
+
+---
+
+### 21. Deep Links and App Links
+
+Deep links let notifications, web pages, and other apps land users on an exact screen.
+
+**Deep link vs. App Link:**
 
 | | Custom-scheme deep link | Web deep link | Android App Link |
 |---|---|---|---|
@@ -1867,7 +2509,7 @@ Intents decouple callers from implementations: your app can say "share this text
 | **User experience** | Chooser or hijack risk | Disambiguation dialog | Opens your app directly, no dialog |
 | **Requires** | Nothing | Nothing | `android:autoVerify="true"` + hosted Digital Asset Links file |
 
-### Code Example
+#### Code Example
 ```xml
 <!-- Verified App Link: opens directly with no chooser dialog -->
 <activity android:name=".MainActivity" android:exported="true">
@@ -1916,16 +2558,6 @@ class MainActivity : AppCompatActivity() {
         navigateToProfile(userId)
     }
 }
-
-// Safe implicit intent: always guard resolution
-fun Context.shareText(text: String) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
-    }
-    // createChooser never throws even when no handler exists
-    startActivity(Intent.createChooser(send, "Share via"))
-}
 ```
 
 ```bash
@@ -1934,7 +2566,7 @@ adb shell am start -W -a android.intent.action.VIEW -d "https://example.com/prof
 adb shell pm get-app-links com.example.app     # Shows verified / unverified domain state
 ```
 
-### Common Pitfalls
+#### Common Pitfalls
 * **Reading the link only in `onCreate`.** With `singleTop` or `singleTask`, a second link arrives in `onNewIntent()` and is otherwise silently ignored.
 * **App Link verification failing quietly.** A redirect, a missing content type, or a fingerprint from the wrong signing key (upload key vs. Play app signing key) breaks verification with no user-visible error. With Play App Signing, publish the *app signing key* fingerprint.
 * **Trusting deep-link parameters.** They are attacker-controlled input. Validate and authorize server-side before acting on them.
