@@ -5990,201 +5990,296 @@ fun UserDto.toDomain(): User = User(
 
 ## 6.5 Image Loading: Coil and Glide
 
-### Definition
-* **Image loading library** — a component that fetches, decodes, caches, resizes, and binds images, cancelling work when the target is no longer on screen.
-* **Decoding** — turning compressed bytes (JPEG, PNG) into an in-memory bitmap. Memory cost is **width × height × 4 bytes**, independent of the file size, which is why a 4000×3000 photo needs ~48 MB.
-* **Downsampling** — decoding at a reduced resolution matched to the view's measured size. This single step is what prevents most out-of-memory crashes.
-* **Two-level cache** — decoded bitmaps in a memory `LruCache` for instant reuse, plus compressed bytes on disk so they survive process death.
-* **Request cancellation** — dropping an in-flight load when its target view is recycled, which is what stops the wrong image flashing into a reused list row.
+### 6.5.1 What is an Image Loading Library?
 
-### Why It Is Used
-Naïvely decoding a 4000×3000 JPEG into a 300 dp `ImageView` allocates ~48 MB and reliably produces `OutOfMemoryError`. Image loaders downsample to the target's actual size, cache at two levels, and cancel in-flight requests when a `RecyclerView` row is recycled.
+An image-loading library such as **Coil** or **Glide** manages the entire lifecycle of an image request:
 
-### How It Works Internally
-
-```mermaid
-graph LR
-    Req[Request] --> Mem{Memory cache hit?}
-    Mem -->|Yes| Bind[Bind bitmap immediately]
-    Mem -->|No| Disk{Disk cache hit?}
-    Disk -->|Yes| Decode[Decode + downsample to target size]
-    Disk -->|No| Net[Network fetch via OkHttp]
-    Net --> DiskWrite[Write to disk cache]
-    DiskWrite --> Decode
-    Decode --> MemWrite[Write to memory cache]
-    MemWrite --> Bind
+```text
+Image URL
+    │
+    ▼
+Network Download (via HTTP client)
+    │
+    ▼
+Disk Caching (persisted compressed bytes)
+    │
+    ▼
+Decode & Downsample (calculated against View/Target dimensions)
+    │
+    ▼
+Memory Caching (decoded Bitmap in LruCache)
+    │
+    ▼
+Display & View Transformation (CircleCrop, RoundedCorners, Crossfade)
+    │
+    ▼
+Lifecycle Cancellation (aborts request when View is detached / recycled)
 ```
 
-* **Memory cache** — an `LruCache` sized as a fraction of the app heap, holding decoded bitmaps.
-* **Disk cache** — the compressed bytes, keyed by URL plus transformations, surviving process death.
-* **Downsampling** — `BitmapFactory.Options.inSampleSize` is computed from the target view's measured size, so memory scales with display size, not source size.
-* **Lifecycle cancellation** — Coil ties requests to the `LifecycleOwner` resolved from the context; Glide ties them to a `RequestManager` in a hidden retained Fragment.
+> **Core Principle:** An image loader is **not** just a network downloader. It coordinates **networking + decoding + bitmap memory management + two-level caching + downsampling + lifecycle binding + request cancellation**.
 
-| | Coil 3 | Glide |
+---
+
+### 6.5.2 Why Can't We Simply Download and Decode the Image?
+
+Suppose a server provides a high-resolution photo:
+* **Compressed JPEG on disk / wire:** `4000 × 3000 pixels` (~3 MB).
+* **Decoded in-memory Bitmap (ARGB_8888, 32-bit):**
+  $$\text{Memory} = \text{Width} \times \text{Height} \times 4\text{ bytes} = 4000 \times 3000 \times 4 = 48,000,000\text{ bytes} \approx \mathbf{45.8\text{ MiB}}$$
+
+> **Critical Interview Takeaway:** **Compressed file size on disk has zero correlation with decoded Bitmap memory usage.** Decoding just 4 or 5 full-resolution 48 MB images simultaneously will exceed the Android app heap limit (typically 192–512 MB) and trigger immediate `OutOfMemoryError` (OOM).
+
+---
+
+### 6.5.3 What is Downsampling?
+
+If an `ImageView` is only `300 × 300 dp` on screen, decoding the full `4000 × 3000` image is wasteful.
+
+**Downsampling** computes `BitmapFactory.Options.inSampleSize` based on the target view's measured dimensions before allocating memory:
+
+```text
+Original Source: 4000 × 3000 (45.8 MiB)
+       │
+       ▼ (inSampleSize = 8)
+Decoded Target: 500 × 375 (~0.75 MiB) ──► 98.4% Memory Savings!
+```
+
+> **Interview Definition:** Downsampling means decoding an image at a reduced resolution matched directly to the target view's measured size rather than decoding full-resolution source bytes, drastically preventing OOM crashes.
+
+---
+
+### 6.5.4 Two-Level Image Cache Architecture
+
+```text
+                     Image Request
+                           │
+                   ┌───────▼───────┐
+                   │ Memory Cache  │ (Decoded Bitmaps in LruCache)
+                   └───────┬───────┘
+                           │ MISS
+                   ┌───────▼───────┐
+                   │  Disk Cache   │ (Compressed bytes / WebP / JPEG)
+                   └───────┬───────┘
+                           │ MISS
+                   ┌───────▼───────┐
+                   │    Network    │ (OkHttp socket fetch)
+                   └───────┬───────┘
+                           │
+                           ▼ Write to Disk Cache
+                     Decode + Downsample
+                           │
+                           ▼ Write to Memory Cache
+                     Display in View
+```
+
+* **Memory Cache (`LruCache<String, Bitmap>`):** Holds pre-decoded Bitmaps ready for immediate UI rendering. Fast and zero-overhead, but cleared upon process death.
+* **Disk Cache (`DiskLruCache`):** Stores compressed raw bytes on device storage. Survives process death and offline states.
+
+---
+
+### 6.5.5 Request Cancellation in `RecyclerView`
+
+In a `RecyclerView`, ViewHolders are continuously recycled as the user scrolls:
+
+```text
+1. User scrolls to Item 1 ──► Request Avatar A enqueued
+2. Fast fling scroll ────────► Item 1 scrolled off screen; ViewHolder RECYCLED for Item 25
+3. Without Cancellation ─────► Avatar A download finishes late and flashes into Item 25! (Bug)
+```
+
+Image loaders bind each request to the target `ImageView` / Composable. When a new image is requested on a recycled target, the **previous asynchronous pipeline is automatically cancelled**.
+
+---
+
+### 6.5.6 Coil vs Glide
+
+| Feature | Coil 3 | Glide |
 |---|---|---|
-| Language | Kotlin, coroutine-based | Java |
-| Compose support | First-class (`AsyncImage`) | Via an accompanist-style wrapper |
-| Multiplatform | Yes (Coil 3) | No |
-| Size added to APK | ~250 KB | ~1 MB (with annotation processor) |
+| **Primary Language** | Kotlin (Built on Coroutines & Flow) | Java |
+| **Jetpack Compose** | First-class native integration (`AsyncImage`, `SubcomposeAsyncImage`) | Requires custom adapter/wrapper libraries |
+| **Kotlin Multiplatform (KMP)** | **Yes** (Android, iOS, Desktop, Web via Coil 3) | No (Android only) |
+| **Networking Integration** | Reuses the app's existing `OkHttpClient` instance | Uses internal engine or optional OkHttp integration library |
+| **APK Size Overhead** | Lightweight (~250 KB) | Larger (~1 MB + annotation processor) |
 
-### Code Example
+---
+
+### 6.5.7 Coil Code Example (Compose & RecyclerView)
+
 ```kotlin
-// Coil in Compose
+// 1. Compose: AsyncImage with explicit cache key and placeholder
 @Composable
-fun Avatar(url: String, modifier: Modifier = Modifier) {
+fun UserAvatar(
+    avatarUrl: String,
+    modifier: Modifier = Modifier
+) {
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
-            .data(url)
+            .data(avatarUrl)
             .crossfade(true)
-            .memoryCacheKey(url)                 // Explicit key when the URL carries volatile params
+            .memoryCacheKey(avatarUrl)
             .build(),
-        contentDescription = null,               // null = decorative; set real text for meaningful images
+        contentDescription = "User profile photo",
         placeholder = painterResource(R.drawable.avatar_placeholder),
         error = painterResource(R.drawable.avatar_error),
         contentScale = ContentScale.Crop,
-        modifier = modifier.size(48.dp).clip(CircleShape)
+        modifier = modifier
+            .size(56.dp)
+            .clip(CircleShape)
     )
 }
 
-// Coil in a RecyclerView — the extension cancels the previous request on the same view automatically
+// 2. RecyclerView: Automatic cancellation on view recycling
 class UserViewHolder(private val binding: ItemUserBinding) : RecyclerView.ViewHolder(binding.root) {
     fun bind(user: User) {
-        binding.avatar.load(user.avatarUrl) {
+        binding.avatarImage.load(user.avatarUrl) {
             placeholder(R.drawable.avatar_placeholder)
+            error(R.drawable.avatar_error)
             transformations(CircleCropTransformation())
+            crossfade(true)
         }
     }
 }
 
-// Application-scoped loader sharing the app's OkHttpClient (one connection pool, one cache)
+// 3. Custom Application-Scoped ImageLoader Sharing App OkHttpClient
 class App : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)   // 25% of the app heap
+                    .maxSizePercent(context, 0.25) // Max 25% of application heap
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(100L * 1024 * 1024)
+                    .maxSizeBytes(150L * 1024 * 1024) // 150 MB disk cap
                     .build()
             }
             .build()
 }
 ```
 
-### Common Pitfalls
-* **Loading a full-resolution image into a small view** with a hand-rolled `BitmapFactory.decodeStream`. Always downsample.
-* **Forgetting to cancel on recycle** in a hand-rolled loader — the wrong image flashes into a recycled row.
-* **Caching images that contain personal data** in the shared cache directory without considering that other processes on a rooted device can read it.
-* **Setting a `contentDescription` of `""` on a meaningful image.** Screen-reader users lose the content entirely.
+---
+
+### 6.5.8 Top Image Loading Interview Questions
+
+#### Q1: Why can a 3 MB JPEG cause a 48 MB memory allocation?
+> **Answer:** File size reflects compressed bytes on disk. When decoded by Android (`BitmapFactory`), each pixel occupies 4 bytes in memory (ARGB_8888). A $4000 \times 3000$ image yields $12,000,000 \text{ pixels} \times 4\text{ bytes} \approx 45.8\text{ MB}$ of uncompressed bitmap memory.
+
+#### Q2: What is downsampling and how does it prevent OOM?
+> **Answer:** Downsampling computes `inSampleSize` to decode only the sub-sampled pixel resolution needed to fill the target view's measured layout dimensions, reducing allocated heap memory by up to 90–98%.
+
+#### Q3: Why is request cancellation critical in RecyclerView?
+> **Answer:** ViewHolders are recycled rapidly during scrolling. If a background image request for an off-screen item completes after the view is rebound to a new item, it can render the wrong image (image flashing) unless cancelled.
+
+#### Q4: What is the difference between Memory Cache and Disk Cache?
+> **Answer:** Memory Cache holds decoded, ready-to-render Bitmaps in RAM for instantaneous access (lost on process kill). Disk Cache stores compressed raw bytes on storage, surviving app restarts and process death.
+
+#### Q5: Why shouldn't we use raw `BitmapFactory.decodeStream()` in production apps?
+> **Answer:** It lacks automatic downsampling calculation, two-level memory/disk caching, lifecycle-aware cancellation, thread management, memory pooling, and `RecyclerView` reuse tracking.
 
 ---
 
 ## 6.6 Caching Strategy and Offline-First Architecture
 
-### Definition
-* **Simple:** Store data locally so the app works without a network and feels instant, then reconcile with the server.
-* **Advanced:** Designate the local database as the **single source of truth**. The UI observes the database only; the network layer writes into the database and never into the UI.
+### 6.6.1 What is Offline-First?
 
-### Why It Is Used
-Network-first apps show spinners on every screen and break entirely offline. Offline-first apps render instantly from cache, degrade gracefully, and are dramatically easier to test because the UI has one input.
-
-### How It Works Internally
-
-```mermaid
-graph LR
-    UI[UI Layer] -->|observes Flow| DB[(Room - Single Source of Truth)]
-    Repo[Repository] -->|writes| DB
-    Net[Remote API] -->|fetch| Repo
-    DB -->|emits on every change| UI
-    Repo -->|enqueues sync| WM[WorkManager]
-    WM -->|retry with backoff| Net
+In traditional **Network-First** design:
+```text
+Open Screen ──► Show Full-Screen Spinner ──► Make Network Call ──► Render Data (or Error if Offline)
 ```
 
-**HTTP cache layer (OkHttp).** Separate from your database cache, and controlled by response headers:
-
-| Header | Effect |
-|---|---|
-| `Cache-Control: max-age=60` | Served from cache without a network call for 60 s |
-| `Cache-Control: no-cache` | Cached, but revalidated with `If-None-Match` every time |
-| `ETag` / `If-None-Match` | Server replies `304 Not Modified`, saving the body transfer |
-| `Cache-Control: only-if-cached` | Forces a cache read; fails with `504` when absent — the offline path |
-
-### Code Example
-```kotlin
-// Repository with the database as the single source of truth
-class ArticleRepository @Inject constructor(
-    private val dao: ArticleDao,
-    private val api: ArticleApi,
-    private val scope: CoroutineScope
-) {
-    // The UI observes ONLY this. It emits cached data instantly, then again after the refresh lands.
-    fun observeArticles(): Flow<List<Article>> = dao.observeAll().map { it.map(ArticleEntity::toDomain) }
-
-    // Explicit refresh returns a Result so the UI can show an error banner
-    // WITHOUT clearing the content already on screen.
-    suspend fun refresh(): Result<Unit> = runCatching {
-        val remote = api.fetchArticles()
-        dao.upsertAll(remote.map { it.toEntity() })     // Emission to the UI happens automatically
-    }.onFailure { if (it is CancellationException) throw it }
-}
-
-// ViewModel: content and refresh state are independent, which is what makes offline-first feel good
-class ArticleListViewModel @Inject constructor(
-    private val repo: ArticleRepository
-) : ViewModel() {
-    private val refreshing = MutableStateFlow(false)
-    private val errors = MutableStateFlow<String?>(null)
-
-    val uiState: StateFlow<ArticleUiState> =
-        combine(repo.observeArticles(), refreshing, errors) { items, isRefreshing, error ->
-            ArticleUiState(items = items, isRefreshing = isRefreshing, error = error)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ArticleUiState())
-
-    fun refresh() = viewModelScope.launch {
-        refreshing.value = true
-        repo.refresh().onFailure { errors.value = it.toUserMessage() }
-        refreshing.value = false
-    }
-}
+In **Offline-First** design:
+```text
+Open Screen ──► Immediately Load Local DB ──► Render Cached UI ──► Fetch Remote Sync in Background ──► Update DB ──► UI Emits Fresh Data
 ```
 
-```kotlin
-// OkHttp cache + an interceptor that falls back to stale data when offline
-val client = OkHttpClient.Builder()
-    .cache(Cache(File(context.cacheDir, "http"), 20L * 1024 * 1024))
-    .addInterceptor { chain ->
-        val request = if (connectivity.isOnline()) chain.request()
-        else chain.request().newBuilder()
-            // Accept cached responses up to 7 days old rather than failing outright
-            .cacheControl(CacheControl.Builder().onlyIfCached().maxStale(7, TimeUnit.DAYS).build())
-            .build()
-        chain.proceed(request)
-    }
-    .build()
+> **Single Source of Truth (SSOT):** The local database (Room) is the **only source of truth** observed by the UI. Remote network responses are written directly into the database and **never directly into the UI**.
+
+```text
+Remote API (Retrofit) ──► Repository ──► Local Room DB (SSOT) ──► UI (Observes Flow)
+```
+
+---
+
+### 6.6.2 Why Keep Stale Content Visible During Refresh?
+
+```text
+Bad UX (Content Cleared):
+[Articles Visible] ──► Pull-to-Refresh ──► [Empty Screen + Spinner] ──► [Updated Articles]
+
+Good UX (Independent States):
+[Articles Visible] ──► Pull-to-Refresh ──► [Articles + Top Refresh Bar] ──► [Updated Articles]
+```
+
+> **Principle:** **Content State** (`List<Article>`) and **Sync/Refresh State** (`isRefreshing: Boolean`, `error: String?`) are orthogonal concerns and must be modelled independently in `UiState`.
+
+---
+
+### 6.6.3 HTTP Cache vs Database Cache
+
+| Dimension | OkHttp Disk Cache | Local Database (Room / SQLite) |
+|---|---|---|
+| **Data Format** | Raw HTTP response bytes & headers | Structured, relational domain entities |
+| **Queryability** | No (Keyed only by exact URL + headers) | Rich SQL queries, filtering, sorting, indexing |
+| **Reactivity** | Static (no change observation) | **Reactive** (`Flow<List<T>>` auto-emits on DB write) |
+| **Offline Writes** | Read-only | Full CRUD (supports offline creations/edits) |
+
+---
+
+### 6.6.4 Key HTTP Cache Headers
+
+* `Cache-Control: max-age=60`: Response is considered fresh for 60 seconds; served from cache without network.
+* `Cache-Control: no-cache`: Response may be cached, but **must be revalidated** with the origin server before reuse (`ETag`).
+* `ETag` / `If-None-Match`: Server returns an entity hash (`ETag: "abc"`). Client sends `If-None-Match: "abc"` on next call. If unchanged, server responds with **`304 Not Modified`** (zero body payload transfer).
+* `Cache-Control: only-if-cached`: Forces OkHttp to read from cache only; fails with HTTP 504 if not cached (used for offline fallbacks).
+
+---
+
+### 6.6.5 The Outbox Pattern for Offline Writes
+
+When a user performs a write operation (e.g. liking a post or submitting an order) while offline, the app must not drop the action:
+
+```text
+User Action (Offline)
+       │
+       ▼
+Insert into Room `PendingAction` table (Outbox)
+       │
+       ▼
+Trigger WorkManager (`OneTimeWorkRequestBuilder<SyncWorker>`)
+       │
+       ▼ (Wait for Network Constraint)
+Execute Remote API Call
+       │
+       ├── SUCCESS ──► Delete row from `PendingAction` table
+       ├── RETRYABLE (5xx / Timeout) ──► WorkManager retries with Exponential Backoff
+       └── FATAL (4xx Client Error) ──► Delete action / log poison message
 ```
 
 ```kotlin
-// Outbox pattern: writes made offline are queued and replayed by WorkManager
-@Entity
-data class PendingAction(
+@Entity(tableName = "pending_actions")
+data class PendingActionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val type: String,
-    val payload: String,
+    val actionType: String,
+    val payloadJson: String,
     val createdAt: Long = System.currentTimeMillis()
 )
 
-class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+class OutboxSyncWorker(
+    appContext: Context,
+    workerParams: WorkerParameters,
+    private val dao: PendingActionDao,
+    private val api: SyncApi
+) : CoroutineWorker(appContext, workerParams) {
+
     override suspend fun doWork(): Result {
-        val pending = dao.pendingActions()
-        pending.forEach { action ->
-            when (val outcome = api.execute(action)) {
-                is Ok -> dao.delete(action)
-                is Retryable -> return Result.retry()      // Backoff, preserve remaining queue order
-                is Fatal -> dao.delete(action)             // Drop poison messages, log for triage
+        val pendingList = dao.getAllPending()
+        for (action in pendingList) {
+            when (val outcome = api.syncAction(action)) {
+                is SyncResult.Success -> dao.delete(action.id)
+                is SyncResult.Retryable -> return Result.retry() // WorkManager handles exponential backoff
+                is SyncResult.Fatal -> dao.delete(action.id) // Discard invalid/poison messages
             }
         }
         return Result.success()
@@ -6192,79 +6287,187 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
 }
 ```
 
-### Common Pitfalls
-* **Clearing the list while refreshing.** Offline-first means keeping stale content visible and showing the refresh state separately.
-* **Two sources of truth.** If the UI reads sometimes from network and sometimes from cache, the screen flickers between versions.
-* **Unbounded cache growth.** Add a retention policy — delete rows older than N days on each successful sync.
-* **Assuming `isOnline()` means reachable.** Captive portals report connectivity while blocking all traffic. Treat network failure as normal, not exceptional.
+---
+
+### 6.6.6 Offline-First Production Code Architecture
+
+```kotlin
+// 1. Repository implementing Single Source of Truth
+class ArticleRepository @Inject constructor(
+    private val dao: ArticleDao,
+    private val api: ArticleApi
+) {
+    // UI continuously observes DB updates; network responses flow through Room
+    fun observeArticles(): Flow<List<Article>> =
+        dao.observeAllArticles().map { entities -> entities.map { it.toDomain() } }
+
+    suspend fun refreshArticles(): DataResult<Unit> = safeApiCall {
+        val remoteDtos = api.getArticles()
+        dao.upsertArticles(remoteDtos.map { it.toEntity() })
+    }
+}
+
+// 2. ViewModel coordinating independent content & refresh states
+@HiltViewModel
+class ArticleListViewModel @Inject constructor(
+    private val repository: ArticleRepository
+) : ViewModel() {
+
+    private val _isRefreshing = MutableStateFlow(false)
+    private val _errorBanner = MutableStateFlow<String?>(null)
+
+    val uiState: StateFlow<ArticleUiState> = combine(
+        repository.observeArticles(),
+        _isRefreshing,
+        _errorBanner
+    ) { articles, isRefreshing, error ->
+        ArticleUiState(
+            articles = articles,
+            isRefreshing = isRefreshing,
+            errorMessage = error
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = ArticleUiState(isLoading = true)
+    )
+
+    fun refresh() = viewModelScope.launch {
+        _isRefreshing.value = true
+        _errorBanner.value = null
+        when (val result = repository.refreshArticles()) {
+            is DataResult.Success -> { /* DB automatically emits updated list */ }
+            is DataResult.Failure -> { _errorBanner.value = result.error.toUserMessage() }
+        }
+        _isRefreshing.value = false
+    }
+}
+```
 
 ---
 
 ## 6.7 Error Handling and Result Modelling
 
-### Definition
-* **Error modelling** — representing the ways an operation can fail as **data** with a type, instead of as exceptions caught somewhere far from where they were raised.
-* **Why it matters** — an exception crossing layers loses its meaning: the UI ends up matching on exception classes and message strings to decide what to show.
-* **Sealed result type** — a closed hierarchy of success and failure cases, so the compiler can verify that every case is handled and a newly added failure mode breaks the build.
-* **Domain error** — a failure expressed in the app's own vocabulary (`Offline`, `Unauthorized`, `Validation`) rather than in transport terms (`IOException`, HTTP 401).
-* **Error boundary** — the single place, usually the repository, where transport failures are translated into domain errors.
+### 6.7.1 The Problem With Raw Exceptions
 
-### Why It Is Used
-An exception thrown at the network layer and caught in the ViewModel loses all type information — you end up matching on exception classes and string messages. A sealed result type makes every failure the compiler's problem and makes the `when` exhaustive.
+Leaking raw transport exceptions (`IOException`, `HttpException`, `SocketTimeoutException`) from the network layer up to ViewModels breaks architectural boundaries:
+* Forces ViewModels to parse HTTP status codes and regex exception strings.
+* Leads to fragile UI code like `if (e.message?.contains("timeout") == true)`.
+* Makes unit testing difficult by requiring mocked network exceptions.
 
-### How It Works Internally
-A sealed hierarchy gives the compiler a closed set of subtypes, so an unhandled case is a compile error. Combined with `data class`, error payloads can carry structured context (retry-after, field validation errors) that an exception message cannot.
+---
 
-### Code Example
+### 6.7.2 Domain Errors & Sealed Result Hierarchy
+
+Translate low-level transport errors at the **Repository Error Boundary** into typed domain representations:
+
+```text
+Transport Level (OkHttp/Retrofit) ──► Repository Error Boundary ──► Domain AppError ──► UI Presentation
+(IOException, HttpException 401)                                (Offline, Unauthorized) ("Please log in")
+```
+
 ```kotlin
-// Domain-level result: the UI never sees an IOException or an HTTP code
-sealed interface DataResult<out T> {
-    data class Success<T>(val data: T) : DataResult<T>
-    data class Failure(val error: AppError) : DataResult<Nothing>
-}
-
+// 1. Typed Domain Errors
 sealed interface AppError {
     data object Offline : AppError
     data object Unauthorized : AppError
-    data class Server(val code: Int) : AppError
+    data class Server(val code: Int, val serverMessage: String? = null) : AppError
     data class Validation(val fieldErrors: Map<String, String>) : AppError
     data class Unknown(val cause: Throwable) : AppError
 }
 
-// One place translates transport failures into domain errors
-suspend fun <T> safeApiCall(block: suspend () -> T): DataResult<T> = try {
-    DataResult.Success(block())
+// 2. Sealed Result Wrapper
+sealed interface DataResult<out T> {
+    data class Success<T>(val data: T) : DataResult<T>
+    data class Failure(val error: AppError) : DataResult<Nothing>
+}
+```
+
+---
+
+### 6.7.3 `safeApiCall()` & The Critical Rule for `CancellationException`
+
+```kotlin
+suspend fun <T> safeApiCall(
+    apiCall: suspend () -> T
+): DataResult<T> = try {
+    DataResult.Success(apiCall())
 } catch (e: CancellationException) {
-    throw e                                            // NEVER swallow cancellation
+    // ⚠️ CRITICAL: NEVER swallow CancellationException!
+    // Cancellation is cooperative control flow for structured concurrency.
+    throw e
 } catch (e: HttpException) {
     DataResult.Failure(
         when (e.code()) {
             401, 403 -> AppError.Unauthorized
-            422 -> AppError.Validation(e.parseFieldErrors())
-            else -> AppError.Server(e.code())
+            422 -> AppError.Validation(parseValidationErrors(e))
+            else -> AppError.Server(code = e.code())
         }
     )
 } catch (e: IOException) {
-    DataResult.Failure(AppError.Offline)               // Includes timeouts and DNS failures
+    // Covers timeouts, DNS resolution failures, and offline connection drops
+    DataResult.Failure(AppError.Offline)
 } catch (e: Throwable) {
     DataResult.Failure(AppError.Unknown(e))
 }
-
-// The UI maps errors to messages and actions — exhaustive, so a new error type breaks the build
-fun AppError.toUiMessage(res: Resources): UiMessage = when (this) {
-    AppError.Offline -> UiMessage(res.getString(R.string.err_offline), action = UiAction.Retry)
-    AppError.Unauthorized -> UiMessage(res.getString(R.string.err_session), action = UiAction.SignIn)
-    is AppError.Server -> UiMessage(res.getString(R.string.err_server, code), action = UiAction.Retry)
-    is AppError.Validation -> UiMessage(fieldErrors.values.first(), action = UiAction.None)
-    is AppError.Unknown -> UiMessage(res.getString(R.string.err_generic), action = UiAction.Retry)
-}
 ```
 
-### Common Pitfalls
-* **Catching `Throwable` without rethrowing `CancellationException`.** This silently breaks structured concurrency.
-* **Exposing `Throwable` to the UI layer.** The UI then formats raw exception messages, which leak internals to users.
-* **Using Kotlin's built-in `Result<T>` across module boundaries.** It is a value class with restrictions on being returned from suspending functions in some positions, and it carries no domain typing. A custom sealed type is clearer.
-* **One generic "Something went wrong".** Users cannot distinguish "you are offline" from "your session expired", and neither can your support team.
+> **Why must `CancellationException` be rethrown?** Coroutine cancellation is not an error; it is how Kotlin coordinates lifecycle teardown (e.g. when a user navigates away). If caught and wrapped in `DataResult.Failure`, cancellation is swallowed, causing corrupted UI state and orphaned background work.
+
+---
+
+### 6.7.4 Custom `DataResult<T>` vs Kotlin's Built-in `Result<T>`
+
+| Feature | Kotlin `Result<T>` | Custom `DataResult<T>` |
+|---|---|---|
+| **Failure Representation** | `Throwable` (untyped runtime exception) | `AppError` (strongly typed domain model) |
+| **Compiler Exhaustiveness** | `when` cannot be exhaustive across specific error types | **Exhaustive `when`** (adding a new `AppError` breaks compile time safely) |
+| **Domain Meaning** | Low (treats all errors as generic throwables) | High (`Unauthorized`, `Validation(map)`) |
+| **Value Class Restrictions** | Cannot be returned from certain suspending/inline contexts | Standard interface with full polymorphism |
+
+---
+
+### 6.7.5 Complete 3-Tier Networking & State Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ PRESENTATION LAYER (Compose / UI / ViewModel)               │
+│  - Observes StateFlow<UiState>                              │
+│  - Formats AppError -> Localized UI strings                 │
+│  - Coil AsyncImage loads images with 2-level cache          │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ DOMAIN LAYER (UseCases / Result Types)                      │
+│  - Emits DataResult<DomainModel>                            │
+│  - Expresses failures via AppError                          │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ DATA LAYER (Repository / Error Boundary / SSOT)             │
+│  - Maps DTOs -> Domain Models                               │
+│  - Wraps Retrofit calls with safeApiCall()                  │
+│  - Writes network data to Room Database (SSOT)              │
+│  - Enqueues offline mutations to WorkManager (Outbox)       │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+┌──────────────▼───────────────┐ ┌────────────▼───────────────┐
+│ LOCAL (Room Database / Cache)│ │ REMOTE (Retrofit / OkHttp) │
+└──────────────────────────────┘ └────────────────────────────┘
+```
+
+---
+
+### Key Takeaways for Senior Interviews
+
+```text
+1. Image Memory = Width × Height × 4 bytes (downsample to display size to prevent OOM).
+2. Offline-First = Database is Single Source of Truth; Network writes to DB, UI observes DB.
+3. Content State ≠ Refresh State (keep old data visible during swipe-to-refresh).
+4. Outbox Pattern = Persist offline writes in Room; sync reliably via WorkManager.
+5. Error Boundaries = Translate transport exceptions to sealed AppError domain data.
+6. Structured Concurrency = NEVER catch and swallow CancellationException.
+```
 
 ---
 # 7. Background Execution & Pagination
