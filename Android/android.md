@@ -5423,43 +5423,477 @@ Room.databaseBuilder(context, AppDatabase::class.java, "app-db")
 
 ## 6.3 Networking Stack (Retrofit & OkHttp)
 
-### Definition
-* **OkHttp** — the HTTP **engine**: it opens sockets, pools and reuses connections, follows redirects, handles HTTP/2, and applies the disk cache.
-* **Retrofit** — a **type-safe wrapper** over that engine. You declare an annotated Kotlin interface, and Retrofit generates the implementation that builds requests and parses responses.
-* **Converter** — the component that turns a response body into your model type (kotlinx.serialization, Moshi, Gson).
-* **Interceptor** — a hook in OkHttp's request/response chain, used to add headers, log, retry, or rewrite. This is where cross-cutting concerns such as authentication belong.
+> **Interview Context:** Understanding the distinct responsibilities of **Retrofit** (declarative API abstraction & serialization) versus **OkHttp** (HTTP client engine, connection pooling, socket management, interceptors) is a fundamental prerequisite for Android interviews.
 
-* **Retrofit:** A type-safe HTTP client library that maps HTTP API endpoints directly to Kotlin/Java interfaces.
-* **OkHttp:** The underlying client engine that handles socket connections, requests execution, connection pooling, and payload compression.
+---
 
-### The Interceptor Pipeline
-OkHttp passes outbound requests and inbound responses through a chain of interceptors:
+### 6.3.1 What Happens When an Android App Makes an API Call?
 
-```mermaid
-graph TD
-    AppRequest[Application Request] --> AppInterceptor[Application Interceptor]
-    AppInterceptor --> NetworkInterceptor[Network Interceptor]
-    NetworkInterceptor --> Server[Physical Network Server]
-    Server --> ResponseNetwork[Network Interceptor - Response]
-    ResponseNetwork --> ResponseApp[Application Interceptor - Response]
-    ResponseApp --> FinalResponse[App Client Response]
+Suppose your app makes a request: `GET https://api.example.com/users/123`
+
+```text
+OUTBOUND REQUEST FLOW:
+UI Layer (Compose / Fragment)
+     │
+     ▼
+ViewModel
+     │
+     ▼
+Repository
+     │
+     ▼
+Retrofit (Translates annotated interface method into HTTP Request)
+     │
+     ▼
+OkHttp (Runs interceptor chain, connection pooling, DNS, TLS handshake)
+     │
+     ▼
+Physical Network / Internet
+     │
+     ▼
+Backend Server
 ```
 
-* **Application Interceptor:** Runs at the top level. Always called once, even if the response is served from the cache. Ideal for adding custom headers.
-* **Network Interceptor:** Runs between OkHttp and the physical network. Allows monitoring redirects and raw headers traveling over the wire.
+```text
+INBOUND RESPONSE FLOW:
+Backend Server (Sends HTTP raw bytes / JSON)
+     │
+     ▼
+OkHttp (Receives raw ResponseBody bytes, decompression, HTTP/2 multiplexing)
+     │
+     ▼
+Retrofit (Passes ResponseBody to ConverterFactory)
+     │
+     ▼
+Converter (kotlinx.serialization / Moshi / Gson parses JSON -> Kotlin Data Class)
+     │
+     ▼
+Repository (Maps DTO to Domain Model, applies caching)
+     │
+     ▼
+ViewModel (Emits UiState to StateFlow)
+     │
+     ▼
+UI Layer (Renders state)
+```
+
+---
+
+### 6.3.2 What is OkHttp?
+
+#### Definition
+
+> **OkHttp is the low-level HTTP client and network engine that performs actual socket and HTTP communication.**
+
+**Key Responsibilities:**
+- Socket creation, TCP/TLS handshakes, and certificate pinning
+- Connection pooling and reuse (avoids re-establishing TCP connections)
+- HTTP/1.1 and HTTP/2 multiplexing (multiple streams over a single socket)
+- Automatic gzip/deflate request and response decompression
+- Disk response caching (`okhttp3.Cache`)
+- Timeouts (connect, read, write, call)
+- The **Interceptor Chain** architecture
+
+---
+
+### 6.3.3 What is Retrofit?
+
+#### Definition
+
+> **Retrofit is a type-safe HTTP API abstraction layer that allows you to describe REST endpoints using Kotlin/Java interfaces and annotations.**
 
 ```kotlin
-// Custom Auth Interceptor
-class AuthInterceptor(private val tokenProvider: TokenProvider) : Interceptor {
+interface UserApi {
+    @GET("users/{id}")
+    suspend fun getUser(
+        @Path("id") id: Long
+    ): UserDto
+}
+```
+
+Instead of manually building URLs, encoding query parameters, writing boilerplate headers, and parsing response streams, you declare the contract declaratively.
+
+> **Crucial Interview Point:** **Retrofit does NOT replace OkHttp.** Retrofit sits on top of OkHttp; it constructs HTTP requests based on annotations and delegates the actual network execution directly to OkHttp.
+
+---
+
+### 6.3.4 What is a Converter?
+
+A **Converter** transforms HTTP response/request bodies between raw formats (JSON, XML, Protocol Buffers, byte arrays) and typed application models.
+
+```text
+Server JSON string ──► OkHttp ResponseBody ──► Retrofit Converter ──► UserDto object
+```
+
+> **Does OkHttp parse JSON into Kotlin objects?** **No.** OkHttp handles HTTP transport and exposes a raw byte stream (`ResponseBody`). Retrofit coordinates with a `Converter.Factory` (such as `kotlinx.serialization`, `Moshi`, or `Gson`) to deserialize the stream.
+
+---
+
+### 6.3.5 Complete 11-Step Retrofit Request Lifecycle
+
+```text
+1. Application calls interface method: api.getUser(123)
+      ↓
+2. Retrofit reads method annotations (@GET, @Path, @Header)
+      ↓
+3. Retrofit dynamically builds an okhttp3.Request
+      ↓
+4. Retrofit hands the Request to the configured OkHttpClient
+      ↓
+5. OkHttp executes the Request through its Interceptor Chain
+      ↓
+6. OkHttp checks cache / establishes socket / performs TLS / sends bytes
+      ↓
+7. Backend server receives request and sends HTTP response
+      ↓
+8. OkHttp produces an okhttp3.Response with raw ResponseBody
+      ↓
+9. Retrofit intercepts response and passes ResponseBody to Converter
+      ↓
+10. Converter parses raw bytes into the declared model (e.g. UserDto)
+      ↓
+11. Retrofit resumes the calling coroutine and returns UserDto
+```
+
+---
+
+### 6.3.6 What is an Interceptor?
+
+#### Definition
+
+> An **OkHttp Interceptor** is a middleware component that can inspect, modify, retry, or short-circuit an HTTP request and its corresponding response as it travels through OkHttp's execution pipeline.
+
+```text
+Request ──► Interceptor A ──► Interceptor B ──► Network
+                                                  │
+Response ◄── Interceptor A ◄── Interceptor B ◄── Server
+```
+
+Interceptors are ideal for **cross-cutting concerns** (concerns that apply across multiple API endpoints):
+- Dynamic authentication tokens (`Authorization: Bearer <token>`)
+- Centralized request/response logging
+- Distributed tracing and correlation headers (`X-Request-ID`)
+- Global headers (User-Agent, App-Version, Accept-Language)
+- Network metrics and timing instrumentation
+- Controlled retry and offline caching policies
+
+---
+
+### 6.3.7 Application Interceptor vs Network Interceptor
+
+```text
+Application (Retrofit)
+         │
+         ▼
+┌─────────────────────────────────┐
+│ 1. Application Interceptors     │  ◄── Added via addInterceptor()
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ 2. OkHttp Cache / Redirects     │
+└────────┬────────────────────────┘
+         ▼
+┌─────────────────────────────────┐
+│ 3. Network Interceptors         │  ◄── Added via addNetworkInterceptor()
+└────────┬────────────────────────┘
+         ▼
+Physical Network / Server
+```
+
+| Feature | Application Interceptor (`addInterceptor`) | Network Interceptor (`addNetworkInterceptor`) |
+|---|---|---|
+| **Pipeline Position** | Outermost level (between App code and OkHttp engine) | Innermost level (between OkHttp engine and wire) |
+| **Invocation on Cache Hits** | **Always executes once**, even if the response is served purely from disk cache | **Does not run** if the response is served from cache (no wire traffic) |
+| **Visibility into Redirects** | Sees only the original request and the final response (single logical call) | Sees **every intermediate request/response**, including HTTP redirects and retries |
+| **Header Access** | Can modify high-level application headers | Has access to wire headers, transfer encoding, and actual IP addresses |
+| **Typical Use Cases** | Auth headers, logging, offline cache policy, request signing | Wire-level logging, profiling network speed, monitoring redirects |
+
+---
+
+### 6.3.8 Authentication Interceptor & `chain.proceed()`
+
+```kotlin
+class AuthInterceptor(
+    private val tokenProvider: TokenProvider
+) : Interceptor {
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
+
+        // Build authenticated request with Authorization header
         val authenticatedRequest = originalRequest.newBuilder()
-            .header("Authorization", "Bearer ${tokenProvider.getToken()}")
+            .header("Authorization", "Bearer ${tokenProvider.getAccessToken()}")
+            .header("X-App-Version", BuildConfig.VERSION_NAME)
             .build()
-        return chain.proceed(authenticatedRequest)
+
+        val startTime = System.nanoTime()
+
+        // chain.proceed() passes the request down to the next interceptor in the chain
+        val response = chain.proceed(authenticatedRequest)
+
+        val durationMs = (System.nanoTime() - startTime) / 1_000_000
+        Log.d("Network", "Request to ${originalRequest.url} took ${durationMs}ms with status ${response.code}")
+
+        return response
     }
 }
 ```
+
+#### What does `chain.proceed()` do?
+* `chain.proceed(request)` is the recursive mechanism that forwards the request to the next interceptor in the chain (or to the network engine at the end of the chain).
+* It returns the `Response` on its way back up the stack.
+* An interceptor can execute code **before** `chain.proceed()` (request mutation) and **after** `chain.proceed()` (response inspection/transformation).
+* If an interceptor does **not** call `chain.proceed()`, it **short-circuits** the request (e.g. returning a mock response or cached fallback).
+
+---
+
+### 6.3.9 Token Expiration & Concurrent 401 Refresh Handling
+
+A classic Senior Android interview scenario:
+
+> **"If an access token expires and 10 API requests simultaneously fail with HTTP 401 Unauthorized, how do you prevent 10 simultaneous refresh token calls?"**
+
+```kotlin
+class AuthenticatorWithLock(
+    private val tokenManager: TokenManager
+) : Authenticator {
+
+    private val lock = Any()
+
+    override fun authenticate(route: Route?, response: Response): Request? {
+        // Prevent infinite loops if refresh token itself is invalid
+        if (responseCount(response) >= 3) return null
+
+        synchronized(lock) {
+            val currentToken = tokenManager.getAccessToken()
+            val requestToken = response.request.header("Authorization")
+                ?.removePrefix("Bearer ")
+
+            // If another thread already refreshed the token while this thread was waiting,
+            // retry immediately with the new token without firing another refresh call
+            if (currentToken != null && currentToken != requestToken) {
+                return response.request.newBuilder()
+                    .header("Authorization", "Bearer $currentToken")
+                    .build()
+            }
+
+            // Perform synchronous refresh call
+            val newTokens = tokenManager.refreshAccessTokenSync() ?: return null
+
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer ${newTokens.accessToken}")
+                .build()
+        }
+    }
+
+    private fun responseCount(response: Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            count++
+            prior = prior.priorResponse
+        }
+        return count
+    }
+}
+```
+
+> **Interview Distinction:** Prefer implementing `okhttp3.Authenticator` for 401 handling over raw interceptors. OkHttp's `Authenticator` is specifically designed for 401 challenges and automatically handles retries cleanly.
+
+---
+
+### 6.3.10 OkHttp Core Performance Features
+
+1. **Connection Pooling (`ConnectionPool`):** OkHttp maintains a pool of open HTTP/1.1 and HTTP/2 socket connections (default: 5 idle connections, 5-minute keep-alive). Eligible requests to the same host reuse open sockets, eliminating the latency of repeated TCP handshakes and TLS negotiations.
+2. **HTTP/2 Multiplexing:** Multiple bidirectional data streams are multiplexed over a single TCP connection concurrently, eliminating head-of-line blocking at the application layer.
+3. **HTTP Response Cache (`okhttp3.Cache`):** Caches HTTP responses on disk according to standard HTTP cache headers (`Cache-Control`, `ETag`, `If-Modified-Since`).
+4. **Timeouts:**
+   - **`connectTimeout`:** Max time to establish socket connection with host.
+   - **`readTimeout`:** Max gap between two incoming data packets.
+   - **`writeTimeout`:** Max gap between two outgoing data packets.
+   - **`callTimeout`:** Overall cap for the complete request lifecycle (including DNS, connect, write, read).
+
+---
+
+### 6.3.11 Retrofit `suspend` vs `Call<T>` & Error Handling
+
+```kotlin
+interface ProductApi {
+    // 1. Direct Model (Throws HttpException on 4xx/5xx)
+    @GET("products/{id}")
+    suspend fun getProductDirect(@Path("id") id: Long): ProductDto
+
+    // 2. Response Wrapper (Explicit HTTP status inspection without exceptions)
+    @GET("products/{id}")
+    suspend fun getProductWrapped(@Path("id") id: Long): Response<ProductDto>
+
+    // 3. Legacy Call (Requires manual enqueue / execute)
+    @GET("products/{id}")
+    fun getProductCall(@Path("id") id: Long): Call<ProductDto>
+}
+```
+
+| Return Type | Error Handling Mechanism | Best Use Case |
+|---|---|---|
+| **`suspend fun get(): T`** | Throws `HttpException` on non-2xx; throws `IOException` on network failure | Clean repository flow where exceptions are caught via `runCatching` |
+| **`suspend fun get(): Response<T>`** | Returns `Response` object; check `response.isSuccessful`, `response.code()`, `response.errorBody()` | When repository must inspect HTTP headers, cookies, or parse custom error JSON bodies |
+| **`fun get(): Call<T>`** | Manual `call.enqueue()` callback pattern | Legacy codebases without Coroutines / Flow |
+
+---
+
+### 6.3.12 Clean Architecture Placement
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ PRESENTATION LAYER (UI, Compose, ViewModel)                 │
+│  - Observes StateFlow<UiState>                              │
+│  - Knows NOTHING about Retrofit, OkHttp, Headers, or JSON   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ DOMAIN LAYER (UseCases, Domain Models)                      │
+│  - Pure business logic (e.g. GetProductUseCase)             │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ DATA LAYER (Repository Implementation)                      │
+│  - ProductRepositoryImpl maps ProductDto -> Product         │
+│  - Translates NetworkExceptions into Domain Errors          │
+│  - Coordinates Local Cache (Room) + Remote API (Retrofit)   │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+┌──────────────▼───────────────┐ ┌────────────▼───────────────┐
+│ LOCAL (Room Database / DAO)  │ │ REMOTE (Retrofit UserApi)  │
+└──────────────────────────────┘ └────────────┬───────────────┘
+                                              │
+                                 ┌────────────▼───────────────┐
+                                 │ OkHttp (Client & Engine)   │
+                                 └────────────────────────────┘
+```
+
+> **Anti-Pattern Warning:** Never inject `Retrofit` or `OkHttpClient` directly into ViewModels or UI components. All networking must be encapsulated within the Data/Repository layer.
+
+---
+
+## 30 Comprehensive Interview Questions & Answers
+
+### A. Basic Questions (Q1–Q10)
+
+#### 1. What is Retrofit?
+> **Answer:** Retrofit is a type-safe HTTP client library and API abstraction framework for Android/JVM that translates annotated Kotlin interfaces into HTTP requests.
+
+#### 2. What is OkHttp?
+> **Answer:** OkHttp is an efficient HTTP/HTTP/2 client engine responsible for low-level socket management, connection pooling, request dispatching, interceptor execution, and caching.
+
+#### 3. Does Retrofit execute network socket calls directly?
+> **Answer:** No. Retrofit constructs the HTTP request metadata and delegates the actual network execution to its configured HTTP client (typically OkHttp).
+
+#### 4. What is the fundamental difference between Retrofit and OkHttp?
+> **Answer:** Retrofit is the declarative API layer defining *what* endpoints exist and *how* data is serialized. OkHttp is the execution engine defining *how* connections and bytes are transmitted over the wire.
+
+#### 5. What is a Converter in Retrofit?
+> **Answer:** A component that converts HTTP request/response payloads between raw wire formats (JSON, XML, Protobuf) and Kotlin/Java objects (e.g. `kotlinx.serialization`, `Moshi`, `Gson`).
+
+#### 6. What is an OkHttp Interceptor?
+> **Answer:** A middleware component in OkHttp that intercepts outgoing requests and incoming responses to inspect, modify, log, or short-circuit them.
+
+#### 7. What is `chain.proceed(request)`?
+> **Answer:** The core method within an interceptor that forwards the request to the next interceptor in the chain and returns the resulting `Response`.
+
+#### 8. How do you attach a custom header to all requests?
+> **Answer:** By creating an application `Interceptor` that intercepts `chain.request()`, creates a modified request via `request.newBuilder().header("Key", "Value").build()`, and invokes `chain.proceed(newRequest)`.
+
+#### 9. What is the difference between `addHeader` and `header` in OkHttp request builders?
+> **Answer:** `header(name, value)` replaces any existing headers with that name. `addHeader(name, value)` appends an additional header value without removing existing ones.
+
+#### 10. Does OkHttp automatically decompress Gzip responses?
+> **Answer:** Yes. If transparent Gzip is used (when the app doesn't manually set `Accept-Encoding`), OkHttp automatically adds the `Accept-Encoding: gzip` header and transparently decompresses the response body.
+
+---
+
+### B. Intermediate Questions (Q11–Q20)
+
+#### 11. Application Interceptor vs Network Interceptor?
+> **Answer:** Application interceptors run at the top level and execute once per logical call (even on cache hits). Network interceptors run right before the wire and observe actual network exchanges, including redirects and retries, but skip running on cache hits.
+
+#### 12. Where should an Authorization token header be added?
+> **Answer:** In an Application Interceptor (`addInterceptor`), ensuring it applies uniformly to all logical API requests before internal redirect or caching logic.
+
+#### 13. Can an interceptor modify the HTTP response body?
+> **Answer:** Yes, an interceptor can inspect or replace the `Response` object returned by `chain.proceed()`, such as rewriting response headers or wrapping the `ResponseBody`.
+
+#### 14. What happens if an interceptor does not call `chain.proceed()`?
+> **Answer:** The request pipeline is short-circuited; no downstream interceptors or network requests are executed, allowing the interceptor to return a synthetic or cached `Response`.
+
+#### 15. What is OkHttp Connection Pooling and why is it important?
+> **Answer:** It maintains a pool of active TCP/TLS connections to host servers, allowing subsequent requests to reuse open sockets and eliminating repeated TLS/TCP handshake latency.
+
+#### 16. What is HTTP/2 Multiplexing in OkHttp?
+> **Answer:** It allows multiple concurrent requests and responses to share a single TCP connection via independent bidirectional streams, preventing head-of-line blocking.
+
+#### 17. What is the difference between `connectTimeout`, `readTimeout`, and `writeTimeout`?
+> **Answer:** `connectTimeout` limits socket connection establishment; `readTimeout` limits the gap between incoming data packets; `writeTimeout` limits the gap between outgoing data packets.
+
+#### 18. What is `callTimeout` in OkHttp?
+> **Answer:** An all-encompassing timeout that sets a hard limit for the entire end-to-end operation, including DNS resolution, connection establishment, and complete response body consumption.
+
+#### 19. How do you configure an offline HTTP cache in OkHttp?
+> **Answer:** Configure an `okhttp3.Cache` instance with a disk directory and max size, then add an interceptor that forces `CacheControl.FORCE_CACHE` when no network is detected.
+
+#### 20. Why shouldn't you log full request/response bodies in production?
+> **Answer:** Logging bodies consumes substantial memory/CPU, degrades throughput, and risks leaking sensitive user data (passwords, tokens, PII) into device logs.
+
+---
+
+### C. Senior & Architecture Questions (Q21–Q30)
+
+#### 21. Walk through the complete lifecycle of a Retrofit API call.
+> **Answer:** Interface method invocation -> Annotation reflection/parsing -> OkHttp Request creation -> Application Interceptors -> Cache/Retry resolution -> Network Interceptors -> Socket transport -> Server processing -> Response headers/body reception -> Network Interceptors (response) -> Application Interceptors (response) -> Retrofit Converter deserialization -> Kotlin model returned to repository.
+
+#### 22. How should you handle concurrent 401 Unauthorized token refreshes?
+> **Answer:** Implement `okhttp3.Authenticator` with a synchronized/mutex lock. When a 401 occurs, check if the token was already refreshed by another thread; if not, execute a synchronous refresh call and retry the request with the new token.
+
+#### 23. Why should you use `okhttp3.Authenticator` instead of an `Interceptor` for 401 handling?
+> **Answer:** `Authenticator` is triggered specifically on 401 challenges by the HTTP engine, automatically supports authentication handshakes, and avoids manual recursive retry loops in interceptors.
+
+#### 24. Why is blindly retrying failed API calls in an interceptor dangerous?
+> **Answer:** Non-idempotent HTTP methods (like `POST` payments or order submissions) could be executed multiple times on the server if the network dropped after server processing.
+
+#### 25. What is the difference between `suspend fun get(): User` vs `suspend fun get(): Response<User>`?
+> **Answer:** Direct model returns the parsed object and throws `HttpException` on non-2xx status codes. `Response<User>` returns a wrapper allowing manual inspection of status code, headers, and `errorBody()` without throwing.
+
+#### 26. Does adding `suspend` to a Retrofit interface method make it run on `Dispatchers.IO`?
+> **Answer:** Retrofit handles its HTTP execution asynchronously on OkHttp's internal thread pool; the calling coroutine suspends and resumes without blocking the caller's thread regardless of the dispatcher.
+
+#### 27. How would you diagnose and debug a slow API endpoint in an Android app?
+> **Answer:** Use OkHttp `EventListener` to measure granular timings (DNS lookup, TCP connect, TLS handshake, request headers/body, response headers/body), utilize Android Studio Network Profiler, and check server-side metrics.
+
+#### 28. What is Certificate Pinning and how is it implemented in OkHttp?
+> **Answer:** Certificate Pinning prevents Man-in-the-Middle (MitM) attacks by hardcoding the SHA-256 hash of the server's public key certificate using `CertificatePinner.Builder().add("api.example.com", "sha256/...").build()`.
+
+#### 29. Where should network error mapping occur in Clean Architecture?
+> **Answer:** In the Repository layer. The Repository catches `IOException`, `HttpException`, or serialization errors and maps them to clean Domain Error types (e.g. `NetworkUnavailable`, `SessionExpired`, `ServerError`) before emitting to the ViewModel.
+
+#### 30. Why is `kotlinx.serialization` or `Moshi` preferred over `Gson` in modern Android?
+> **Answer:** `kotlinx.serialization` (compiler plugin) and `Moshi` (KSP) generate compile-time adapters that strictly enforce Kotlin non-nullable types and default values. `Gson` uses runtime reflection and `Unsafe.allocateInstance`, bypassing constructors and allowing `null` into non-nullable Kotlin properties.
+
+---
+
+### The 30-Second Master Interview Pitch
+
+> **"Retrofit is a type-safe API abstraction layer where endpoints are defined using annotated Kotlin interfaces. It constructs HTTP requests and delegates execution to OkHttp. OkHttp is the underlying networking engine managing sockets, connection pools, HTTP/2 multiplexing, caching, and interceptors. Once OkHttp receives the response stream, Retrofit uses a ConverterFactory (like kotlinx.serialization or Moshi) to deserialize the response body into typed domain DTOs."**
+
+```text
+Retrofit    = WHAT API am I calling? (Contract & Serialization)
+OkHttp      = HOW is the HTTP request executed? (Engine, Sockets, Pool)
+Converter   = HOW does raw wire payload become a Kotlin Model?
+Interceptor = WHAT cross-cutting logic runs around every request/response?
+```
+
+---
+
+## 6.4 JSON Serialization: kotlinx.serialization vs. Moshi vs. Gson
+
 
 ---
 
