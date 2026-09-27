@@ -4567,23 +4567,504 @@ class UserRepository(private val apiService: ApiService) {
 
 ## 5.3 Handler, Looper, and MessageQueue Internals
 
-### Definition
-* **Simple:** Handlers and Loopers allow you to send messages between different threads, such as running a background task and sending the result back to update the main UI thread.
-* **Advanced:** The Handler-Looper-MessageQueue framework is Android's native event-loop mechanism. It consists of a `MessageQueue` that stores serialized execution tasks, a `Looper` that continuously pulls tasks from the queue, and a `Handler` that posts or processes those tasks on the associated thread.
+> **Interview Context:** This topic explains how Android executes work sequentially on a thread, especially on the **main/UI thread**. Understanding Handler, Looper, MessageQueue, Linux `epoll` blocking, and synchronization barriers is a classic benchmark for Senior and Staff Android engineer interviews.
 
-```mermaid
-graph TD
-    Thread[Handler.post / sendMessage] -->|Enqueue Message| MQ[MessageQueue]
-    MQ -->|Blocked on epoll| Looper[Looper.loop loop]
-    Looper -->|Deliver Message| TargetHandler[Handler.handleMessage / Runnable]
-    TargetHandler -->|Executes on| MainThread[Target Thread - e.g., UI Thread]
+---
+
+### 5.3.1 What Problem Do Handler, Looper, and MessageQueue Solve?
+
+Imagine the main thread needs to execute many tasks arriving from different sources:
+
+```text
+Main Thread Tasks:
+    ├── Touch / Click events
+    ├── UI layout and draw passes
+    ├── Animation frame ticks
+    ├── Lifecycle callbacks
+    ├── Timer callbacks
+    └── Network / Database result callbacks
 ```
 
-### How It Works Internally
-1. **Thread Thread-Local Storage (TLS):** A thread must call `Looper.prepare()` (done automatically for the main thread by `ActivityThread`) to instantiate a `Looper` and bind it to the thread via `ThreadLocal`.
-2. **The Event Loop (`Looper.loop()`):** Runs an infinite loop on the thread. It queries `MessageQueue.next()`.
-3. **Linux epoll blocking:** To prevent the CPU from running at 100% load during idle states, `MessageQueue` blocks the thread using the Linux `epoll_wait` system call on a pipe file descriptor. The thread goes to sleep and is woken up by the kernel only when a new message is posted.
-4. **Synchronization Barriers:** A synchronization barrier is a message with a null `target` (`msg.target == null`) injected into the queue. When the `MessageQueue` encounters a barrier, it suspends execution of all subsequent **synchronous** messages, but allows **asynchronous** messages (e.g., UI measurement and draw commands posted by the `Choreographer`) to pass through. This ensures layout traversals bypass background work, maintaining smooth UI rendering.
+The thread needs an ordered execution mechanism to determine: **"What should I execute next?"**
+
+Android solves this with an **event loop** composed of three core components:
+
+```text
+                 Thread
+                   │
+                 Looper
+                   │
+             MessageQueue
+                   │
+        ┌──────────┼──────────┐
+        ▼          ▼          ▼
+     Message    Runnable    Message
+```
+
+---
+
+### 5.3.2 Handler
+
+#### Definition
+
+> A **Handler** is an object associated with a thread's `Looper` that allows you to **enqueue work (Runnables) or messages (`Message`) onto that thread's `MessageQueue`** and handle messages dispatched by that Looper.
+
+```kotlin
+val handler = Handler(Looper.getMainLooper())
+
+handler.post {
+    textView.text = "Hello Android"
+}
+```
+
+> **Important Interview Precision:** Do not define Handler simply as *"a mechanism to send messages between threads."* A more accurate definition is: **"Handler is an API for posting Runnables and Messages to a specific thread's MessageQueue through its Looper."** It can be used for inter-thread communication, but its fundamental role is **work scheduling on a Looper-backed thread**.
+
+---
+
+### 5.3.3 Looper
+
+#### Definition
+
+> A **Looper** is the component that runs an infinite event loop for a thread.
+
+Its primary job is:
+1. Pull the next ready work item from the `MessageQueue`.
+2. Dispatch it to the target `Handler`.
+3. Repeat continuously until quit.
+
+```text
+while (true) {
+    Message msg = queue.next(); // Blocks if no work is ready
+    if (msg == null) return;
+    msg.target.dispatchMessage(msg);
+    msg.recycleUnchecked();
+}
+```
+
+---
+
+### 5.3.4 MessageQueue
+
+#### Definition
+
+> A **MessageQueue** is a custom priority queue (linked list ordered by timestamp `when`) that stores pending work items (`Message` and `Runnable`) associated with a Looper.
+
+```text
+MessageQueue (Ordered by when timestamp)
+┌────────────────────────────────────────┐
+│ Task A (due: now)                      │
+├────────────────────────────────────────┤
+│ Task B (due: now + 50ms)               │
+├────────────────────────────────────────┤
+│ Task C (due: now + 200ms)              │
+└────────────────────────────────────────┘
+                   ▲
+                Looper (Pulls and dispatches)
+```
+
+---
+
+### 5.3.5 The Architectural Relationship
+
+```text
+                     Thread
+                       │ (1:1 via ThreadLocal)
+                    Looper
+                       │ (1:1 ownership)
+                 MessageQueue
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+       Message      Runnable      Message
+          │            │            │
+          └────────────┼────────────┘
+                       ▼
+                 Handler.dispatchMessage()
+```
+
+* **1 Thread** has at most **1 Looper**.
+* **1 Looper** owns exactly **1 MessageQueue**.
+* **Many Handlers** can be attached to the same Looper/MessageQueue.
+
+---
+
+### 5.3.6 Main Thread Execution Flow
+
+```text
+Background Worker Thread
+       │
+       │ handler.post { ... }
+       ▼
+Main Handler
+       │
+       ▼
+Main MessageQueue (Enqueued with timestamp)
+       │
+       ▼
+Main Looper (Pulls task in loop())
+       │
+       ▼
+Main Thread (Executes Runnable)
+       │
+       ▼
+textView.text = "Updated"
+```
+
+---
+
+### 5.3.7 Why Can't a Background Thread Directly Update Views?
+
+Android's UI toolkit (`ViewRootImpl`) is **thread-confined** to the thread that created the view hierarchy (the main thread). It checks `checkThread()` on every UI operation:
+
+```kotlin
+// ❌ WRONG: CalledFromWrongThreadException
+Thread {
+    textView.text = "Hello"
+}.start()
+
+// ✅ CORRECT: Post UI updates to Main Looper
+Thread {
+    val result = doHeavyComputation()
+    Handler(Looper.getMainLooper()).post {
+        textView.text = result
+    }
+}.start()
+```
+
+---
+
+### 5.3.8 Handler Does NOT Create a Thread
+
+Creating a `Handler` creates **zero** threads:
+
+```kotlin
+val handler = Handler(Looper.getMainLooper())
+```
+
+The Handler is merely a client interface bound to the existing thread's `Looper`.
+
+---
+
+### 5.3.9 Can a Background Thread Have a Looper?
+
+Yes. Standard worker threads do not have a Looper by default, but one can be installed manually:
+
+```kotlin
+val workerThread = Thread {
+    Looper.prepare() // 1. Instantiate Looper in ThreadLocal
+
+    val handler = Handler(Looper.myLooper()!!) // 2. Bind Handler to this Looper
+
+    Looper.loop() // 3. Start processing loop (blocks until quit)
+}
+workerThread.start()
+```
+
+---
+
+### 5.3.10 `Looper.prepare()` & ThreadLocal Storage
+
+`Looper.prepare()` initializes a `Looper` instance and stores it in a static `ThreadLocal<Looper>`:
+
+```text
+Thread A ─── ThreadLocal.get() ───► Looper instance A
+Thread B ─── ThreadLocal.get() ───► Looper instance B
+```
+
+* `Looper.myLooper()` retrieves the Looper associated with the calling thread.
+* `Looper.getMainLooper()` retrieves the application's main thread Looper (initialized by `ActivityThread.main()`).
+* Calling `Looper.prepare()` more than once on the same thread throws `RuntimeException("Only one Looper may be created per thread")`.
+
+---
+
+### 5.3.11 `Looper.loop()` & `MessageQueue.next()`
+
+`Looper.loop()` runs the infinite loop. In each iteration, it calls `MessageQueue.next()`:
+* If a message is due (`msg.when <= currentTime`), it returns immediately.
+* If the next message is scheduled for the future (`msg.when > currentTime`), it calculates the timeout and sleeps.
+* If the queue is empty, it sleeps indefinitely until a new message is posted.
+
+---
+
+### 5.3.12 Linux `epoll` & Idle CPU Optimization
+
+> **Why doesn't the Main Thread consume 100% CPU when idle?**
+
+If `Looper.loop()` used busy-waiting (`while(true) { checkQueue() }`), it would peg a CPU core at 100%.
+
+Instead, Android's native `MessageQueue` (`android_os_MessageQueue.cpp` and `Looper.cpp`) uses Linux's **`epoll`** system call (with `eventfd` wake mechanisms):
+
+```text
+MessageQueue Empty / Next task in future
+       │
+nativePollOnce(ptr, timeoutMillis)
+       │
+Kernel enters epoll_wait (Thread goes to SLEEP / BLOCKS)
+       │
+Zero CPU consumed while idle
+       │
+New message posted from any thread ──► nativeWake(ptr) writes to eventfd
+       │
+Kernel wakes thread ──► Looper pulls and dispatches message
+```
+
+---
+
+### 5.3.13 Delayed Work (`postDelayed`) vs `Thread.sleep()`
+
+* `Thread.sleep(5000)`: **Blocks the thread entirely**; the thread cannot process any other messages, UI events, or frames during that time (causes ANR on main thread).
+* `handler.postDelayed(runnable, 5000)`: **Non-blocking scheduling**; inserts the message into the `MessageQueue` with timestamp `when = SystemClock.uptimeMillis() + 5000`. The Looper continues executing other pending messages in the meantime.
+
+---
+
+### 5.3.14 Removing Callbacks & Memory Leak Prevention
+
+```kotlin
+val runnable = Runnable { updateData() }
+handler.postDelayed(runnable, 10_000)
+
+// Clean up when lifecycle ends:
+handler.removeCallbacks(runnable)
+// Or clear all callbacks/messages for this token:
+handler.removeCallbacksAndMessages(null)
+```
+
+#### Why Handlers Caused Classic Memory Leaks
+1. A non-static inner class or anonymous `Runnable` / `Handler` implicitly holds a reference to the enclosing `Activity`.
+2. The `Message` in the queue holds a reference to `target` (the Handler).
+3. The `MessageQueue` holds the `Message`.
+4. Result: `MessageQueue -> Message -> Handler -> Activity`.
+5. If the delayed message is scheduled for 10 seconds and the user rotates or closes the Activity, the entire Activity is leaked until the message executes.
+
+---
+
+### 5.3.15 `Message` vs `Runnable`
+
+* **`Message`:** Lightweight data payload container (`what: Int`, `arg1: Int`, `arg2: Int`, `obj: Any?`). Obtained via `Message.obtain()` or `handler.obtainMessage()` to leverage the system's recycled message pool.
+* **`Runnable`:** Executable code block (`handler.post { ... }`). Internally, `post(Runnable)` wraps the runnable in a `Message` where `msg.callback = runnable`.
+
+---
+
+### 5.3.16 Synchronization Barriers & Choreographer
+
+A **synchronization barrier** is a special token inserted into the `MessageQueue` that temporarily halts the execution of all subsequent **synchronous** messages while allowing **asynchronous** messages to pass through unimpeded.
+
+```text
+MessageQueue Order:
+[Msg A (sync)] ──► [Msg B (sync)] ──► [BARRIER (target == null)] ──► [Msg C (sync - BLOCKED)]
+                                                                  ──► [Msg D (ASYNC - PASSES & EXECUTES)]
+                                                                  ──► [Msg E (sync - BLOCKED)]
+```
+
+#### Internals & UI Frame Timing
+* **Representation:** A barrier is a `Message` where `msg.target == null`.
+* **Why it exists:** Android's UI rendering pipeline is time-critical (16.6ms for 60Hz, 8.3ms for 120Hz). When a VSYNC signal arrives, `ViewRootImpl` / `Choreographer` posts a synchronization barrier to pause normal application messages (touch clicks, background post-backs) and posts **asynchronous messages** for Input, Animation, Traversal (Measure/Layout/Draw).
+* Once the frame completes, the barrier is removed via `MessageQueue.removeSyncBarrier(token)`, and ordinary synchronous messages resume processing.
+* **Important Nuance:** Barriers affect only messages within that specific `MessageQueue`; they do **not** block background worker threads.
+
+---
+
+### 5.3.17 Synchronous vs Asynchronous Handlers
+
+By default, messages posted by a `Handler` are synchronous. You can create an asynchronous Handler:
+
+```kotlin
+val async = Handler.createAsync(Looper.getMainLooper())
+```
+
+Messages posted through this handler are flagged `FLAG_ASYNCHRONOUS` and will bypass active synchronization barriers.
+
+---
+
+### 5.3.18 `HandlerThread`
+
+`HandlerThread` is a helper class extending `Thread` that automates `Looper.prepare()` and `Looper.loop()`:
+
+```kotlin
+val handlerThread = HandlerThread("BackgroundWorker").apply { start() }
+val backgroundHandler = Handler(handlerThread.looper)
+
+backgroundHandler.post {
+    // Executes sequentially on BackgroundWorker thread
+}
+
+// Teardown:
+handlerThread.quitSafely()
+```
+
+> **Serial Execution:** A `HandlerThread` processes all posted tasks **serially (one after another)** because there is only one thread running the Looper.
+
+---
+
+### 5.3.19 Comparison Matrix: Threading Mechanisms
+
+| Mechanism | Model | Best Use Case | Concurrency |
+|---|---|---|---|
+| **Handler / Looper** | Event-loop on single thread | Framework scheduling, UI thread updates | Serial per Looper |
+| **HandlerThread** | Dedicated Looper background thread | Serial background tasks (e.g. sensor recording, camera frame handler) | Serial |
+| **Executor / ThreadPool** | Thread pool task runner | Parallel background computation, batch jobs | Concurrent / Parallel |
+| **Coroutines** | Structured cooperative concurrency | Modern asynchronous business logic, Flow streams, API calls | Highly scalable, cooperative |
+| **WorkManager** | Persistent deferred work scheduler | Guaranteed background jobs across process death & reboots | Managed OS constraints |
+
+---
+
+## 40 Comprehensive Interview Questions & Answers
+
+### A. Basic Questions (Q1–Q10)
+
+#### 1. What is a Handler?
+> **Answer:** A Handler is an interface associated with a specific thread's `Looper` that allows posting `Runnable`s and `Message`s to its `MessageQueue` and processing dispatched messages on that thread.
+
+#### 2. What is a Looper?
+> **Answer:** A Looper runs an infinite event loop on a thread, continually fetching ready messages from its `MessageQueue` and dispatching them to their target Handlers.
+
+#### 3. What is a MessageQueue?
+> **Answer:** A MessageQueue is a timestamp-ordered queue that stores pending messages and callbacks to be processed by a Looper.
+
+#### 4. How are Handler, Looper, and MessageQueue related?
+> **Answer:** A thread has one Looper; the Looper owns one MessageQueue. One or more Handlers attach to that Looper to enqueue work into the queue and handle dispatched callbacks on that thread.
+
+#### 5. Does creating a Handler create a new thread?
+> **Answer:** No. A Handler binds to an existing thread's Looper (such as `Looper.getMainLooper()`).
+
+#### 6. Can a background thread have a Handler?
+> **Answer:** Yes, provided that background thread has initialized a Looper via `Looper.prepare()` and started it with `Looper.loop()`.
+
+#### 7. Does every Java/Kotlin Thread in Android have a Looper?
+> **Answer:** No. Only threads that explicitly call `Looper.prepare()` (and the main UI thread initialized by the OS) have a Looper.
+
+#### 8. How do you create a Looper on a background thread?
+> **Answer:** Call `Looper.prepare()` to instantiate it, create your `Handler(Looper.myLooper()!)`, and call `Looper.loop()` to start processing. Alternatively, use `HandlerThread`.
+
+#### 9. What does `Looper.prepare()` do?
+> **Answer:** It creates a new `Looper` instance and stores it in the calling thread's `ThreadLocal` storage.
+
+#### 10. What does `Looper.loop()` do?
+> **Answer:** It starts the infinite message processing loop on the calling thread, continuously pulling and dispatching messages from `MessageQueue.next()`.
+
+---
+
+### B. Intermediate Questions (Q11–Q20)
+
+#### 11. What happens internally when you call `handler.post(runnable)`?
+> **Answer:** The `Runnable` is wrapped in a `Message` (`msg.callback = runnable`), stamped with the current execution timestamp (`when = SystemClock.uptimeMillis()`), and inserted into the `MessageQueue` in chronological order.
+
+#### 12. On which thread does a Handler callback execute?
+> **Answer:** On the thread associated with the `Looper` passed into the Handler constructor (e.g., `Handler(Looper.getMainLooper())` executes on the Main thread).
+
+#### 13. How does a background thread update UI views using a Handler?
+> **Answer:** By creating a `Handler(Looper.getMainLooper())` and posting a `Runnable` containing the UI update logic to the main thread's MessageQueue.
+
+#### 14. Why is a MessageQueue timestamp-ordered rather than pure FIFO?
+> **Answer:** Because tasks can be scheduled with future execution delays (`postDelayed`). The queue orders entries by their execution timestamp (`when`) so the next due item is always at the head.
+
+#### 15. Why doesn't an idle Android main thread consume 100% CPU?
+> **Answer:** The native `MessageQueue` uses Linux `epoll` system calls. When no message is ready, the thread is put to sleep by the kernel (`nativePollOnce`), consuming zero CPU until a new message wakes it via an `eventfd`.
+
+#### 16. What does `MessageQueue.next()` do?
+> **Answer:** It retrieves the next due `Message`. If the message timestamp is in the future or the queue is empty, it blocks the thread via `nativePollOnce()` until the timestamp expires or a new message is enqueued.
+
+#### 17. What happens when the MessageQueue is empty?
+> **Answer:** The thread enters a dormant/blocked state in native code awaiting kernel wake signals.
+
+#### 18. What is `ThreadLocal` and how does `Looper` use it?
+> **Answer:** `ThreadLocal` provides thread-scoped variable storage. Android uses `ThreadLocal<Looper>` so `Looper.prepare()` binds exactly one Looper to the calling thread and `Looper.myLooper()` retrieves it.
+
+#### 19. What is `Looper.myLooper()` vs `Looper.getMainLooper()`?
+> **Answer:** `myLooper()` returns the Looper of the calling thread (or `null` if none was prepared). `getMainLooper()` returns the main UI thread's Looper from any thread.
+
+#### 20. What is `Message.obtain()` and why should you use it?
+> **Answer:** It retrieves a pre-allocated, recycled `Message` instance from the global system message pool, avoiding unnecessary object allocations and reducing GC pressure.
+
+---
+
+### C. Advanced Internals & Barriers (Q21–Q30)
+
+#### 21. What is a synchronization barrier?
+> **Answer:** A synchronization barrier is a special entry in the `MessageQueue` that halts the processing of all subsequent synchronous messages while allowing asynchronous messages to proceed.
+
+#### 22. How is a synchronization barrier represented internally?
+> **Answer:** As a `Message` whose `target` field is `null` (`msg.target == null`).
+
+#### 23. Why do synchronization barriers exist in Android?
+> **Answer:** To guarantee UI rendering priority. When VSYNC occurs, `Choreographer` inserts a barrier so normal application messages wait while frame drawing (Input, Animation, Traversal) executes immediately.
+
+#### 24. Can a standard Handler message pass a synchronization barrier?
+> **Answer:** No. Standard messages are synchronous. Only messages explicitly flagged as asynchronous (or posted by an async Handler) can pass a barrier.
+
+#### 25. Does a synchronization barrier block background worker threads?
+> **Answer:** No. It only filters messages within that specific thread's `MessageQueue`.
+
+#### 26. What is `Choreographer`?
+> **Answer:** `Choreographer` is the subsystem that coordinates frame timing with display VSYNC pulses, posting high-priority asynchronous messages for input handling, animation evaluations, and view layout/draw traversals.
+
+#### 27. How do you create an asynchronous Handler?
+> **Answer:** Using `Handler.createAsync(looper)`. All messages posted through it will have `FLAG_ASYNCHRONOUS` set.
+
+#### 28. What is `HandlerThread`?
+> **Answer:** A subclass of Java `Thread` that encapsulates the boilerplate of setting up a `Looper`, creating a `MessageQueue`, and starting `Looper.loop()`.
+
+#### 29. What is the difference between `HandlerThread` and `ThreadPoolExecutor`?
+> **Answer:** `HandlerThread` executes tasks serially on a single dedicated background thread. `ThreadPoolExecutor` distributes tasks across a pool of multiple worker threads for concurrent/parallel execution.
+
+#### 30. Handler vs Kotlin Coroutines?
+> **Answer:** Handler is a low-level framework scheduling API tied to Loopers. Coroutines offer structured concurrency, suspension without blocking, cancellation propagation, flow operators, and scope management.
+
+---
+
+### D. Senior-Level & Architecture Questions (Q31–Q40)
+
+#### 31. Walk through the complete lifecycle of a `handler.post()` call from a background thread.
+> **Answer:**
+> 1. Background thread calls `handler.post(runnable)`.
+> 2. `post()` wraps the runnable in a `Message` with target set to the Handler and timestamp `when = now`.
+> 3. `MessageQueue.enqueueMessage()` acquires the queue lock, inserts the message into the ordered linked list, and calls `nativeWake()` if the queue was asleep.
+> 4. The Linux kernel wakes the Main thread blocked in `epoll_wait`.
+> 5. `MessageQueue.next()` returns the ready message to `Looper.loop()`.
+> 6. `Looper` invokes `msg.target.dispatchMessage(msg)`.
+> 7. The Handler executes `msg.callback.run()` on the Main thread.
+> 8. `Looper` calls `msg.recycleUnchecked()` to return the message to the object pool.
+
+#### 32. Why does calling `Looper.myLooper()` return `null` on standard worker threads?
+> **Answer:** Because plain threads do not have a Looper instantiated in their `ThreadLocal` unless `Looper.prepare()` has been called.
+
+#### 33. Why does the Android Main Thread have a Looper while worker threads do not?
+> **Answer:** The main thread is an event-driven loop that must continuously process OS lifecycle events, touch inputs, and UI frame callbacks. Worker threads are typically task-based and terminate once their block finishes.
+
+#### 34. What happens if you execute a 5-second heavy computation inside a main thread Handler callback?
+> **Answer:** The main Looper is blocked from processing subsequent messages, including touch inputs and VSYNC frame draw callbacks. After 5 seconds of unresponsiveness to input events, the OS displays an **Application Not Responding (ANR)** dialog.
+
+#### 35. Why is `postDelayed()` not equivalent to `Thread.sleep()`?
+> **Answer:** `Thread.sleep()` pauses the entire thread and freezes all message processing. `postDelayed()` inserts a message with a future timestamp into the queue, allowing the thread to freely process other ready messages while waiting.
+
+#### 36. How does a Handler cause memory leaks and how do you prevent them?
+> **Answer:** A delayed message in the `MessageQueue` holds a reference to its target `Handler`, which (if non-static or anonymous) holds an implicit reference to the `Activity`. To prevent leaks: remove callbacks in `onDestroy()` via `handler.removeCallbacksAndMessages(null)`, use static inner classes with `WeakReference<Activity>`, or use `lifecycleScope` coroutines.
+
+#### 37. Why is `Handler(Looper.getMainLooper())` preferred over the deprecated default constructor `Handler()`?
+> **Answer:** The parameterless `Handler()` implicitly binds to the caller's thread looper, leading to bugs if instantiated on a background thread. Explicitly passing `Looper.getMainLooper()` guarantees the target thread.
+
+#### 38. What is the difference between `Looper.quit()` and `Looper.quitSafely()`?
+> **Answer:** `quit()` discards all messages in the queue immediately. `quitSafely()` discards future delayed messages but delivers all messages that are already due before terminating the loop.
+
+#### 39. Can multiple Handlers share the same Looper?
+> **Answer:** Yes. Multiple Handlers can attach to the same Looper. Each enqueues messages into the same shared `MessageQueue`, and the Looper dispatches each message back to its originating Handler.
+
+#### 40. How does Android's Looper compare to Node.js / JavaScript event loops?
+> **Answer:** Both use single-threaded non-blocking event loops with queues for asynchronous callbacks. Android's Looper is native/Java-based with explicit thread binding via `ThreadLocal`, priority timestamp ordering, and Linux `epoll` kernel sleeping.
+
+---
+
+### The 1-Minute Master Interview Summary
+
+> **"A Looper runs an infinite event loop for a specific thread, pulling tasks from its timestamp-ordered MessageQueue and dispatching them. A Handler is the client API associated with that Looper to enqueue Runnables and Messages. The Android UI thread is driven entirely by its Main Looper. When the queue is empty, the native MessageQueue sleeps efficiently via Linux `epoll`, consuming zero CPU until new work is posted."**
+
+```text
+1. Handler does NOT create a thread.
+2. Looper runs the event loop (1:1 with Thread via ThreadLocal).
+3. MessageQueue stores tasks ordered by timestamp (when).
+4. epoll / eventfd prevents busy-waiting and saves 100% idle CPU.
+5. Synchronization Barriers prioritize frame rendering (Choreographer).
+```
 
 ## 5.4 Advanced System Resource Management
 
