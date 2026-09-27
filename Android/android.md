@@ -2671,36 +2671,176 @@ suspend fun Context.saveToGallery(bytes: ByteArray, name: String): Uri? =
 
 ## 2.8 Notifications, Channels, and PendingIntent
 
-### Definition
-* **Simple:** A notification is a message your app shows outside its own UI. A channel is a user-controllable category for those messages.
-* **Advanced:** `NotificationManagerService` owns posted notifications. Since API 26, every notification must belong to a `NotificationChannel` whose importance, sound, and vibration are controlled by the user, not the app.
+### 1. Notification
 
-### Why It Is Used
-Channels moved control of interruption from the developer to the user, which reduced blanket app-level notification blocks. `PendingIntent` gives another process (the system UI) permission to execute an intent **as your app**, which is what makes a notification tap able to open your activity.
+**Definition**
 
-### How It Works Internally
-* **Channel immutability.** Importance, sound, and vibration set at creation can never be raised by the app afterward. Only the user can change them. To change defaults you must delete and recreate the channel with a **new ID**, which resets the user's preference and is user-hostile — so get the design right the first time.
-* **`PendingIntent` identity.** It is keyed by `(requestCode, Intent action/data/component/categories)`. **Extras are not part of the key.** Two `PendingIntent`s that differ only in extras collide, and the second one silently reuses the first one's extras unless you pass `FLAG_UPDATE_CURRENT`.
-* **Mutability (API 31+).** You must pass `FLAG_IMMUTABLE` or `FLAG_MUTABLE`. Immutable is the safe default; mutable is needed only for direct-reply actions and Bubbles.
+> A **Notification** is a message displayed by Android outside your application's normal UI to inform the user about an event, status, or action.
 
-### Code Example
+**Examples:**
+- Message received
+- Download completed
+- Music currently playing
+- Sync completed
+- Active navigation in progress
+
+---
+
+### 2. Notification Channel
+
+**Definition**
+
+> A **NotificationChannel** groups notifications of a particular category and allows the user to control their behavior, such as importance, sound, and vibration.
+
+Notification channels were introduced in **Android 8.0 (API 26)**.
+
+```kotlin
+val channel = NotificationChannel(
+    "sync",
+    "Sync notifications",
+    NotificationManager.IMPORTANCE_DEFAULT
+).apply {
+    description = "Notifications for background synchronization"
+}
+
+notificationManager.createNotificationChannel(channel)
+```
+
+Then post with:
+
+```kotlin
+val notification = NotificationCompat.Builder(context, "sync")
+    .setSmallIcon(R.drawable.ic_sync)
+    .setContentTitle("Sync completed")
+    .setContentText("Your data is up to date")
+    .build()
+```
+
+#### Important Interview Point: Channel Immutability
+
+On Android 8+, the **channel's importance** controls notification behavior. You cannot programmatically override or raise channel importance after creation.
+
+```text
+Channel created: IMPORTANCE_DEFAULT
+        ↓
+User modifies settings in OS Settings (e.g. mutes channel)
+        ↓
+App cannot override user's choice programmatically
+```
+
+> **Interview Best Practice:** Once a channel is created, the app cannot programmatically alter user-customized channel settings. The user has full authority. While deleting and recreating with a new ID is technically possible, doing so purely to bypass user preferences is considered anti-pattern and user-hostile.
+
+---
+
+### 3. PendingIntent
+
+**Definition**
+
+> A **PendingIntent** is a security token / wrapper that allows another application or the Android system (such as SystemUI or AlarmManager) to execute a specified Intent later, with the **identity and permissions of the application that created the PendingIntent**.
+
+```text
+User taps notification in System UI
+        ↓
+System UI executes PendingIntent
+        ↓
+PendingIntent fires with YOUR app's UID/Permissions
+        ↓
+Your Target Component (Activity/Service/Receiver) opens
+```
+
+#### Normal Intent vs PendingIntent
+
+* **Intent ("Do this now"):** Executed immediately by your application in your process context.
+  ```kotlin
+  startActivity(intent)
+  ```
+* **PendingIntent ("Keep this action and execute it later"):** Handed over to external processes (SystemUI, AlarmManager, App Widgets) to be executed on your behalf.
+  ```kotlin
+  val pendingIntent = PendingIntent.getActivity(
+      context,
+      requestCode,
+      intent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+  )
+  ```
+
+---
+
+### 4. PendingIntent Mutability (Android 12+ / API 31)
+
+Starting with **Android 12 (API 31)**, developers must explicitly specify mutability flags:
+
+* `PendingIntent.FLAG_IMMUTABLE`: The receiving app/system cannot fill in or modify the underlying Intent. **Recommended default for security**.
+* `PendingIntent.FLAG_MUTABLE`: Allows the receiving system or component to update/fill in unresolved Intent fields (e.g., inline direct-reply text in notifications, Bubbles, or `RemoteViews` item clicks).
+
+> **Interview Answer:** For PendingIntents on Android 12 and later, developers must explicitly choose mutability. Default to `FLAG_IMMUTABLE` unless the specific use case (like inline replies or bubble intents) requires mutability.
+
+---
+
+### 5. `FLAG_UPDATE_CURRENT` & Identity Mechanics
+
+`PendingIntent` equality is determined by:
+```text
+(requestCode, Intent action, Intent data/URI, Intent type, Intent component, Intent categories)
+```
+> **Critical Catch:** **Intent extras are NOT part of the PendingIntent identity check.**
+
+If you create a new `PendingIntent` matching an existing one but with different extras:
+* Without `FLAG_UPDATE_CURRENT`: The system keeps the old extras and ignores the new ones.
+* With `FLAG_UPDATE_CURRENT`: The system updates the extras of the existing instance with the new Intent's extras.
+
+---
+
+### 6. Notification ID vs PendingIntent Request Code
+
+These two identifiers serve distinct purposes:
+
+| Identifier | Purpose | API Call |
+|---|---|---|
+| **Notification ID** | Identifies which notification to display, update, or cancel in the notification tray | `notificationManager.notify(id, notification)` |
+| **PendingIntent Request Code** | Differentiates distinct `PendingIntent` instances with the same target intent | `PendingIntent.getActivity(context, requestCode, intent, flags)` |
+
+```text
+Notification ID (Controls tray entry) ≠ PendingIntent requestCode (Controls intent instance)
+```
+
+---
+
+### 7. Android 13 (API 33) Runtime Permission (`POST_NOTIFICATIONS`)
+
+Starting in Android 13 (API 33), posting notifications requires runtime permission:
+
+```xml
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+```
+
+* For newly installed applications on API 33+, notifications are blocked until the user grants permission.
+* **Important nuance on `notify()` failure:** Do not assume `notify()` throws an exception when notifications or channels are blocked. It silently fails / drops delivery. Always verify using:
+  ```kotlin
+  val areEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+  ```
+
+---
+
+### 8. Production-Grade Notification Implementation Example
+
 ```kotlin
 object Notifier {
     private const val CHANNEL_SYNC = "sync_status_v1"
 
-    // Create channels once, ideally in Application.onCreate — repeat calls are cheap no-ops
+    // Create channels in Application.onCreate — repeat calls are cheap no-ops
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_SYNC,
-            context.getString(R.string.channel_sync_name),   // Localized: shown in Settings
+            context.getString(R.string.channel_sync_name),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = context.getString(R.string.channel_sync_desc)
             setShowBadge(false)
         }
         context.getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+            ?.createNotificationChannel(channel)
     }
 
     fun showSyncComplete(context: Context, itemId: Long) {
@@ -2711,11 +2851,11 @@ object Notifier {
             MainActivity::class.java
         )
 
-        // TaskStackBuilder synthesizes a correct back stack for the deep-linked screen
-        val pending = TaskStackBuilder.create(context).run {
+        // TaskStackBuilder synthesizes a complete back stack so pressing Back returns to parent screens
+        val pendingIntent = TaskStackBuilder.create(context).run {
             addNextIntentWithParentStack(deepLink)
             getPendingIntent(
-                itemId.toInt(),                                       // Unique per item: avoids collision
+                itemId.toInt(), // Unique request code per item prevents PendingIntent collision
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
@@ -2724,89 +2864,219 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_sync)
             .setContentTitle(context.getString(R.string.sync_done_title))
             .setContentText(context.getString(R.string.sync_done_body))
-            .setContentIntent(pending)
-            .setAutoCancel(true)                                      // Dismiss on tap
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)         // Honored on pre-26 only
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Pre-Oreo compatibility
             .build()
 
-        // Guard: posting without POST_NOTIFICATIONS on API 33+ is silently dropped
         with(NotificationManagerCompat.from(context)) {
-            if (areNotificationsEnabled()) notify(itemId.toInt(), notification)
+            if (areNotificationsEnabled()) {
+                notify(itemId.toInt(), notification) // Distinct Notification ID prevents overwriting
+            }
         }
     }
 }
 ```
 
-### Common Pitfalls
-* **Reusing notification ID `0` or a constant** for every item collapses all of them into one. Derive a stable per-item ID.
-* **Assuming `notify()` throws when blocked.** It silently no-ops. Check `areNotificationsEnabled()` and surface an in-app prompt.
-* **Setting priority instead of channel importance** on API 26+. `setPriority` is ignored; the channel wins.
-
 ---
 
 ## 2.9 Configuration Changes, Process Death, and State Restoration
 
-### Definition
-* **Simple:** A configuration change (rotation, dark mode, language, window resize) destroys and recreates your activity. Process death is the OS killing your app entirely while it sits in the background.
-* **Advanced:** Configuration changes trigger an `Activity` relaunch through `ActivityThread.handleRelaunchActivity`, preserving `ViewModelStore` via `NonConfigurationInstances`. Process death destroys everything in memory; only the serialized `Bundle` written by `onSaveInstanceState` survives.
+> **Core Senior Principle:** **Configuration change and process death are fundamentally different failure modes.** Conflating them is the #1 source of state-loss bugs in production Android apps.
 
-### Why It Is Used
-These are two distinct failure modes that developers routinely conflate. A ViewModel survives rotation but **not** process death. `SavedStateHandle` survives both. Getting this wrong produces bugs that only appear after the app has been backgrounded for a while — exactly the class of bug interviewers probe for.
+---
 
-### How It Works Internally
+### 1. Configuration Change
 
-| Scenario | Activity Instance | ViewModel | `SavedStateHandle` / `Bundle` | Static / Singleton |
-|---|---|---|---|---|
-| Rotation / config change | Destroyed, recreated | **Survives** | Survives | Survives |
-| System-initiated process death | Destroyed | **Lost** | **Survives** | **Lost** |
-| User swipes app from Recents | Destroyed | Lost | **Lost** | Lost |
-| `finish()` / back out | Destroyed | Cleared (`onCleared`) | Lost | Survives |
+**Definition**
 
-**Bundle size limit.** `onSaveInstanceState` writes into a Binder transaction, subject to the ~1 MB per-process buffer. Storing a large list or a bitmap throws `TransactionTooLargeException`. Save IDs and scroll positions, never data payloads.
+> A **configuration change** occurs when runtime device properties change — such as screen orientation, dark/light mode toggle, locale/language switch, font scale change, or window resizing in multi-window mode.
 
-### Code Example
-```kotlin
-// SavedStateHandle: the only state holder that survives BOTH config change and process death
-@HiltViewModel
-class SearchViewModel @Inject constructor(
-    private val savedState: SavedStateHandle,
-    private val repo: SearchRepository
-) : ViewModel() {
+By default, Android destroys and recreates the `Activity` so that the app automatically reloads appropriate alternate resources (`layout-land`, `values-night`, `values-es`, etc.).
 
-    // Backed by the saved-state Bundle; restored automatically after process death
-    val query: StateFlow<String> = savedState.getStateFlow(KEY_QUERY, "")
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val results: StateFlow<UiState> = query
-        .debounce(300)
-        .flatMapLatest { q -> if (q.isBlank()) flowOf(UiState.Idle) else repo.search(q) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Idle)
-
-    fun onQueryChange(value: String) { savedState[KEY_QUERY] = value }
-
-    private companion object { const val KEY_QUERY = "query" }
-}
-
-// Reproducing process death in a test/QA pass — this is the only reliable way to catch these bugs
-// 1. Put the app in the background (Home button, NOT swipe-away).
-// 2. adb shell am kill com.example.app
-// 3. Reopen from Recents; the system restores the saved Bundle.
+```text
+Activity A (Active) ─── Rotation / Dark Mode ───► Activity A destroyed (onDestroy)
+         │                                                      │
+         └─────────► ViewModelStore Preserved ──────────────────┘
+                                 │
+                                 ▼
+                     New Activity A created (onCreate)
+                                 │
+                     Re-attaches to same ViewModel
 ```
 
+---
+
+### 2. Process Death
+
+**Definition**
+
+> **Process death** occurs when Android terminates an application's process while it is in the background (or stopped) to reclaim memory for foreground apps or high-priority system tasks.
+
+```text
+App in foreground ──► User presses Home ──► App in background (onStop)
+                                                      │
+                                            System kills process (Low Memory)
+                                                      │
+User returns to app from Recents ◄────────────────────┘
+       │
+Android spawns a NEW Linux process
+       │
+Recreates Activity & ViewModel from scratch
+       │
+Restores state ONLY from SavedState Bundle / SavedStateHandle
+```
+
+#### What Survives vs What Is Lost
+
+| State Storage | Configuration Change | System Process Death | User Explicit Finish / Swipe |
+|---|:---:|:---:|:---:|
+| **Activity/Fragment Fields** | ❌ Lost | ❌ Lost | ❌ Lost |
+| **ViewModel** | ✅ **Survives** | ❌ **Lost** | ❌ Cleared (`onCleared`) |
+| **`SavedStateHandle` / `onSaveInstanceState`** | ✅ **Survives** | ✅ **Survives\*** | ❌ Lost |
+| **Static Variables / Singletons / In-Memory Cache** | ✅ Survives | ❌ **Lost** | ❌ Lost |
+| **Persistent Storage (Room, DataStore, Files, Backend)** | ✅ **Survives** | ✅ **Survives** | ✅ **Survives** |
+
+`*` *Survives system-initiated process death when the OS has saved instance state and the component is being reconstructed from that bundle.*
+
+---
+
+### 3. State Restoration Hierarchy & Mental Model
+
+```text
+                                UI State
+                                   │
+           ┌───────────────────────┼───────────────────────┐
+           ↓                       ↓                       ↓
+    Activity Fields            ViewModel            SavedStateHandle
+    (Transient UI state)   (In-memory screen state)  (Reconstruction keys)
+           │                       │                       │
+           │                  Survives config         Survives config
+           │                      changes                 & process death
+           │                       │                       │
+           └───────────────────────┼───────────────────────┘
+                                   ↓
+                             Process Death
+                                   ↓
+                         All memory destroyed
+                                   ↓
+                       Reconstruct the screen
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ↓                             ↓
+          SavedStateHandle              Persistent Storage
+        (ID, query, scroll pos)        (Room / DataStore / Backend)
+```
+
+---
+
+### 4. `SavedStateHandle` vs Persistent Storage
+
+**Why shouldn't we put everything in `SavedStateHandle`?**
+* `onSaveInstanceState` / `SavedStateHandle` data is serialized and passed across the system server via **Binder transactions**.
+* The system-wide IPC transaction buffer is limited to **~1 MB per process** (shared across all ongoing binder transactions).
+* Exceeding this budget throws **`TransactionTooLargeException`** and crashes the app.
+
+> **Rule of Thumb:** Store **reconstruction identifiers** (e.g. `userId: 1234`, `searchQuery: "kotlin"`, `selectedTabIndex: 2`, scroll position) in `SavedStateHandle`. Store **actual data payloads** (lists, bitmaps, JSON records) in Room/DataStore or re-fetch from cache/network.
+
+---
+
+### 5. `android:configChanges` Attribute
+
 ```xml
-<!-- Handling config changes yourself: valid only when you genuinely re-lay-out without recreating.
-     Omitting a qualifier here (e.g. locale) means that change silently stops recreating the
-     activity and your localized strings never refresh. -->
 <activity
     android:name=".VideoPlayerActivity"
     android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
 ```
 
-### Common Pitfalls
-* **Using `android:configChanges` to "fix" rotation bugs.** It hides the bug instead of fixing it, and process death will still break the screen. Fix state ownership instead.
-* **Storing UI state in a singleton or `object`.** It looks like it works until process death, then returns a stale default.
-* **Testing rotation only.** Rotation exercises ViewModel retention, which is the *easy* path. Always also test `am kill`.
-* **`onSaveInstanceState` is not guaranteed on `finish()`.** Do not use it as a persistence mechanism; use DataStore or Room for anything durable.
+* **What it does:** Tells Android not to destroy and recreate the Activity when the declared configurations change. Instead, the Activity receives a callback in `onConfigurationChanged(newConfig: Configuration)`.
+* **When to use:** Legitimate use cases like custom video players maintaining playback surface state or specific hardware game loops.
+* **When NOT to use:** Never use `android:configChanges` as a quick fix for rotation crashes. It masks architecture issues, skips loading localized strings or qualified layouts, and fails completely when process death occurs.
+
+---
+
+### 6. Production Code Example: `SavedStateHandle` Implementation
+
+```kotlin
+@HiltViewModel
+class SearchViewModel @Inject constructor(
+    private val savedState: SavedStateHandle,
+    private val searchRepository: SearchRepository
+) : ViewModel() {
+
+    // Backed by SavedStateHandle Bundle; automatically restored after process death
+    val searchQuery: StateFlow<String> = savedState.getStateFlow(KEY_QUERY, "")
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val uiState: StateFlow<SearchUiState> = searchQuery
+        .debounce(300)
+        .flatMapLatest { query ->
+            if (query.isBlank()) {
+                flowOf(SearchUiState.Empty)
+            } else {
+                searchRepository.searchProducts(query)
+                    .map { SearchUiState.Success(it) }
+                    .catch { emit(SearchUiState.Error(it.message ?: "Unknown error")) }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = SearchUiState.Loading
+        )
+
+    fun onQueryChanged(newQuery: String) {
+        savedState[KEY_QUERY] = newQuery // Automatically updates StateFlow and persists to SavedState bundle
+    }
+
+    private companion object {
+        const val KEY_QUERY = "extra_search_query"
+    }
+}
+```
+
+---
+
+### 7. Testing Configuration Changes vs Process Death
+
+| Test Target | ADB / Device Action | What It Tests |
+|---|---|---|
+| **Configuration Change** | Rotate device or `adb shell cmd statusbar expand-settings` / toggle dark mode | Validates `ViewModel` retention and layout resource switching |
+| **System Process Death** | 1. Open app<br>2. Press **Home** (backgrounds app)<br>3. Run `adb shell am kill <package_name>`<br>4. Re-open app from Recents | Validates `SavedStateHandle` / `onSaveInstanceState` and repository reconstruction |
+
+---
+
+### 8. Top 10 Interview Questions & Answers
+
+#### Q1: What is a configuration change?
+> **Answer:** A configuration change occurs when the runtime configuration of the device changes (orientation, dark mode, locale, display scaling, multi-window resize). By default, Android restarts the active Activity (`onDestroy()` -> `onCreate()`) so the system can reload appropriate alternative resources.
+
+#### Q2: Does ViewModel survive configuration changes?
+> **Answer:** Yes. `ViewModelStore` is retained across Activity recreation via `NonConfigurationInstances`. When the recreated Activity connects to the `ViewModelProvider`, it receives the retained `ViewModel` instance.
+
+#### Q3: Does ViewModel survive process death?
+> **Answer:** No. `ViewModel` instances reside purely in process memory. When the OS terminates the application process due to resource pressure, all in-memory instances are cleared.
+
+#### Q4: What state survives process death?
+> **Answer:** State serialized into the `Bundle` via `onSaveInstanceState()` or `SavedStateHandle`, as well as durable data written to persistent storage (Room, DataStore, files, remote DB).
+
+#### Q5: What is the difference between `ViewModel` and `SavedStateHandle`?
+> **Answer:** `ViewModel` preserves rich in-memory objects across configuration changes without serialization overhead. `SavedStateHandle` saves lightweight key-value state to a serialized Bundle that survives both configuration changes and system-initiated process death.
+
+#### Q6: Why shouldn't we store everything in `SavedStateHandle`?
+> **Answer:** SavedState is written to an IPC Binder transaction with a strict buffer limit (~1 MB per process). Storing large collections or images triggers `TransactionTooLargeException`. Only store IDs, query strings, and state flags.
+
+#### Q7: What is the difference between `finish()` and process death?
+> **Answer:** `finish()` represents intentional user/developer dismissal of the Activity; the state is discarded and `ViewModel.onCleared()` is called. Process death is an unintentional, OS-driven eviction while the task remains in the user's task history, expecting full restoration upon return.
+
+#### Q8: What does `android:configChanges` do?
+> **Answer:** It instructs the OS not to restart the Activity on specified configuration changes. Instead, it dispatches the `onConfigurationChanged()` callback. It should only be used when explicitly necessary (e.g. video playback surface retention), not to circumvent state restoration bugs.
+
+#### Q9: What is `PendingIntent.FLAG_IMMUTABLE` vs `FLAG_MUTABLE`?
+> **Answer:** Introduced as mandatory flags in Android 12 (API 31), `FLAG_IMMUTABLE` prevents the receiving app or system from mutating the underlying intent. `FLAG_MUTABLE` allows modifying intent parameters and is strictly required for inline notification replies, bubbles, and remote view item actions.
+
+#### Q10: How do Notification Channels behave when modified programmatically after creation?
+> **Answer:** Once a `NotificationChannel` is created, its importance, sound, and visual interruption settings are owned by the user. Programmatic attempts to increase importance or modify user settings are ignored by `NotificationManagerService`.
 
 ---
 # 3. UI Layouts, Views, and Fragments
