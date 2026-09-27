@@ -6472,352 +6472,460 @@ suspend fun <T> safeApiCall(
 ---
 # 7. Background Execution & Pagination
 
+> **Interview Principle:** **Choosing a background scheduling mechanism is a fundamental correctness decision, not a stylistic preference.** Selecting the wrong API leads to work being silently dropped or throttled by Android's aggressive battery management.
+
+### Quick Decision Matrix
+
+| Requirement | Appropriate Mechanism | Key Property |
+|---|---|---|
+| Work must eventually execute reliably | **WorkManager** | Persisted to SQLite, constraint-aware, retried |
+| User is actively watching / listening to ongoing work | **Foreground Service** | Continuous execution with user-visible ongoing notification |
+| Work must fire at a precise wall-clock time | **Exact Alarm** (`AlarmManager`) | Wakes device at exact timestamp (requires API 31+ permission) |
+| Incremental loading of huge datasets during scroll | **Paging 3** | Bounded memory, prefetching, offline `RemoteMediator` |
+| Server needs to initiate contact with the app | **FCM** (Firebase Cloud Messaging) | Wakes dormant apps via persistent system-level socket |
+| OS restrictions when idle / unplugged | **Doze / App Standby** | Batches background work into maintenance windows |
+
+---
+
 ## 7.1 WorkManager Internals
 
-### Definition
-* **Deferrable work** — work that must eventually happen but does not have to happen *now*: syncing, uploading, cleanup, log shipping.
-* **Guaranteed execution** — WorkManager's core promise: the request is **persisted to disk**, so it survives process death, app restarts, and device reboots. "Guaranteed" means it will eventually run, not that it runs on time.
-* **`Worker` / `CoroutineWorker`** — the class holding the work. `doWork()` returns `success`, `failure`, or `retry`.
-* **Constraint** — a condition that must hold before execution (network type, charging, battery not low), which lets the OS batch work from many apps into shared wake-ups.
-* **Backoff policy** — how long to wait before retrying after `Result.retry()`, linear or exponential.
-* **Idempotency** — the property every worker needs, because WorkManager can re-run one after a process kill.
+### 7.1.1 What is WorkManager?
 
-### How It Works Internally
-WorkManager chooses the most efficient scheduling mechanism depending on the OS version and system states.
+> **WorkManager is Android's definitive solution for persistent, deferrable background work.**
 
-```mermaid
-graph TD
-    Request[WorkRequest Enqueued] --> CheckOS{Device API Level?}
-    CheckOS -->|API >= 23| JobScheduler[JobScheduler API]
-    CheckOS -->|API < 23| AlarmManager[AlarmManager + BroadcastReceiver]
-    CheckOS -->|Constraint Check| Execution[Task Execution]
-```
+**Ideal for:** Database syncs, file uploads/downloads, analytics log shipping, cache cleanup, and processing queued offline outbox actions.
 
-* Under the hood, it stores task metadata in a Room database file to ensure tasks survive device restarts.
-* It uses **JobScheduler** on API 23+, and falls back to a custom configuration of **AlarmManager** + **BroadcastReceiver** on older devices.
-* It monitors system constraints (battery charging, active Wi-Fi, storage availability) and schedules execution windows when all conditions are satisfied.
+#### What does "Guaranteed Execution" mean?
+* **Guaranteed:** The work request is serialized into an internal **Room SQLite database**. It survives process death, application crashes, low memory kills, and full device reboots.
+* **NOT Exact Timing:** "Guaranteed" means Android will **eventually** execute the work once constraints are met. It is **not** an exact clock scheduler.
 
-```kotlin
-// Example Coroutine Worker
-class CacheSyncWorker(
-    context: Context,
-    params: WorkerParameters
-) : CoroutineWorker(context, params) {
-
-    override suspend fun doWork(): Result {
-        return try {
-            // Perform background sync operation
-            syncCacheData()
-            Result.success()
-        } catch (e: Exception) {
-            if (runAttemptCount < 3) {
-                Result.retry() // Reschedule work based on backoff policy
-            } else {
-                Result.failure()
-            }
-        }
-    }
-}
+```text
+Your Application
+       │
+       ▼ enqueue(WorkRequest)
+WorkManager Internal Room Database (Persisted on Disk)
+       │
+       ▼
+System Scheduler Engine (JobScheduler on API 23+ / AlarmManager fallback)
+       │
+       ├── Constraints Verified? (Unmetered Network, Charging, Battery Not Low)
+       │
+       ▼
+Worker.doWork() / CoroutineWorker.doWork()
+       │
+       ├── Result.success() ──► Task marked completed in Room DB
+       ├── Result.retry()   ──► Rescheduled with Exponential/Linear Backoff
+       └── Result.failure() ──► Task permanently aborted
 ```
 
 ---
 
-## 7.2 Paging 3 Architecture
+### 7.1.2 Constraints & Backoff Policies
 
-### Definition
-* **Paging** — loading a long list in **pages** as the user scrolls, rather than fetching every row up front. It bounds both memory use and network transfer.
-* **`PagingSource`** — loads one page from a single source and returns the keys for the next and previous pages.
-* **`RemoteMediator`** — coordinates network and database so pages fetched remotely are written locally, which is what makes a paged list work offline.
-* **`Pager`** — the configuration object (`pageSize`, `prefetchDistance`) that produces a `Flow<PagingData<T>>`.
-* **`PagingDataAdapter` / `collectAsLazyPagingItems`** — the UI-side consumer, which also exposes `loadState` so you can render loading and error rows.
-
-The Paging 3 library helps load data in blocks as the user scrolls, optimizing memory and network bandwidth.
-
-```mermaid
-graph LR
-    PagingSource[1. PagingSource] --> Pager[2. Pager Config]
-    Pager --> PagingData[3. Flow / PagingData]
-    PagingData --> Adapter[4. PagingDataAdapter]
-    Adapter --> RecyclerView[5. RecyclerView UI]
+#### 1. System Constraints
+Work runs only when declared environmental conditions are satisfied:
+```kotlin
+val constraints = Constraints.Builder()
+    .setRequiredNetworkType(NetworkType.UNMETERED) // Wi-Fi only
+    .setRequiresBatteryNotLow(true)
+    .setRequiresCharging(true)
+    .setRequiresStorageNotLow(true)
+    .build()
 ```
 
-1. **PagingSource:** Fetches incremental pages of data from a raw source (like a REST API or SQLite).
-2. **RemoteMediator:** Coordinates loading data from the network into the database cache for offline usage.
-3. **Pager:** Configures the paging parameters (like `pageSize`, `prefetchDistance`) and generates the `Flow<PagingData<Value>>`.
-4. **PagingDataAdapter:** Integrates with the RecyclerView, displaying data elements and handling loading state callbacks automatically.
+#### 2. Backoff Criteria
+When a worker returns `Result.retry()`, WorkManager delays the next attempt:
+* **Linear:** $30\text{s}, 60\text{s}, 90\text{s}, 120\text{s}\dots$
+* **Exponential:** $30\text{s}, 60\text{s}, 120\text{s}, 240\text{s}\dots$ (Default minimum backoff is 10 seconds).
+
+```kotlin
+.setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+```
 
 ---
 
-## 7.3 Choosing a Scheduler: WorkManager vs. AlarmManager vs. Foreground Service
+### 7.1.3 Idempotency: The Core Requirement for Workers
 
-### Definition
-* **Scheduler choice as a correctness decision** — these APIs are not stylistic alternatives. Each survives a different set of OS restrictions, so picking the wrong one means the work is silently dropped.
-* **WorkManager** — persisted, constraint-aware, retried, deferrable. The default for anything the user is not watching happen.
-* **Foreground service** — runs continuously with a visible notification, for work the user is actively aware of right now.
-* **`AlarmManager` exact alarm** — fires at a specific wall-clock time, and is the only option when the user chose that time. Gated behind a permission since Android 12.
-* **The deciding question** — would the user notice this *not happening right now* (foreground service), *not happening at a specific time* (exact alarm), or neither (WorkManager)?
+> **Crucial Senior Concept:** Because WorkManager can kill and re-run a worker (e.g. if the OS reclaims memory or network drops mid-upload), **every worker must be strictly idempotent**.
 
-### Why It Is Used
-Since Android 6 (Doze) the platform has aggressively suppressed background execution to protect battery. Each API survives a different set of restrictions, so the choice is a correctness decision, not a style preference.
+* If a payment or order upload runs twice, the backend must accept a unique client-generated `idempotency_key` or `order_id` to prevent duplicate processing.
 
-### How It Works Internally
+---
 
-| API | Guaranteed? | Survives Reboot | Exact Timing | Correct Use Case |
-|---|---|---|---|---|
-| **WorkManager** | Yes — persisted in its own Room DB | Yes | No (deferrable) | Sync, upload, periodic cleanup, log shipping |
-| **Foreground Service** | Yes, while it runs | No | Immediate & continuous | Music playback, navigation, active workout tracking |
-| **AlarmManager (`setExactAndAllowWhileIdle`)** | Yes, but rate-limited | Needs `BOOT_COMPLETED` receiver | Yes | Alarm clock, medication reminder, calendar event |
-| **`Coroutine` in `viewModelScope`** | No | No | Immediate | Work tied to a visible screen only |
-| **`JobScheduler`** | Yes | Yes | No | Legacy — WorkManager wraps it |
+### 7.1.4 Unique Work, Chains, and Expedited Work
 
-**Decision rule:** if the user would notice the work not happening *right now*, it needs a foreground service. If the user would notice it not happening *at a specific wall-clock time*, it needs an exact alarm. Everything else is WorkManager.
-
-**Exact alarms are now a permission.** On Android 12+ `SCHEDULE_EXACT_ALARM` is required, and on Android 13+ it is no longer auto-granted for most apps. Play restricts the `USE_EXACT_ALARM` permission to alarm clocks and calendar apps.
-
-### Code Example
 ```kotlin
-// WorkManager: constrained, unique, with exponential backoff
+// 1. Unique Periodic Work (Prevents stacking duplicate schedules on app launch)
 val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(6, TimeUnit.HOURS)
-    .setConstraints(
-        Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.UNMETERED)   // Wi-Fi only
-            .setRequiresBatteryNotLow(true)
-            .build()
-    )
+    .setConstraints(constraints)
     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
     .addTag("periodic-sync")
     .build()
 
 WorkManager.getInstance(context).enqueueUniquePeriodicWork(
     "periodic-sync",
-    // KEEP preserves the existing schedule across app restarts; UPDATE would reset the interval
-    ExistingPeriodicWorkPolicy.KEEP,
+    ExistingPeriodicWorkPolicy.KEEP, // KEEP preserves existing interval; UPDATE replaces
     syncRequest
 )
 
-// Chained work: each stage runs only if the previous succeeded, and output flows forward
+// 2. Chained Work: Sequential pipeline with input/output data propagation
 WorkManager.getInstance(context)
-    .beginUniqueWork("upload-flow", ExistingWorkPolicy.REPLACE, compressRequest)
-    .then(uploadRequest)
-    .then(cleanupRequest)
+    .beginUniqueWork("media-pipeline", ExistingWorkPolicy.REPLACE, compressWork)
+    .then(uploadWork)
+    .then(cleanupWork)
     .enqueue()
 
-// Expedited work: for user-initiated work that must start immediately.
-// setExpedited is a REQUEST, not a guarantee — the OS grants a limited daily quota.
-val urgent = OneTimeWorkRequestBuilder<SendMessageWorker>()
+// 3. Expedited Work: Urgent user-initiated work that must start immediately
+val urgentWork = OneTimeWorkRequestBuilder<SendMessageWorker>()
     .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-    .setInputData(workDataOf("message_id" to id))
+    .setInputData(workDataOf("msg_id" to messageId))
     .build()
 ```
 
-```kotlin
-// Exact alarm, correct for Android 12+
-fun scheduleReminder(context: Context, triggerAtMillis: Long, reminderId: Int) {
-    val alarmManager = context.getSystemService(AlarmManager::class.java)
-
-    // On API 31+ the user can revoke this at any time; check before every schedule
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
-        context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
-        return
-    }
-
-    val pending = PendingIntent.getBroadcast(
-        context, reminderId,
-        Intent(context, ReminderReceiver::class.java).putExtra("id", reminderId),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
-    // ...AllowWhileIdle is what makes it fire during Doze
-    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
-}
-```
-
-```xml
-<!-- Alarms do not survive reboot on their own; re-register them -->
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-<receiver android:name=".BootReceiver" android:exported="false">
-    <intent-filter>
-        <action android:name="android.intent.action.BOOT_COMPLETED" />
-    </intent-filter>
-</receiver>
-```
-
-### Common Pitfalls
-* **Using `AlarmManager` for periodic sync.** It wakes the device unnecessarily and drains battery; WorkManager batches work across apps.
-* **Assuming `PeriodicWorkRequest` intervals are precise.** The minimum interval is 15 minutes and the OS may delay execution substantially. Never build a clock on it.
-* **Not making work idempotent.** WorkManager can re-run a worker after a process kill. Running it twice must be harmless.
-* **Passing large data through `Data`.** The `Data` object is capped at ~10 KB. Pass an ID and read from the database.
-* **Forgetting `BOOT_COMPLETED`.** All exact alarms are cleared on reboot.
+> **Data Size Constraint:** The `Data` payload passed via `setInputData` / `outputData` is strictly limited to **~10 KB**. Never pass images or large JSON blobs; pass database primary keys or file URIs instead.
 
 ---
 
-## 7.4 Doze, App Standby Buckets, and Battery Restrictions
+## 7.2 Paging 3 Architecture
 
-### Definition
-* **Doze:** When a device is stationary, unplugged, and screen-off for a while, the system enters maintenance windows and suspends network access, alarms, jobs, and wakelocks for all apps between them.
-* **App Standby Buckets:** A per-app classification (API 28+) based on usage recency and frequency that determines how much background work the app is allowed.
+### 7.2.1 What is Paging 3?
 
-### Why It Is Used
-"It works on my phone but not on the user's" is almost always a Doze or bucket issue. Understanding the buckets explains why background work degrades over time for infrequently-opened apps.
+Paging 3 loads large datasets incrementally in chunks (pages) as the user scrolls, bounding both network bandwidth and heap memory consumption.
 
-### How It Works Internally
-
-| Bucket | Assigned When | Job Quota | Alarm Quota |
-|---|---|---|---|
-| **Active** | App is in use right now | Unlimited | Unlimited |
-| **Working set** | Used regularly | ~Every 2 hours | ~Every 2 hours |
-| **Frequent** | Used often but not daily | ~Every 8 hours | ~Every 8 hours |
-| **Rare** | Used infrequently | ~Every 24 hours | ~Every 24 hours |
-| **Restricted** (API 30+) | Heavy background use, or user-set | ~Once per day | ~Once per day |
-
-**Doze restrictions between maintenance windows:** no network access, deferred `AlarmManager` alarms (except `...AllowWhileIdle`), suspended jobs and syncs, ignored wakelocks, no Wi-Fi scans. High-priority FCM messages are the sanctioned way to break through.
-
-**App Standby Buckets are per-device and adaptive** — you cannot set your own bucket, and users who rarely open your app will see background work throttled to near-nothing. Design for that rather than fighting it.
-
-### Code Example
-```bash
-# Reproduce Doze and bucket behavior on a real device — this is the only reliable way to test it
-adb shell dumpsys battery unplug
-adb shell dumpsys deviceidle force-idle          # Force full Doze immediately
-adb shell dumpsys deviceidle step                # Advance one Doze stage at a time
-adb shell dumpsys deviceidle unforce             # Back to normal
-adb shell dumpsys battery reset
-
-# Inspect and force App Standby buckets
-adb shell am get-standby-bucket com.example.app
-adb shell am set-standby-bucket com.example.app rare
-adb shell dumpsys usagestats | grep com.example.app
+```text
+                  Pager (Config: pageSize=20, prefetchDistance=5)
+                         │
+                         ▼
+                   PagingData<T> (Stream of paged data)
+                         │
+         ┌───────────────┴───────────────┐
+         ▼                               ▼
+    RecyclerView                  Jetpack Compose
+(PagingDataAdapter)            (collectAsLazyPagingItems)
 ```
-
-```kotlin
-// Detect whether the user has excluded the app from battery optimization.
-// Requesting this exemption is heavily restricted by Play policy — only ask when
-// the core feature (alarm clock, sleep tracking) genuinely cannot work without it.
-fun isIgnoringBatteryOptimizations(context: Context): Boolean {
-    val pm = context.getSystemService(PowerManager::class.java)
-    return pm.isIgnoringBatteryOptimizations(context.packageName)
-}
-
-// Also surface the case where the user has put the app in the Restricted bucket,
-// which silently kills nearly all background work.
-fun isBackgroundRestricted(context: Context): Boolean {
-    val am = context.getSystemService(ActivityManager::class.java)
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && am.isBackgroundRestricted
-}
-```
-
-### Common Pitfalls
-* **Requesting `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` casually.** Play rejects apps that ask without an approved use case.
-* **Testing only with the screen on and the device plugged in.** Doze never triggers, so the bug never appears in QA.
-* **Vendor-specific killers.** Xiaomi, Huawei, Oppo, and others add their own aggressive process killing beyond AOSP. Test on those devices; direct users to the OEM's autostart settings when a feature genuinely requires it.
 
 ---
 
-## 7.5 Firebase Cloud Messaging (FCM)
+### 7.2.2 Core Components
 
-### Definition
-* **Push messaging** — the server initiating contact with the app, rather than the app polling. It is the only way to reach an app that is not currently running.
-* **Registration token** — the per-installation address FCM delivers to. It **rotates** (on reinstall, restore, clear-data, and periodically), so it must be re-uploaded whenever it changes.
-* **Notification message** — a payload with a `notification` block. When the app is **backgrounded the system tray displays it and your code never runs**.
-* **Data message** — a payload with only a `data` block. It reaches `onMessageReceived` in **every** app state, which is why it is preferred whenever any logic is needed.
-* **Priority** — `normal` messages may be batched and delayed in Doze; `high` wakes the device immediately, subject to a per-app budget.
-* **At-least-once delivery** — the same message can arrive twice, so handling must be deduplicated on a server-supplied ID.
+1. **`PagingSource<Key, Value>`:** Direct data fetcher from a single source (e.g. Room DAO or raw Retrofit API). Implements `load(params)` and `getRefreshKey(state)`.
+2. **`Pager`:** The entry point that takes a `PagingConfig` and a `pagingSourceFactory` to emit a `Flow<PagingData<Value>>`.
+3. **`prefetchDistance`:** How far from the edge of loaded content the user must scroll before Paging automatically fetches the next page (e.g. `pageSize = 20, prefetchDistance = 5` starts fetching page 2 when the user hits item 15).
+4. **`RemoteMediator<Key, Value>`:** **Coordinates network + database pagination for offline-first architecture.** It fetches pages from the remote network, persists them into Room, and allows the UI to observe a Room `PagingSource` as the single source of truth.
 
-### Why It Is Used
-It is the only way to wake an app that is not running, and the only sanctioned way to bypass Doze for time-critical delivery. One system-level connection serves all apps, so battery cost is shared.
+---
 
-### How It Works Internally
+### 7.2.3 Offline-First Pagination Architecture with `RemoteMediator`
 
-```mermaid
-sequenceDiagram
-    participant App as Your App
-    participant FCM as FCM Backend
-    participant Server as Your Server
-    participant GPS as Play Services (device)
-
-    App->>FCM: Request registration token
-    FCM-->>App: token
-    App->>Server: Upload token (associate with user)
-    Server->>FCM: Send message (token or topic)
-    FCM->>GPS: Deliver over the shared persistent socket
-    GPS->>App: onMessageReceived / system tray notification
+```text
+                   Remote API (Retrofit)
+                             │
+                             ▼ RemoteMediator.load(LoadType.APPEND)
+                    Local Room Database
+                             │
+                             ▼ Room PagingSource (SSOT)
+                           Pager
+                             │
+                             ▼ Flow<PagingData<T>>
+                          UI Layer
 ```
 
-**Two message types, and the distinction matters enormously:**
-
-| | Notification message | Data message |
-|---|---|---|
-| Payload key | `notification` | `data` |
-| App in **foreground** | `onMessageReceived` called | `onMessageReceived` called |
-| App in **background** | **Shown by the system tray; your code never runs** | `onMessageReceived` called |
-| Customizable | Limited | Fully |
-| Recommendation | Avoid for anything that needs logic | **Use this** |
-
-**Priority.** `normal` priority is batched and may be delayed indefinitely in Doze. `high` priority wakes the device and breaks through Doze — but Android tracks a per-app budget, and abusing high priority for non-urgent messages gets the app throttled.
-
-### Code Example
 ```kotlin
-class AppMessagingService : FirebaseMessagingService() {
+@OptIn(ExperimentalPagingApi::class)
+class ArticleRemoteMediator(
+    private val database: AppDatabase,
+    private val api: ArticleApi
+) : RemoteMediator<Int, ArticleEntity>() {
 
-    // Called on install, app restore, app clear-data, and periodic token rotation.
-    // The token is NOT stable — always re-upload it.
-    override fun onNewToken(token: String) {
-        // Enqueue rather than calling the network directly; this can run with no connectivity
-        WorkManager.getInstance(this).enqueue(
-            OneTimeWorkRequestBuilder<TokenUploadWorker>()
-                .setInputData(workDataOf("token" to token))
-                .setConstraints(Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build()
-        )
-    }
-
-    override fun onMessageReceived(message: RemoteMessage) {
-        // Data messages reach here in ALL app states, which is why they are preferred
-        val type = message.data["type"] ?: return
-
-        // onMessageReceived runs on a background thread with roughly 10-20 seconds of budget.
-        // Anything longer must be handed to WorkManager.
-        when (type) {
-            "chat" -> {
-                val conversationId = message.data["conversation_id"]!!
-                Notifier.showChatMessage(this, conversationId, message.data["body"].orEmpty())
+    override suspend fun load(
+        loadType: LoadType,
+        state: PagingState<Int, ArticleEntity>
+    ): MediatorResult {
+        val page = when (loadType) {
+            LoadType.REFRESH -> 1
+            LoadType.PREPEND -> return MediatorResult.Success(endOfPaginationReached = true)
+            LoadType.APPEND -> {
+                val lastItem = state.lastItemOrNull() ?: return MediatorResult.Success(endOfPaginationReached = true)
+                lastItem.pageIndex + 1
             }
-            "sync" -> WorkManager.getInstance(this)
-                .enqueue(OneTimeWorkRequestBuilder<SyncWorker>().build())
+        }
+
+        return try {
+            val response = api.getArticles(page = page, pageSize = state.config.pageSize)
+            database.withTransaction {
+                if (loadType == LoadType.REFRESH) {
+                    database.articleDao().clearAll()
+                }
+                database.articleDao().insertAll(response.map { it.toEntity(pageIndex = page) })
+            }
+            MediatorResult.Success(endOfPaginationReached = response.isEmpty())
+        } catch (e: Exception) {
+            MediatorResult.Error(e)
         }
     }
 }
 ```
 
-```json
-// Server payload: data-only, high priority, with the Android-specific block
-{
-  "message": {
-    "token": "<device-token>",
-    "data": { "type": "chat", "conversation_id": "1234", "body": "See you at 6" },
-    "android": {
-      "priority": "high",
-      "ttl": "3600s"
+---
+
+## 7.3 Choosing a Scheduler
+
+### 7.3.1 The Master Decision Tree
+
+```text
+Does the work require an EXACT wall-clock time?
+       │
+      YES ──► Exact Alarm (AlarmManager.setExactAndAllowWhileIdle)
+       │
+      NO
+       │
+       ▼
+Is the user ACTIVELY watching/hearing the work right now?
+       │
+      YES ──► Foreground Service (with visible Notification)
+       │
+      NO
+       │
+       ▼
+Is the work tied ONLY to the current visible screen?
+       │
+      YES ──► Coroutine in viewModelScope / lifecycleScope
+       │
+      NO
+       │
+       ▼
+Use WorkManager (Persistent, constraint-aware, survives restarts)
+```
+
+---
+
+### 7.3.2 Scheduler Comparison
+
+| Feature | WorkManager | Foreground Service | Exact Alarm (`AlarmManager`) |
+|---|---|---|---|
+| **Primary Guarantee** | Guaranteed eventual execution | Immediate continuous execution | Precise timestamp trigger |
+| **Survives Process Kill** | **Yes** (persisted in SQLite) | Yes (while running) | Yes (via system alarm) |
+| **Survives Device Reboot** | **Yes** (automatic restart) | No | Needs `BOOT_COMPLETED` receiver |
+| **Doze Mode Behavior** | Batched into maintenance windows | Unaffected while active | Fires with `...AllowWhileIdle` |
+| **Special Permissions** | None | FGS Type permissions (Android 14+) | `SCHEDULE_EXACT_ALARM` (Android 12+) |
+
+---
+
+## 7.4 Doze, App Standby Buckets, and Battery Restrictions
+
+### 7.4.1 Doze Mode
+
+Introduced in Android 6.0: When a device is **unplugged, stationary, and screen-off**, the OS enters Doze.
+* **Restrictions:** Network access disabled, wakelocks ignored, standard alarms deferred, Wi-Fi scans stopped.
+* **Maintenance Windows:** Periodically, the OS opens a brief window where deferred jobs and syncs execute, with windows spacing exponentially further apart over time.
+
+---
+
+### 7.4.2 App Standby Buckets (Android 9+ / API 28)
+
+The OS adaptively assigns apps to usage tiers:
+
+| Bucket | User Interaction | Work Restrictions |
+|---|---|---|
+| **Active** | App currently in use / visible | No restrictions |
+| **Working Set** | Used regularly daily | Jobs run ~every 2 hours |
+| **Frequent** | Used often, but not daily | Jobs run ~every 8 hours |
+| **Rare** | Opened infrequently | Jobs run ~every 24 hours |
+| **Restricted** (API 30+) | Heavy background drain / user-restricted | Jobs run ~once per day |
+
+---
+
+### 7.4.3 Testing Doze & Standby via ADB
+
+```bash
+# 1. Force Doze Mode
+adb shell dumpsys battery unplug
+adb shell dumpsys deviceidle force-idle
+adb shell dumpsys deviceidle step
+adb shell dumpsys deviceidle unforce
+adb shell dumpsys battery reset
+
+# 2. Force App Standby Bucket
+adb shell am set-standby-bucket com.example.app rare
+adb shell am get-standby-bucket com.example.app
+```
+
+---
+
+## 7.5 Firebase Cloud Messaging (FCM)
+
+### 7.5.1 Notification Messages vs Data Messages
+
+> **The Single Most Important FCM Rule:**
+
+| Attribute | Notification Message (`"notification": { ... }`) | Data Message (`"data": { ... }`) |
+|---|---|---|
+| **App in Foreground** | `onMessageReceived` is called | `onMessageReceived` is called |
+| **App in Background** | **Handled automatically by System Tray; your app code NEVER runs** | **`onMessageReceived` is ALWAYS called** |
+| **Custom Payload Logic** | None in background | Full custom parsing and background routing |
+| **Recommendation** | Simple marketing alerts only | **Use this for all application logic & chat** |
+
+---
+
+### 7.5.2 FCM Token Lifecycle & At-Least-Once Delivery
+
+* **Token Rotation:** FCM tokens are not permanent. They rotate on app reinstall, backup restoration, cache clear, or periodic key refresh. Always re-upload in `onNewToken()`.
+* **At-Least-Once Guarantee:** FCM guarantees delivery, but network retries can cause duplicate deliveries. All messages must be deduplicated using a server-supplied unique `message_id`.
+* **Short Execution Window:** `onMessageReceived()` runs on a worker thread with ~10–20 seconds of execution budget. Long tasks must be handed off to `WorkManager`.
+
+```kotlin
+class AppFirebaseMessagingService : FirebaseMessagingService() {
+
+    override fun onNewToken(token: String) {
+        // Enqueue token upload via WorkManager to survive offline states
+        WorkManager.getInstance(this).enqueue(
+            OneTimeWorkRequestBuilder<TokenUploadWorker>()
+                .setInputData(workDataOf("fcm_token" to token))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+        )
     }
-  }
+
+    override fun onMessageReceived(message: RemoteMessage) {
+        val messageId = message.data["msg_id"] ?: return
+
+        // 1. Deduplicate
+        if (MessageDeduplicator.isProcessed(messageId)) return
+        MessageDeduplicator.markProcessed(messageId)
+
+        // 2. Route based on payload type
+        when (message.data["type"]) {
+            "chat" -> Notifier.showChatMessage(this, message.data["body"].orEmpty())
+            "sync" -> WorkManager.getInstance(this).enqueue(OneTimeWorkRequestBuilder<SyncWorker>().build())
+        }
+    }
 }
 ```
 
-```xml
-<service android:name=".AppMessagingService" android:exported="false">
-    <intent-filter>
-        <action android:name="com.google.firebase.MESSAGING_EVENT" />
-    </intent-filter>
-</service>
-```
+---
 
-### Common Pitfalls
-* **Sending `notification` payloads and wondering why the tap handler never runs** when the app is backgrounded. The system tray handles it; your service is skipped.
-* **Treating the token as permanent.** It rotates. Re-upload on every `onNewToken` and on every app start.
-* **Doing long work in `onMessageReceived`.** The execution window is short; hand off to WorkManager.
-* **Not deduplicating.** FCM guarantees at-least-once delivery, so the same message can arrive twice. Key notifications by a server-supplied message ID.
-* **Forgetting `POST_NOTIFICATIONS` on Android 13+.** Messages arrive and are silently discarded.
+## 7.6 60 Comprehensive Senior/Staff Interview Questions & Answers
+
+### A. WorkManager Questions (Q1–Q18)
+1. **What is WorkManager?** Android's official API for persistent, constraint-aware, deferrable background work.
+2. **Why does WorkManager survive process death?** Requests and execution state are serialized in an internal SQLite/Room database.
+3. **WorkManager vs Coroutines?** Coroutines live in memory; WorkManager persists across process death and device restarts.
+4. **WorkManager vs Foreground Service?** WorkManager is for deferrable background work; FGS is for user-perceptible active ongoing tasks.
+5. **What are Constraints?** System conditions (unmetered network, charging, battery not low) that must be met before work executes.
+6. **What is Backoff?** The delay policy applied before retrying a failed task (`LINEAR` vs `EXPONENTIAL`).
+7. **Why must Workers be idempotent?** The OS may kill and re-run workers; executing twice must not duplicate operations.
+8. **What happens if a Worker is killed halfway?** WorkManager marks it as interrupted and reschedules according to constraints and backoff.
+9. **What is Unique Work?** Enqueuing work with a distinct name using `KEEP`, `REPLACE`, or `APPEND` policies to prevent duplicate tasks.
+10. **What is Chained Work?** A sequential pipeline where dependent tasks execute only after upstream parents succeed (`beginWith().then()`).
+11. **What is Expedited Work?** High-priority work requested to run immediately, subject to an OS-managed daily quota.
+12. **Is Expedited Work guaranteed to run immediately?** No; if the app exceeds its daily quota, it falls back to standard work.
+13. **Why is WorkManager `Data` limited to ~10 KB?** It is stored in SQLite and passed via IPC Binder transactions; pass database IDs instead.
+14. **Can WorkManager run at an exact wall-clock time?** No; it is deferrable and respects OS batching.
+15. **What happens to WorkManager tasks after device reboot?** Rescheduled automatically via `BOOT_COMPLETED` framework hooks.
+16. **What is the minimum interval for PeriodicWorkRequest?** 15 minutes.
+17. **What is the difference between `Worker` and `CoroutineWorker`?** `Worker` is synchronous on a background thread; `CoroutineWorker` exposes a suspending `doWork()`.
+18. **How does WorkManager handle task cancellation?** Sets `isStopped = true` and cancels the underlying Coroutine `Job`.
+
+### B. Paging 3 Questions (Q19–Q31)
+19. **Why use Paging 3?** Loads large datasets incrementally, optimizing memory, network, and battery during scrolling.
+20. **What is `PagingSource`?** Loads pages from a single data source (network or local database) and returns adjacent page keys.
+21. **What is `Pager`?** Produces a `Flow<PagingData<T>>` configured with `PagingConfig`.
+22. **What is `prefetchDistance`?** How close to the list edge the user must get before the next page request triggers.
+23. **What is `RemoteMediator`?** Coordinates network fetching with local Room caching for offline-first pagination.
+24. **`PagingSource` vs `RemoteMediator`?** `PagingSource` reads from one source; `RemoteMediator` orchestrates network-to-database writes.
+25. **How do you implement offline pagination?** Room as `PagingSource` (SSOT) + `RemoteMediator` fetching remote pages into Room.
+26. **How are pagination errors handled?** Listen to `CombinedLoadStates` (`refresh`, `append`, `prepend`) and show retry buttons.
+27. **What is `PagingData`?** A container holding a snapshot of paged data that is submitted to `PagingDataAdapter`.
+28. **How do you refresh a paged list?** Call `adapter.refresh()` or invalidate the active `PagingSource`.
+29. **How do you avoid duplicate items in Paging 3?** Provide a strict `DiffUtil.ItemCallback` comparing unique item IDs.
+30. **What is `cachedIn(viewModelScope)`?** Caches the paging stream in the ViewModel to survive configuration changes without reloading.
+31. **How does Paging 3 handle placeholders?** Displays null placeholders when item count is known before page data loads.
+
+### C. Scheduler Selection Questions (Q32–Q37)
+32. **WorkManager vs AlarmManager?** WorkManager batches deferrable tasks; AlarmManager triggers exact wall-clock alarms.
+33. **When to use an Exact Alarm?** User-set alarms, calendar alerts, and medication reminders requiring exact timestamps.
+34. **Why isn't periodic WorkManager exact?** To preserve battery, the OS aligns and batches background wake-ups.
+35. **Why is scheduler selection a correctness decision?** Choosing the wrong API causes background jobs to be silently killed by Doze.
+36. **What permission is required for exact alarms on Android 12+?** `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`.
+37. **How does Android 14 restrict Foreground Services?** Requires declaring explicit FGS types (e.g. `camera`, `location`, `mediaPlayback`) and runtime permissions.
+
+### D. Doze & App Standby Questions (Q38–Q45)
+38. **What is Doze Mode?** Power-saving state entered when a device is stationary, unplugged, and screen-off.
+39. **What are Maintenance Windows?** Periodic intervals where Doze restrictions are lifted to let pending jobs run.
+40. **What are App Standby Buckets?** Usage tiers (`Active`, `Working Set`, `Frequent`, `Rare`, `Restricted`) that throttle background frequency.
+41. **Doze vs App Standby?** Doze is device-wide state; App Standby is per-app usage behavior.
+42. **What happens in the Restricted bucket?** Background jobs and alarms are throttled to roughly once per day.
+43. **How do you test Doze on a device?** `adb shell dumpsys deviceidle force-idle`.
+44. **Why do apps fail in production after working in debug?** Debugging over USB keeps the device charging and active, bypassing Doze and buckets.
+45. **How do OEM battery savers affect background work?** Custom OEM ROMs (Xiaomi, Huawei) aggressively kill background processes beyond AOSP rules.
+
+### E. FCM Questions (Q46–Q60)
+46. **What is FCM?** Google's push messaging infrastructure enabling servers to deliver payloads to Android devices.
+47. **How does FCM reach sleeping apps?** Google Play Services maintains a persistent, shared low-power socket connection.
+48. **Notification message vs Data message?** Notification messages are handled by the system tray in background; Data messages always trigger `onMessageReceived`.
+49. **Why prefer Data messages for chat apps?** Ensures application code runs in all states to decrypt, store in Room, and trigger custom UI.
+50. **Is an FCM token permanent?** No; it rotates on app restore, reinstall, and periodic security refresh.
+51. **When is `onNewToken` called?** On initial install, app restore, and whenever the underlying token rotates.
+52. **What if the device is offline when the token rotates?** Enqueue a `TokenUploadWorker` in WorkManager with network constraints.
+53. **Normal vs High priority FCM?** Normal is deferred during Doze; High wakes the device immediately.
+54. **Why not send all FCMs as High priority?** Android tracks a high-priority message budget; exceeding it results in throttling.
+55. **What does At-Least-Once delivery mean?** Messages are guaranteed to arrive, but network retries may cause duplicates.
+56. **How to deduplicate FCM messages?** Key messages by a server-generated `message_id` and track processed IDs locally.
+57. **How long can `onMessageReceived` execute?** ~10–20 seconds maximum before being subject to termination.
+58. **Why hand off FCM tasks to WorkManager?** For long-running operations (file downloads, DB migrations) that exceed the execution budget.
+59. **What happens to Notification messages when the app is backgrounded?** Rendered in the notification tray by Android OS; app code is bypassed until tapped.
+60. **How does Android 13 affect FCM notifications?** Requires runtime `POST_NOTIFICATIONS` permission; without it, tray notifications are dropped.
+
+---
+
+### The Master Architecture Mental Model
+
+```text
+                        WHAT DOES THE WORK REQUIRE?
+                                     │
+         ┌───────────────────────────┼───────────────────────────┐
+         ▼                           ▼                           ▼
+    EVENTUALLY                  EXACT TIME                 USER-VISIBLE
+   (Deferrable)             (Specific wall-clock)        (Active playback/nav)
+         │                           │                           │
+         ▼                           ▼                           ▼
+    WorkManager                 Exact Alarm              Foreground Service
+(Persisted in Room)       (AlarmManager.setExact)      (With Ongoing Notification)
+
+
+                      LARGE SCROLLABLE DATASET?
+                                  │
+                                  ▼
+                               Paging 3
+                                  │
+                   ┌──────────────┴──────────────┐
+                   ▼                             ▼
+             RemoteMediator                 Room DB (SSOT)
+           (Fetches from API)              (PagingSource)
+                   │                             │
+                   └──────────────┬──────────────┘
+                                  ▼
+                                Pager
+                                  │
+                                  ▼
+                           UI (PagingData)
+
+
+                      SERVER CONTACTING DEVICE?
+                                  │
+                                  ▼
+                                 FCM
+                                  │
+                                  ▼
+                       FirebaseMessagingService
+                                  │
+                     Is it a short (<10s) task?
+                            /          \
+                          YES          NO
+                          │             │
+                          ▼             ▼
+                    Handle Local   WorkManager
+```
 
 ---
 # 8. Dependency Injection (DI)
