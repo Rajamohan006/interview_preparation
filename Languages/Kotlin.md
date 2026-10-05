@@ -6193,110 +6193,179 @@ user?.apply {
 ```text
            it             this
         ┌───────┐       ┌─────────────┐
-Result  │  let  │       │ run / with  │
-        ├───────┤       ├─────────────┤
-Object  │ also  │       │    apply    │
-        └───────┘       └─────────────┘
-```
+Result  │  let  │       │ run / with  �# 14. Coroutines
 
-**One-line interview answer:**
-> `let` transforms using `it`; `run` and `with` execute a block using `this` and return its result; `apply` configures and returns the object using `this`; `also` performs side effects using `it` and returns the object.
-
----
-
-### Common Pitfalls
-* **`?.let { } ?: else` as an if/else.** If the `let` block itself returns `null`, the `else` branch runs too. Use a real `if`.
-* **Nested scope functions with `it`.** The inner `it` shadows the outer one; name the parameter (`user?.let { u -> ... }`).
-* **`apply` for computing a value.** It returns the receiver, so the block's result is discarded — a silent bug.
-* **Long `apply` blocks.** They read like a constructor and hide how much work is happening.
-
----
-
-## 13.2 `takeIf` and `takeUnless`
+## 14.1 What Is a Coroutine?
 
 ### Definition
-* **`takeIf { predicate }`** — returns the receiver **unchanged** when the predicate is `true`, and `null` when it is `false`. It converts a condition into a nullable value.
-* **`takeUnless { predicate }`** — the exact inverse: returns the receiver when the predicate is `false`.
-* **Why they exist** — they let a validity check join a `?.` / `?:` chain instead of interrupting it with an `if` statement.
 
-### Code Example
-```kotlin
-// Turn a validity check into a nullable value that composes with ?: and ?.let
-val validEmail = input.takeIf { it.contains('@') } ?: return null
-val nonBlank = text.takeUnless { it.isBlank() }
+A **coroutine** is a lightweight unit of asynchronous execution that can **suspend and later resume without blocking the underlying thread**.
 
-// Reads well in a chain
-val cached = readCache()
-    .takeIf { it.isFresh() }
-    ?: fetchFromNetwork()
-```
+A coroutine is **not a thread**.
 
-### Common Pitfalls
-* **`takeIf` on a `Boolean` receiver.** `flag.takeIf { it }` returns `true` or `null`, which is rarely what is meant.
-* **Overusing it for simple conditions.** `if (x > 0) x else null` is clearer than `x.takeIf { it > 0 }` when there is no chain.
-
----
-# 14. Coroutines
-
-## 14.1 What a Coroutine Is
-
-### Definition
-> A coroutine is a **lightweight unit of asynchronous execution** that can suspend and resume without blocking the underlying thread. Kotlin coroutines allow writing asynchronous code in a sequential style. A coroutine is **not a thread** — multiple coroutines can execute on a small number of threads.
-
-### Why It Is Used
-Thousands of coroutines share a small thread pool. A thread costs roughly 1 MB of stack and an OS context switch; a coroutine is a small heap object. This is what makes structured, cancellable asynchrony affordable.
-
-### Simple Explanation
-
-```kotlin
-viewModelScope.launch {
-    val user = repository.getUser()   // suspends here — thread is freed
-    updateUI(user)                    // resumes here when result is ready
-}
-```
-
-`launch` starts a coroutine. If `getUser()` suspends, the thread can be used by other work and the coroutine resumes when the result is available.
-
-### Interview Point — Coroutine ≠ Thread
-
-```text
-Thread     → OS-managed execution resource (~1 MB stack)
-Coroutine  → Lightweight unit of work running on a thread
-```
+A thread is an operating-system execution resource, whereas a coroutine is a lightweight unit of work that runs **on a thread selected by its `CoroutineDispatcher`**.
 
 Thousands of coroutines can share a relatively small number of threads.
 
-### How It Works Internally — CPS and the State Machine
-The compiler rewrites every `suspend` function into Continuation-Passing Style: it gains a hidden `Continuation` parameter, and its body becomes a state machine with a `label` marking the current suspension point.
+```text
+Thread
+  ↓
+OS-managed execution resource (~1 MB stack, expensive OS context switch)
 
-```kotlin
-suspend fun load(): User {
-    val id = fetchId()          // suspension point 0
-    return fetchUser(id)        // suspension point 1
-}
-
-// Conceptually compiles to a class with:
-//   label = 0 → call fetchId(this); if it returns COROUTINE_SUSPENDED, return and free the thread
-//   label = 1 → resume here with fetchId's result; call fetchUser(id, this)
-// Local variables become fields on the state machine so they survive suspension.
+Coroutine
+  ↓
+Lightweight unit of work (small heap object, ~few bytes)
+  ↓
+Runs on a thread
+  ↓
+Can suspend
+  ↓
+Thread becomes available for other work
+  ↓
+Coroutine resumes later
 ```
 
-When a suspension point actually suspends, the function saves its locals, returns `COROUTINE_SUSPENDED`, and releases the thread. When the awaited work completes, `resumeWith` re-enters at the saved label.
+### Example
 
-If the callee completes **without** suspending, it returns the value directly and execution falls through to the next label — which is why a `suspend` call that hits a cache costs essentially nothing.
+```kotlin
+viewModelScope.launch {
+    val user = repository.getUser()
 
-### Common Pitfalls
-* **Marking a function `suspend` that never suspends.** It adds a continuation parameter and forces callers into a coroutine for no benefit.
-* **Calling a blocking API inside a coroutine.** `Thread.sleep`, a blocking JDBC call, or `File.readText` blocks the thread, defeating the entire model. Wrap it in `withContext(Dispatchers.IO)`.
+    updateUi(user)
+}
+```
+
+Suppose `getUser()` performs a suspending network operation:
+
+```text
+Main Thread
+    │
+    │ launch coroutine
+    ▼
+Coroutine starts
+    │
+    │ getUser()
+    ▼
+Coroutine suspends
+    │
+    ├── Main thread is NOT blocked
+    │
+    ├── Main thread can draw UI
+    └── Main thread can process clicks
+    │
+    ▼
+Network result arrives
+    │
+    ▼
+Coroutine resumes
+    │
+    ▼
+updateUi(user)
+```
+
+The key idea is:
+
+> **The coroutine waits; the thread does not have to wait.**
 
 ---
 
-## 14.2 `suspend` Functions
+### How It Works Internally — CPS and the State Machine
+
+The Kotlin compiler rewrites every `suspend` function into **Continuation-Passing Style (CPS)**:
+1. It gains a hidden extra parameter: `completion: Continuation<T>`.
+2. Its body is transformed into an optimized **state machine** with integer labels tracking suspension points.
+
+```kotlin
+suspend fun load(): User {
+    val id = fetchId()          // Suspension point 0
+    return fetchUser(id)        // Suspension point 1
+}
+
+// Conceptually compiled bytecode representation:
+fun load(continuation: Continuation<User>): Any? {
+    val sm = continuation as? LoadStateMachine ?: LoadStateMachine(continuation)
+
+    when (sm.label) {
+        0 -> {
+            sm.label = 1
+            val result = fetchId(sm)
+            if (result == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+            sm.idResult = result
+        }
+        1 -> {
+            val id = sm.idResult as String
+            sm.label = 2
+            val user = fetchUser(id, sm)
+            if (user == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+            return user
+        }
+        2 -> {
+            return sm.result // Completed
+        }
+    }
+}
+```
+
+* **When a suspending function actually suspends**: It saves its local variables to state machine fields, returns `COROUTINE_SUSPENDED`, and **frees the thread**.
+* **When asynchronous work completes**: The callback invokes `continuation.resumeWith(result)`, which re-enters the state machine at the saved label.
+* **When work completes immediately without suspending (e.g. cache hit)**: It returns the value directly with zero thread switching overhead.
+
+---
+
+## 14.2 Coroutine vs Thread
+
+| Feature | Thread | Coroutine |
+|---|---|---|
+| **Management** | Managed by Operating System kernel | Managed by Kotlin coroutine runtime in user space |
+| **Resource Cost** | Expensive (~1 MB stack memory per thread) | Lightweight (small heap object, few bytes) |
+| **Stack Allocation** | Has its own fixed OS stack | Uses heap-allocated `Continuation` state machine |
+| **Switching Overhead** | Expensive OS kernel context switch | Extremely cheap function call resumption |
+| **Scalability** | Limited (hundreds/thousands max before OOM) | Millions of coroutines can run concurrently |
+| **Blocking Impact** | Blocking a thread freezes that OS execution resource | Suspending a coroutine releases thread for other tasks |
+
+### Real-World Analogy
+
+Imagine a restaurant:
+
+```text
+Thread   = Waiter
+
+Coroutine = Customer Order
+```
+
+One waiter can manage dozens of table orders. While Order A is being cooked in the kitchen (waiting for I/O), the waiter serves Order B. The waiter is never frozen waiting idly at the kitchen counter.
+
+```text
+Thread (Worker)
+ ├── Coroutine A → waiting for network response
+ ├── Coroutine B → processing cache hit
+ ├── Coroutine C → waiting for database write
+ └── Coroutine D → executing business logic
+```
+
+You do not need one dedicated thread per asynchronous operation.
+
+---
+
+## 14.3 `suspend` Function
 
 ### Definition
-> A `suspend` function is a function that can **suspend execution and later resume without blocking the underlying thread**. The `suspend` modifier does not automatically make a function asynchronous or move it to another thread — it only means the function is **allowed to suspend**.
 
-### Simple Explanation
+A **`suspend` function** is a function that is allowed to **suspend its execution and resume later without blocking the underlying thread**.
+
+Important mental model:
+
+```text
+suspend ≠ thread
+suspend ≠ background execution
+suspend ≠ automatically asynchronous
+```
+
+A `suspend` function simply means:
+
+> **"This function is allowed to pause and resume execution cooperatively."**
+
+### Example
 
 ```kotlin
 suspend fun getUser(): User {
@@ -6304,116 +6373,331 @@ suspend fun getUser(): User {
 }
 ```
 
-A `suspend` function must be called from:
-- another `suspend` function, **OR**
-- a coroutine builder like `launch` or `async`
+You cannot call a suspending function directly from a standard synchronous function:
+
+```kotlin
+fun loadUser() {
+    getUser() // ❌ Compilation Error: Suspend function 'getUser' should be called only from a coroutine or another suspend function
+}
+```
+
+You must call it from another `suspend` function:
+
+```kotlin
+suspend fun load() {
+    val user = getUser() // ✅
+}
+```
+
+or from a coroutine builder:
 
 ```kotlin
 viewModelScope.launch {
-    val user = getUser()   // OK — called from a coroutine
+    val user = getUser() // ✅
 }
-```
-
-### Important Interview Point
-
-> **Does `suspend` create a new thread?**
-> **No.** `suspend` does not create a thread. The coroutine's dispatcher determines where the coroutine executes, and suspension allows the underlying thread to be released while waiting.
-
-```text
-suspend ≠ asynchronous
-suspend ≠ background thread
-suspend = function is allowed to suspend
 ```
 
 ---
 
-## 14.3 Builders: `launch`, `async`, `runBlocking`
+## 14.4 Important: `suspend` Does Not Guarantee Suspension
 
-### Definition
-> A **coroutine builder** is an API used to create and start a coroutine within a `CoroutineScope`. Common builders are `launch`, `async`, and `runBlocking`. Each has different semantics regarding return values, exception handling, and thread blocking.
-
-* **`launch`** — starts a coroutine that produces **no result**. Returns a `Job`. Exceptions propagate through the coroutine hierarchy.
-* **`async`** — starts a coroutine that **produces a value**. Returns a `Deferred<T>`. The exception is held inside the `Deferred` and re-thrown when `await()` is called — it does **not** silently disappear; its handling depends on the coroutine hierarchy and whether supervision is used.
-* **`runBlocking`** — **blocks the calling thread** until the coroutine finishes. Correct in `main()` and tests; a bug in Android application code.
-
-### Code Example
+Consider:
 
 ```kotlin
-// launch: no result needed
-viewModelScope.launch { repository.refresh() }
-
-// async: parallel decomposition — both start immediately, both awaited together
-val page = coroutineScope {
-    val user = async { repo.user() }
-    val feed = async { repo.feed() }
-    Page(user.await(), feed.await())
-}
-
-// runBlocking: bridges blocking and suspending worlds (main/tests only)
-fun main() = runBlocking {
-    val data = fetchData()
-    println(data)
+suspend fun getUser(): User {
+    return cache.getUser() // Instant memory lookup
 }
 ```
 
-### `launch` vs `async`
+If the cache immediately returns the value, there is **no actual suspension**.
 
-| | `launch` | `async` |
-|---|---|---|
-| Use for | Work without a result | Work that produces a value |
-| Returns | `Job` | `Deferred<T>` |
-| `await()` | Not applicable | Yes — suspends until result is ready |
-| Exception | Propagates through hierarchy immediately | Held in `Deferred`; surfaces at `await()` |
+```text
+getUser()
+   ↓
+cache hit
+   ↓
+returns value immediately (same thread, no suspension overhead)
+```
 
-### Common Pitfalls
-* **`async` result never `await()`-ed.** The exception is not silently lost by default — in a normal (non-supervisor) scope it still propagates to the parent. Use `launch` when no result is needed.
-* **`runBlocking` in production code** — blocks a thread, can cause ANR on Android.
-* **Sequential `await`.** `async { a() }.await()` then `async { b() }.await()` is sequential, not parallel. Start both, then await both.
+> **`suspend` means "may suspend", not "must suspend".**
 
 ---
 
-## 14.4 Dispatchers and Context
+## 14.5 Coroutine Builders
 
-### 1. Conceptual Architecture & Definitions
+A **coroutine builder** creates and starts a coroutine within a `CoroutineScope`.
 
-> **`CoroutineContext`** is a persistent, type-safe, indexed heterogeneous map of **`Element`** instances, where each element is identified by a unique `Key<E>`. It defines the execution environment, lifecycle, concurrency constraints, and metadata of a coroutine.
->
-> **`CoroutineDispatcher`** is a specific `CoroutineContext.Element` (implementing `ContinuationInterceptor`) that determines **which physical thread or thread pool executes and resumes** the coroutine's continuation at any given moment.
+The three fundamental builders are:
 
 ```text
+launch      → Fire-and-forget; returns Job; no direct result value
+async       → Concurrency with result; returns Deferred<T>; awaited with .await()
+runBlocking → Bridges non-coroutine to coroutine code; BLOCKS calling thread
+```
+
+---
+
+### 14.5.1 `launch`
+
+### Definition
+
+`launch` starts a coroutine for work where you **do not need a return value** (fire-and-manage).
+
+It returns a **`Job`** instance representing the lifecycle of that coroutine.
+
+### Example 1 — Save data to database
+
+```kotlin
+viewModelScope.launch {
+    repository.saveUser(user)
+}
+```
+
+You care that the save operation happens; you don't need a computed return object.
+
+### Example 2 — Refresh data
+
+```kotlin
+viewModelScope.launch {
+    repository.refreshProducts()
+}
+```
+
+### Example 3 — Send analytics telemetry
+
+```kotlin
+viewModelScope.launch {
+    analytics.trackScreen("Home")
+}
+```
+
+### Example 4 — Observe and update UI state
+
+```kotlin
+viewModelScope.launch {
+    repository.refresh()
+    _state.value = UiState.Success
+}
+```
+
+### Think of `launch` as:
+
+> **"Start this background work and give me a handle to monitor or cancel its lifecycle."**
+
+```kotlin
+val job = scope.launch {
+    doWork()
+}
+
+job.cancel() // Cancel the coroutine
+job.join()   // Suspend until this coroutine completes
+```
+
+---
+
+## 14.6 `async`
+
+### Definition
+
+`async` starts a coroutine that **produces a result**.
+
+It returns:
+
+```kotlin
+Deferred<T>
+```
+
+`Deferred<T>` is a light extension of `Job` that will eventually contain a value of type `T`. You retrieve that value by calling:
+
+```kotlin
+await()
+```
+
+Calling `await()` suspends until the deferred value is computed and returns it (or re-throws any exception encountered during execution).
+
+---
+
+### Real Example 1 — Parallel Dashboard Aggregation
+
+Suppose your dashboard requires three independent backend queries:
+
+```text
+User API       → 100 ms
+Transactions   → 500 ms
+Notifications  → 300 ms
+```
+
+Sequential implementation (slow):
+
+```kotlin
+val user = getUser()                  // 100 ms
+val transactions = getTransactions()  // 500 ms
+val notifications = getNotifications()// 300 ms
+// Total time: 100 + 500 + 300 = 900 ms
+```
+
+Concurrent implementation with `async` (fast):
+
+```kotlin
+coroutineScope {
+    val user = async { getUser() }
+    val transactions = async { getTransactions() }
+    val notifications = async { getNotifications() }
+
+    Dashboard(
+        user = user.await(),
+        transactions = transactions.await(),
+        notifications = notifications.await()
+    )
+}
+```
+
+Conceptually:
+
+```text
+          ┌── getUser() ───────── 100ms ──┐
+          │                               │
+          ├── getTransactions() ─ 500ms ──┤
+async ────┤                               ├── Dashboard
+          └── getNotifications() ─ 300ms ─┘
+```
+
+Total execution time is approximately:
+
+```text
+max(100, 500, 300) = 500 ms (instead of 900 ms sequential)
+```
+
+---
+
+### Real Example 2 — Product Details Screen
+
+```kotlin
+coroutineScope {
+    val product = async { repository.getProduct(id) }
+    val reviews = async { repository.getReviews(id) }
+    val recommendations = async { repository.getRecommendations(id) }
+
+    ProductScreenData(
+        product = product.await(),
+        reviews = reviews.await(),
+        recommendations = recommendations.await()
+    )
+}
+```
+
+---
+
+### Real Example 3 — User Profile Screen
+
+```kotlin
+coroutineScope {
+    val profile = async { repository.getProfile() }
+    val followers = async { repository.getFollowers() }
+    val posts = async { repository.getPosts() }
+
+    Profile(
+        profile = profile.await(),
+        followers = followers.await(),
+        posts = posts.await()
+    )
+}
+```
+
+---
+
+## 14.7 `runBlocking`
+
+### Definition
+
+`runBlocking` creates a coroutine and **blocks the current thread until the coroutine and all of its child coroutines complete**.
+
+This is fundamentally different from normal coroutine suspension:
+
+```text
+delay()
+    ↓
+suspends coroutine
+    ↓
+underlying thread is released for other tasks
+
+runBlocking
+    ↓
+BLOCKS physical thread
+    ↓
+thread sits idle waiting
+```
+
+### Legitimate Use Cases
+
+1. **CLI / `main()` entrypoint**:
+```kotlin
+fun main() = runBlocking {
+    val result = fetchData()
+    println(result)
+}
+```
+
+2. **Unit Tests (Bridging to test runners)**:
+```kotlin
+@Test
+fun testSomething() = runBlocking {
+    val result = repository.getUser()
+    assertEquals("Raj", result.name)
+}
+```
+
+### Android Danger — Avoid in Application Code
+
+```kotlin
+fun loadUser() {
+    runBlocking { // ❌ CRITICAL BUG on Android Main Thread
+        repository.getUser()
+    }
+}
+```
+
+If this executes on Android's Main thread:
+
+```text
+Main Thread
+    ↓
+runBlocking
+    ↓
+BLOCKED (No drawing, no touch events processed)
+    ↓
+Network / DB operation (e.g. 5 seconds)
+    ↓
+Application Not Responding (ANR) Crash
+```
+
+---
+
+## 14.8 CoroutineContext
+
+### Definition
+
+`CoroutineContext` is a persistent, type-safe, indexed heterogeneous collection of **`Element`** instances that defines the **execution environment, lifecycle, and behavior of a coroutine**.
+
+```kotlin
 CoroutineContext (Heterogeneous Set of Elements)
 ┌────────────────────────────────────────────────────────────────────────┐
 │  • Job                         ── Concurrency lifecycle & hierarchy    │
 │  • ContinuationInterceptor     ── CoroutineDispatcher (Thread routing) │
-│  • CoroutineName               ── Debugging label ("SyncWorker")       │
+│  • CoroutineName               ── Debugging label ("DataSyncWorker")   │
 │  • CoroutineExceptionHandler   ── Root uncaught exception boundary     │
-│  • Custom Elements / Extras    ── ThreadLocal, tracing IDs, AuthContext│
+│  • Custom Elements             ── ThreadLocal, Tracing IDs, AuthContext│
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### The `+` Operator (Context Merging)
 
-### 2. `CoroutineContext` Mechanics
-
-#### Map-Like Key/Element Structure
-Every context element implements `CoroutineContext.Element`, which has an associated `Key<E>`.
-```kotlin
-public interface CoroutineContext {
-    public operator fun <E : Element> get(key: Key<E>): E?
-    public operator fun plus(context: CoroutineContext): CoroutineContext
-    public fun minusKey(key: Key<*>): CoroutineContext
-    public fun <R> fold(initial: R, operation: (R, Element) -> R): R
-}
-```
-
-#### The `+` Operator (Context Merging)
 Contexts combine using the overloaded `+` operator. Because `CoroutineContext` behaves like a map keyed on `Key`:
 * If an element with the same `Key` exists on both sides, the **right-hand side overwrites the left-hand side**.
-* `EmptyCoroutineContext` acts as the identity element (`ctx + EmptyCoroutineContext === ctx`).
 
 ```kotlin
 val base = Dispatchers.Default + CoroutineName("Parent")
-val override = base + Dispatchers.IO + CoroutineName("Child")
+val childContext = base + Dispatchers.IO + CoroutineName("Child")
 
 // Resulting Context:
 // [ContinuationInterceptor -> Dispatchers.IO] (Overwritten)
@@ -6421,52 +6705,352 @@ val override = base + Dispatchers.IO + CoroutineName("Child")
 ```
 
 #### Context Inheritance Rules in Child Coroutines
+
 When a coroutine builder (`launch`, `async`) is invoked on a `CoroutineScope`:
+
 $$\text{Child Context} = \text{Parent Context} + \text{Builder Arguments} + \text{New Job()}$$
 
-```text
-Parent Scope Context:
-[ Job_A, Dispatchers.Default, CoroutineName("Root") ]
-                     │
-                     ▼  scope.launch(Dispatchers.IO + CoroutineName("Child"))
-                     │
-Effective Child Context:
-[ Job_B (child of Job_A), Dispatchers.IO, CoroutineName("Child") ]
+> [!IMPORTANT]
+> **The `Job` is NEVER directly inherited!** The runtime creates a brand-new `Job` instance for the child and links it as a child in the parent's cancellation hierarchy.
+
+### ThreadLocal Context Propagation
+
+Because coroutines jump across threads, standard Java `ThreadLocal` variables lose their values after suspension. Use **`ThreadLocal.asContextElement()`** to safely propagate state:
+
+```kotlin
+val correlationId = ThreadLocal<String>()
+
+suspend fun processRequest() {
+    correlationId.set("REQ-9921")
+    withContext(Dispatchers.IO + correlationId.asContextElement()) {
+        println(correlationId.get()) // "REQ-9921" on IO thread
+        delay(100)
+        println(correlationId.get()) // Guaranteed "REQ-9921" even if resumed on another worker thread
+    }
+}
 ```
 
-> [!IMPORTANT]
-> **The `Job` is NEVER directly inherited!** The runtime creates a brand-new `Job` instance for the child and links it into the parent-child cancellation hierarchy. If a child directly inherited `Job_A`, cancelling the child would cancel the parent immediately.
+---
+
+## 14.9 CoroutineDispatcher
+
+### Definition
+
+A **`CoroutineDispatcher` determines which physical thread or thread pool is used to execute and resume a coroutine's continuation.**
+
+It answers:
+
+> **"Where and on which thread should this coroutine execute?"**
+
+```text
+Coroutine
+   │
+   │ needs execution / resumption
+   ▼
+CoroutineDispatcher (ContinuationInterceptor)
+   │
+   ▼
+Thread / Thread Pool (Main Looper, CoroutineScheduler, Executor)
+```
 
 ---
 
-### 3. Core Context Elements
+## 14.10 `Dispatchers.Main`
 
-| Element | Key Type | Purpose | Behavior & Scope |
-|---|---|---|---|
-| **`Job`** | `Job.Key` | Controls coroutine lifecycle (`Active`, `Cancelling`, `Completed`) and parent-child hierarchy. | Automatically created per coroutine; propagated hierarchically. |
-| **`CoroutineDispatcher`** | `ContinuationInterceptor.Key` | Intercepts continuation resumptions and schedules execution onto threads. | Inherited from parent scope unless explicitly overridden. |
-| **`CoroutineName`** | `CoroutineName.Key` | User-defined diagnostic name visible in thread names, debuggers, and logs. | Inherited; useful when debugging `DEBUG` flags (`-Dkotlinx.coroutines.debug`). |
-| **`CoroutineExceptionHandler`** | `CoroutineExceptionHandler.Key` | Catches uncaught exceptions in root coroutines (`launch` only). | Must be installed on root coroutine or `CoroutineScope`; ignored in child coroutines. |
+### Definition
+
+`Dispatchers.Main` dispatches coroutine execution to the **platform's main/UI event loop**.
+
+On Android:
+
+```text
+Dispatchers.Main
+       ↓
+Android Main/UI Thread (Handler / Looper)
+       ↓
+UI Operations & View Rendering
+```
+
+### Use Cases
+* Updating UI state / Views / Compose state
+* UI-related callbacks and animation triggers
+* Fast, lightweight coordination work
+
+### Examples
+
+```kotlin
+// Example 1: View update
+lifecycleScope.launch(Dispatchers.Main) {
+    textView.text = "Welcome back!"
+}
+
+// Example 2: Progress indicator
+viewModelScope.launch(Dispatchers.Main) {
+    _state.value = UiState.Loading
+    val user = repository.getUser()
+    _state.value = UiState.Success(user)
+}
+
+// Example 3: Jetpack Navigation
+lifecycleScope.launch(Dispatchers.Main) {
+    findNavController().navigate(R.id.action_home_to_details)
+}
+```
+
+### What to Avoid on `Dispatchers.Main`
+* Large image / bitmap filtering
+* Heavy JSON deserialization
+* Disk / File / Database read or write operations
+* Blocking synchronous network or socket calls
 
 ---
 
-### 4. `CoroutineDispatcher` Ecosystem
+## 14.11 `Dispatchers.IO`
 
-| Dispatcher | Underlying Backing | Pool Size | Target Workload | Thread Switch Behavior |
-|---|---|---|---|---|
-| **`Dispatchers.Default`** | Shared JVM `CoroutineScheduler` | CPU cores (min 2, max CPU count) | CPU-bound calculations: JSON parsing, sorting, bitmap processing, cryptography, diffing. | Dispatches via worker thread queue in work-stealing pool. |
-| **`Dispatchers.IO`** | Shared JVM `CoroutineScheduler` (Elastic wrapper) | $\max(64, \text{cores})$ (configurable via system property) | Blocking I/O: Disk files, blocking JDBC/SQLite, blocking sockets/streams, legacy synchronous SDKs. | Dynamically allocates blocking threads without starving `Default`. |
-| **`Dispatchers.Main`** | Platform UI Event Loop (Android `Handler`, Swing EDT, JavaFX) | Exactly 1 (Main/UI thread) | UI updates, small fast UI event callbacks, interacting with UI component state. | Posts task to event queue via `Handler.post { }` (always yields 1 frame/tick). |
-| **`Dispatchers.Main.immediate`** | Platform UI Event Loop | Exactly 1 (Main/UI thread) | Same as `Main`, but bypasses message queue if caller is *already* executing on the UI thread. | Executes inline synchronously if already on UI thread; posts to queue if on background thread. |
-| **`Dispatchers.Unconfined`** | Caller's current thread initially | Variable / Non-deterministic | Unconfined testing, event listeners with zero context switch overhead. | Starts on caller thread. Resumes on whatever thread invoked `resumeWith()`. Do NOT use in production logic. |
+### Definition
+
+`Dispatchers.IO` is designed for **blocking I/O operations**.
+
+```text
+Target Workloads:
+ • Disk File I/O (FileInputStream, File.readText())
+ • Blocking database APIs (legacy SQLite, JDBC)
+ • Blocking network socket APIs (InputStream.read())
+ • Legacy synchronous third-party SDKs
+```
+
+`Dispatchers.IO` is backed by an elastic thread pool that can scale up to $\max(64, \text{number of CPU cores})$ threads, preventing blocking operations from starving CPU tasks.
+
+### Real Examples
+
+```kotlin
+// Example 1: Reading disk files
+val text = withContext(Dispatchers.IO) {
+    file.readText()
+}
+
+// Example 2: Legacy synchronous database queries
+val users = withContext(Dispatchers.IO) {
+    legacyDatabase.queryAllUsers()
+}
+
+// Example 3: Legacy blocking SDK
+val downloadedFile = withContext(Dispatchers.IO) {
+    legacyDownloadSdk.downloadBlocking(url)
+}
+
+// Example 4: Blocking stream read
+val responseBytes = withContext(Dispatchers.IO) {
+    inputStream.readBytes()
+}
+```
+
+### Modern Concurrency: `limitedParallelism(N)`
+
+To prevent overwhelming a disk or database with 64 concurrent threads, use `limitedParallelism`:
+
+```kotlin
+// Limit concurrent SQLite write transactions to 1 (serialized write queue)
+val dbWriteDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+// Limit concurrent network downloads to 4
+val downloadDispatcher = Dispatchers.IO.limitedParallelism(4)
+```
 
 ---
 
-### 5. Deep Dive: `CoroutineScheduler` & Pool Sharing (`Default` vs `IO`)
+## 14.12 Important: Don't Blindly Use IO for Every Network Request
 
-A frequent senior interview question is: *"Do `Dispatchers.Default` and `Dispatchers.IO` maintain separate thread pools?"*
+This is a classic senior Android interview question:
 
-**No.** In `kotlinx.coroutines`, both share the exact same internal worker pool: **`CoroutineScheduler`**.
+> *"Should you wrap every Retrofit / Room / Ktor call in `withContext(Dispatchers.IO)`?"*
+
+**Answer: No.**
+
+Modern libraries already expose **native, non-blocking `suspend` functions**:
+* **Retrofit `suspend` functions**: Internally use OkHttp's asynchronous non-blocking dispatcher.
+* **Room `suspend` DAOs**: Room automatically switches queries to its own background query executor pool.
+* **Ktor HTTP client**: Built entirely on non-blocking asynchronous socket selectors.
+
+```kotlin
+// ❌ REDUNDANT: Double dispatch and unnecessary context switch
+class UserRepository(private val api: UserApi) {
+    suspend fun getUser(id: String): User = withContext(Dispatchers.IO) {
+        api.getUser(id) // Retrofit already handles non-blocking execution!
+    }
+}
+
+// ✅ CLEAN & OPTIMAL:
+class UserRepository(private val api: UserApi) {
+    suspend fun getUser(id: String): User = api.getUser(id)
+}
+```
+
+```text
+Network / Suspending Operation  ≠  Blocking Thread Operation
+```
+
+Only use `Dispatchers.IO` when an API is **synchronous and physically blocks the calling thread**.
+
+---
+
+## 14.13 `Dispatchers.Default`
+
+### Definition
+
+`Dispatchers.Default` is intended for **CPU-intensive computation**.
+
+> **"The CPU is actively calculating and churning clock cycles."**
+
+It is backed by a thread pool strictly clamped to the number of available CPU cores (minimum 2).
+
+### Target Workloads
+* Large JSON / XML parsing (Gson, Kotlinx Serialization)
+* Bitmap processing, image resizing, and cropping
+* Sorting and filtering huge collections (e.g. 50,000+ items)
+* Cryptographic hashing, encryption, and decryption
+* Diff calculations (DiffUtil / complex algorithms)
+
+### Real Examples
+
+```kotlin
+// Example 1: Heavy JSON parsing
+val users = withContext(Dispatchers.Default) {
+    jsonParser.decodeFromString<List<User>>(largeJsonString)
+}
+
+// Example 2: Bitmap transformation
+val filteredBitmap = withContext(Dispatchers.Default) {
+    applySepiaFilter(originalBitmap)
+}
+
+// Example 3: Sorting large dataset
+val sortedTransactions = withContext(Dispatchers.Default) {
+    transactions.sortedByDescending { it.timestamp }
+}
+
+// Example 4: Encryption
+val encryptedPayload = withContext(Dispatchers.Default) {
+    aesEncrypt(data, secretKey)
+}
+```
+
+---
+
+## 14.14 `Main` vs `IO` vs `Default`
+
+| Workload Type | Optimal Dispatcher | Underlying Pool Backing |
+|---|---|---|
+| Updating UI, Views, Jetpack Compose | `Dispatchers.Main` | Platform UI Main Looper |
+| Fast UI event handling, navigation | `Dispatchers.Main.immediate` | Platform UI Main Looper (inline if on Main) |
+| Reading/Writing disk files | `Dispatchers.IO` | Elastic `CoroutineScheduler` (up to 64 threads) |
+| Legacy synchronous database / JDBC | `Dispatchers.IO` | Elastic `CoroutineScheduler` (up to 64 threads) |
+| Blocking SDKs / InputStreams | `Dispatchers.IO` | Elastic `CoroutineScheduler` (up to 64 threads) |
+| Large JSON / Protobuf parsing | `Dispatchers.Default` | Fixed `CoroutineScheduler` (clamped to CPU cores) |
+| Image processing / Bitmap manipulation | `Dispatchers.Default` | Fixed `CoroutineScheduler` (clamped to CPU cores) |
+| Sorting / Filtering huge lists | `Dispatchers.Default` | Fixed `CoroutineScheduler` (clamped to CPU cores) |
+| Cryptography / Compression | `Dispatchers.Default` | Fixed `CoroutineScheduler` (clamped to CPU cores) |
+
+### Testability Pattern: `DispatcherProvider`
+
+Never hardcode dispatchers inside business logic / repositories; inject them for deterministic unit testing:
+
+```kotlin
+interface DispatcherProvider {
+    val main: CoroutineDispatcher
+    val io: CoroutineDispatcher
+    val default: CoroutineDispatcher
+}
+
+class DefaultDispatcherProvider : DispatcherProvider {
+    override val main: CoroutineDispatcher = Dispatchers.Main
+    override val io: CoroutineDispatcher = Dispatchers.IO
+    override val default: CoroutineDispatcher = Dispatchers.Default
+}
+```
+
+---
+
+## 14.15 `Dispatchers.Unconfined`
+
+### Definition
+
+`Dispatchers.Unconfined` starts execution in the **caller's current thread**, but after suspension it resumes in **whatever thread resumed the continuation**.
+
+```text
+Caller Thread (e.g. Main)
+    ↓
+Unconfined coroutine starts
+    ↓
+Suspends on background operation
+    ↓
+External background thread resumes continuation
+    ↓
+Coroutine continues executing on that arbitrary background thread!
+```
+
+```kotlin
+launch(Dispatchers.Unconfined) {
+    println(Thread.currentThread().name) // e.g. "main"
+    delay(100)
+    println(Thread.currentThread().name) // e.g. "kotlinx.coroutines.DefaultExecutor"
+}
+```
+
+### Why Avoid in Production?
+* **Non-deterministic threading**: Code following suspension runs on an unpredictable thread.
+* Touching UI views after suspension causes `CalledFromWrongThreadException`.
+* Modifying thread-confined state introduces subtle race conditions.
+
+---
+
+## 14.16 `Dispatchers.Main.immediate`
+
+### Definition
+
+`Dispatchers.Main.immediate` behaves like `Dispatchers.Main`, except that **if the caller is already on the main thread, it executes immediately inline instead of posting to the Android message queue**.
+
+```text
+Already on Main Thread?
+     │
+     ├── Dispatchers.Main           → Handler.post { } (adds 1-frame queue delay)
+     │
+     └── Dispatchers.Main.immediate → Executes inline immediately (zero frame delay)
+```
+
+```kotlin
+lifecycleScope.launch(Dispatchers.Main.immediate) {
+    updateUi() // Zero latency if already on main thread
+}
+```
+
+> [!TIP]
+> `viewModelScope` uses `Dispatchers.Main.immediate` by default under the hood on Android.
+
+---
+
+## 14.17 The Most Important Dispatcher Concept & Pool Sharing
+
+### Dispatcher Does Not Mean "Background"
+
+Common misconception:
+```text
+❌ WRONG:
+IO      = background
+Default = background
+Main    = foreground
+
+✅ CORRECT:
+Main    = UI thread event loop
+IO      = Blocking I/O workloads (elastic thread pool)
+Default = CPU-intensive computation (core-clamped thread pool)
+```
+
+### Deep Dive: `CoroutineScheduler` Pool Sharing
+
+Do `Dispatchers.Default` and `Dispatchers.IO` use separate thread pools?
+
+**No.** Both share the exact same internal worker pool: **`CoroutineScheduler`**.
 
 ```text
                   ┌──────────────────────────────────────────────┐
@@ -6480,462 +7064,466 @@ A frequent senior interview question is: *"Do `Dispatchers.Default` and `Dispatc
      [ CPU Workers (Default) ]                       [ Blocking Workers (IO) ]
    • Strictly clamped to CPU count                 • Expands up to max(64, cores)
    • Active computation                            • Blocked on file/socket I/O
-   • Tasks stolen when idle                        • Does not consume CPU capacity
+   • Tasks stolen when idle                        • Does not starve CPU capacity
 ```
 
-* **CPU Workers (`Default`)**: Restricted to available processor cores. When a CPU worker finishes its local queue, it steals tasks from sibling worker queues.
-* **Blocking Workers (`IO`)**: When a coroutine dispatches onto `Dispatchers.IO`, the scheduler marks the worker as `BLOCKING`. If all CPU workers are blocked on I/O, the scheduler dynamically provisions additional threads (up to 64 or custom limit) to ensure CPU tasks scheduled on `Default` never starve.
+When a coroutine dispatches to `Dispatchers.IO`, the scheduler marks the worker as `BLOCKING`. If all workers block, the scheduler dynamically provisions temporary threads so CPU tasks scheduled on `Dispatchers.Default` never starve.
 
-#### Modern Fine-Grained Concurrency: `limitedParallelism(N)`
-Instead of creating expensive, dedicated thread pools (`newFixedThreadPoolContext`), use `limitedParallelism`:
+---
+
+## 14.18 `withContext`
+
+### Definition
+
+`withContext()` temporarily changes the **coroutine context** for a block of code and returns the result of the block.
 
 ```kotlin
-// Limit concurrent database writes to 4 connections without allocating new threads
-val dbDispatcher = Dispatchers.IO.limitedParallelism(4)
+val result = withContext(Dispatchers.IO) {
+    doWork()
+}
+```
 
-// Create a mutex-free serialized dispatcher (strictly single-threaded execution order)
-val serialDispatcher = Dispatchers.Default.limitedParallelism(1)
+* It is a **suspending function**.
+* It does **not** create a new child coroutine; it switches context within the current coroutine.
+* It suspends the caller until the block finishes.
+
+### Real Examples
+
+```kotlin
+// Example 1: Repository data fetching
+class UserRepository(private val legacyApi: LegacyApi) {
+    suspend fun loadUser(): User = withContext(Dispatchers.IO) {
+        legacyApi.getUserBlocking()
+    }
+}
+
+// Example 2: Image filtering
+suspend fun processImage(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
+    applyFilters(bitmap)
+}
+
+// Example 3: Multiple context pipeline
+suspend fun loadProfile(): Profile {
+    val rawJson = withContext(Dispatchers.IO) {
+        blockingApi.getProfile()
+    }
+
+    return withContext(Dispatchers.Default) {
+        parseProfile(rawJson)
+    }
+}
+```
+
+### Main-Safety Pattern & Clean Architecture
+
+> **Main-Safety Rule:** A `suspend` function must be safe to call directly from `Dispatchers.Main` without blocking the UI.
+
+The responsibility of switching to `Dispatchers.IO` or `Dispatchers.Default` belongs **inside the repository / data layer**, not at the UI/ViewModel layer.
+
+```kotlin
+// ❌ ANTI-PATTERN: ViewModel handles low-level threading
+class UserViewModel(private val repo: UserRepository) : ViewModel() {
+    fun load() = viewModelScope.launch {
+        val user = withContext(Dispatchers.IO) { repo.fetchUser() } // Leaking threading logic
+        _state.value = user
+    }
+}
+
+// ✅ CLEAN ARCHITECTURE: Repository guarantees main-safety
+class UserRepository(private val api: UserApi) {
+    suspend fun fetchUser(): User = withContext(Dispatchers.IO) {
+        api.fetchUserBlocking()
+    }
+}
+
+class UserViewModel(private val repo: UserRepository) : ViewModel() {
+    fun load() = viewModelScope.launch {
+        _state.value = repo.fetchUser() // Safe to call directly on Main
+    }
+}
 ```
 
 ---
 
-### 6. Context Switching: `withContext` Mechanics
-
-`withContext(newContext)` is a `suspend` function that **temporarily switches** the execution context of the current coroutine and returns the result of the lambda upon completion.
-
-```kotlin
-suspend fun fetchUserProfile(userId: String): UserProfile = withContext(Dispatchers.IO) {
-    // Execution suspended on caller thread; resumed on an IO pool worker
-    val rawJson = blockingNetworkApi.get("/users/$userId")
-    // Parse on CPU dispatcher
-    withContext(Dispatchers.Default) {
-        jsonParser.decodeFromString<UserProfile>(rawJson)
-    }
-    // Automatically returns to IO, then returns to caller's original dispatcher
-}
-```
-
-#### Execution Lifecycle & Thread Hop Timeline
-
-```text
-Caller Thread (Main Thread)
-     │
-     │  1. Invokes withContext(Dispatchers.IO)
-     ├─────────────────────────────────────────────────┐
-  [SUSPENDED] (Main thread freed to render frames)     │ 2. Dispatches continuation
-                                                       ▼
-                                            IO Worker Thread (IO-pool-1)
-                                                       │
-                                                       │ 3. Executes blocking block
-                                                       ▼
-     ┌─────────────────────────────────────────────────┘
-     │  4. Resumes continuation with result
-     ▼
-Caller Thread (Main Thread)
-     │
-     │ 5. Execution continues on original dispatcher
-     ▼
-```
-
-#### Key Architectural Differences: `launch` vs `withContext`
+## 14.19 `launch` vs `withContext`
 
 | Property | `launch(context) { }` | `withContext(context) { }` |
 |---|---|---|
-| **Coroutine Creation** | Creates a **new child coroutine** (`StandaloneCoroutine`). | **Reuses current coroutine** (`ScopeCoroutine`). No new coroutine is spawned. |
-| **Return Value** | Returns a `Job` immediately (Fire-and-forget). | Returns the **result of the block** `T` (Suspends caller until block finishes). |
-| **Concurrency** | Concurrent / Asynchronous execution alongside caller. | Sequential / Synchronous within the current coroutine control flow. |
-| **Fast-Path Optimization** | Always schedules a dispatch. | If target context matches current context, executes **inline without thread switch**. |
+| **Coroutine Creation** | Creates a **new child coroutine** (`StandaloneCoroutine`) | **Reuses current coroutine** (`ScopeCoroutine`) |
+| **Return Value** | Returns a `Job` immediately (fire-and-forget) | Returns the **result of the block `T`** |
+| **Execution Flow** | Runs **concurrently / asynchronously** alongside caller | Runs **sequentially**; caller suspends until complete |
+| **Use Case** | Starting background tasks without waiting | Performing work on another dispatcher and returning value |
 
----
-
-### 7. Main-Safety Pattern & Clean Architecture Boundaries
-
-> **Definition (Main-Safety):** A `suspend` function is *main-safe* if it can be called directly from the UI thread (`Dispatchers.Main`) without blocking the event loop or dropping frames.
-
-#### The Responsibility Rule
-The responsibility of switching to background dispatchers (`Dispatchers.IO` / `Dispatchers.Default`) belongs **inside the implementation of the data source or repository**, NOT at the presentation / ViewModel layer.
-
-```kotlin
-// ❌ ANTI-PATTERN: ViewModel forced to manage threading
-class UserViewModel(private val repository: UserRepository) : ViewModel() {
-    fun load() = viewModelScope.launch {
-        // Leaking low-level threading concerns into UI layer
-        val data = withContext(Dispatchers.IO) { repository.fetchUser() }
-        _state.value = data
-    }
-}
-
-// ✅ CLEAN ARCHITECTURE: Repository guarantees Main-Safety
-class UserRepository(private val api: UserApi, private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO) {
-    suspend fun fetchUser(): User = withContext(ioDispatcher) {
-        api.getUserBlocking() // Implementation hides the threading contract
-    }
-}
-
-class UserViewModel(private val repository: UserRepository) : ViewModel() {
-    fun load() = viewModelScope.launch {
-        // Safe to call directly on Dispatchers.Main.immediate
-        _state.value = repository.fetchUser()
-    }
-}
-```
-
-#### When NOT to Use `withContext(Dispatchers.IO)`
-Do **not** wrap suspend functions that are already non-blocking:
-* **Retrofit `suspend` functions**: Internally use OkHttp's asynchronous enqueue mechanism; they do not block threads.
-* **Room `suspend` DAO queries**: Room automatically delegates query execution to its own internal query executor pool.
-* **Ktor client calls**: Built entirely on non-blocking asynchronous sockets.
-
-Wrapping these calls in `withContext(Dispatchers.IO)` introduces a completely redundant continuation dispatch and context allocation overhead.
-
----
-
-### 8. Internals: `ContinuationInterceptor` & Dispatch Protocol
-
-How does the Kotlin compiler and runtime translate a dispatcher into thread execution?
+### Mental Model Diagram
 
 ```text
-              [ suspend function reaches suspension point ]
-                                    │
-                                    ▼
-                Continuation<T> produced by State Machine
-                                    │
-                                    ▼
-                ContinuationInterceptor.interceptContinuation()
-                                    │
-                                    ▼
-                         DispatchedContinuation<T>
-                                    │
-                   (When resumed with Result<T>)
-                                    │
-                                    ▼
-               dispatcher.dispatch(coroutineContext, runnable)
-                                    │
-            ┌───────────────────────┴───────────────────────┐
-            ▼                                               ▼
-   [ Java Executor / Looper ]                     [ CoroutineScheduler ]
-   executor.execute(runnable)                     worker.dispatch(runnable)
-```
+launch
+──────
+Current Coroutine
+      │
+      ├───────────────► Child Coroutine (runs concurrently)
+      │
+      └── continues immediately without waiting
 
-1. Every `CoroutineDispatcher` implements `ContinuationInterceptor`.
-2. When a coroutine suspends and is subsequently resumed, the coroutine runtime does not invoke `continuation.resumeWith(result)` directly.
-3. Instead, it passes the continuation to `interceptor.interceptContinuation(continuation)`, which wraps it in a **`DispatchedContinuation`**.
-4. Inside `DispatchedContinuation.resumeWith()`, it calls:
-   ```kotlin
-   dispatcher.dispatch(context, this)
-   ```
-   where `this` is a `Runnable` task that eventually executes the continuation state machine on the assigned thread.
 
----
-
-### 9. Context Propagation Across Threads (`ThreadLocal`)
-
-Because coroutines jump across threads during execution, standard Java `ThreadLocal` variables (e.g., MDC logging, Trace IDs, SecurityContext) will lose their values after suspension.
-
-Use **`ThreadLocal.asContextElement()`** to preserve and synchronize thread-local state:
-
-```kotlin
-val correlationId = ThreadLocal<String>()
-
-suspend fun handleRequest() {
-    correlationId.set("REQ-48291")
-    
-    // asContextElement restores the ThreadLocal value whenever the coroutine resumes
-    withContext(Dispatchers.IO + correlationId.asContextElement()) {
-        println(correlationId.get()) // Prints: "REQ-48291" on IO thread worker
-        delay(100)
-        println(correlationId.get()) // Guaranteed: "REQ-48291" even if resumed on different worker
-    }
-}
+withContext
+───────────
+Current Coroutine
+      │
+      ▼
+Switch Context (e.g. to IO worker)
+      │
+      ▼
+Execute Block
+      │
+      ▼
+Return Result & Restore Original Context
+      │
+      ▼
+Continue Current Coroutine
 ```
 
 ---
 
-### 10. Dependency Injection & Testability
-
-Hardcoding dispatchers breaks unit tests by forcing asynchronous execution across real threads and breaking virtual clock advancement (`StandardTestDispatcher`, `UnconfinedTestDispatcher`).
-
-```kotlin
-// Production Interface / Pattern
-interface DispatcherProvider {
-    val main: CoroutineDispatcher
-    val io: CoroutineDispatcher
-    val default: CoroutineDispatcher
-}
-
-class DefaultDispatcherProvider : DispatcherProvider {
-    override val main: CoroutineDispatcher get() = Dispatchers.Main
-    override val io: CoroutineDispatcher get() = Dispatchers.IO
-    override val default: CoroutineDispatcher get() = Dispatchers.Default
-}
-
-// In Unit Tests:
-class TestDispatcherProvider(testDispatcher: TestDispatcher) : DispatcherProvider {
-    override val main = testDispatcher
-    override val io = testDispatcher
-    override val default = testDispatcher
-}
-```
-
----
-
-### 11. Senior Interview Traps & Pitfalls
-
-#### Trap 1: `Dispatchers.Main` vs `Dispatchers.Main.immediate`
-* **Problem**: Calling `withContext(Dispatchers.Main)` while already on the main thread forces execution to be posted to the end of the `Handler` message queue. This causes a minimum 1-frame latency (16ms at 60Hz) and visual stutter.
-* **Fix**: Use `Dispatchers.Main.immediate`. It checks `isDispatchNeeded()`. If already on the UI thread, it executes synchronously inline.
-
-#### Trap 2: Running CPU-Intensive Tasks on `Dispatchers.IO`
-* **Problem**: Offloading heavy JSON parsing or cryptographic hashing to `Dispatchers.IO`. Because `IO` can expand up to 64+ threads, 64 threads competing for CPU cores causes excessive OS context switching, thrashing, and cache invalidation.
-* **Fix**: Run CPU-intensive computations strictly on `Dispatchers.Default`, which is clamped to physical CPU core count.
-
-#### Trap 3: Thread-Starvation by Blocking on `Dispatchers.Default`
-* **Problem**: Calling blocking APIs (`Thread.sleep()`, synchronous `InputStream.read()`) inside `Dispatchers.Default`.
-* **Consequence**: Since `Dispatchers.Default` has only as many threads as CPU cores (e.g., 4 on a quad-core machine), 4 blocking calls freeze the *entire* default coroutine engine across the whole application.
-* **Fix**: Offload blocking I/O strictly to `Dispatchers.IO` or use `runInterruptible(Dispatchers.IO)`.
-
-#### Trap 4: `withContext` inside a Tight Loop
-* **Problem**:
-  ```kotlin
-  // ❌ DISASTER: 1,000 thread hops / continuation dispatches
-  for (item in items) {
-      withContext(Dispatchers.IO) { saveToDisk(item) }
-  }
-  ```
-* **Fix**: Wrap the loop itself in `withContext` to incur exactly **one** context switch:
-  ```kotlin
-  // ✅ OPTIMAL: Single context switch for the entire batch
-  withContext(Dispatchers.IO) {
-      for (item in items) {
-          saveToDisk(item)
-      }
-  }
-  ```
-
-#### Trap 5: Misunderstanding `Dispatchers.Unconfined`
-* **Problem**: Believing `Unconfined` executes on a background thread pool.
-* **Reality**: It runs on whatever thread called it until it hits the first suspension point. After suspension, it resumes on the thread that called `resume()` (which might be an internal networking thread or DB thread). If you touch thread-unsafe structures or UI elements after that suspension point, crashes or race conditions occur.
-
-#### Trap 6: Believing `withContext` Creates a Child Coroutine
-* **Problem**: Assuming `withContext` spawns a concurrent child job that runs concurrently.
-* **Reality**: `withContext` does not create a new concurrent coroutine; it suspends the caller and switches context. Cancellation of the parent immediately cancels `withContext`, and exceptions thrown inside `withContext` are thrown directly at the call site.
-
----
-
-## 14.5 Structured Concurrency, `Job`, and Cancellation
+## 14.20 Structured Concurrency
 
 ### Definition
-> **Structured concurrency** is a design principle where coroutines are organized into a **parent-child hierarchy**. A parent coroutine is responsible for its children, waits for them to complete, and cancellation propagates from parent to children. This makes leaked background work structurally impossible.
 
-### `Job`
-
-> A `Job` represents the **lifecycle of a coroutine**. It allows you to control and observe the coroutine — cancel it, wait for it with `join()`, and check its state.
-
-```kotlin
-val job = scope.launch { doWork() }
-
-job.cancel()
-job.join()
-job.isActive
-job.isCancelled
-job.isCompleted
-```
-
-### `SupervisorJob`
-
-> `SupervisorJob` is a special `Job` variant where **failure of one child does not automatically cancel its sibling children**. Useful when child operations are logically independent.
+**Structured concurrency** is a design principle where coroutines are organized into a strict **parent-child hierarchy**, guaranteeing that:
+1. **Parent scopes wait** for all their children to finish before completing.
+2. **Cancellation propagates downward**: Cancelling a parent automatically cancels all child coroutines.
+3. **Failure propagates upward**: An unhandled exception in a child cancels the parent and all sibling coroutines.
 
 ```text
-SupervisorJob
-    │
-    ├── API A ❌  (fails)
-    ├── API B ✅  (continues)
-    └── API C ✅  (continues)
+ViewModel Scope
+   │
+   └── Parent Coroutine
+         │
+         ├── Child API Call A
+         ├── Child API Call B
+         └── Child API Call C
 ```
 
-### `Job` vs `SupervisorJob`
+When the user navigates away and the ViewModel is cleared:
 
-| | `Job` (default) | `SupervisorJob` |
-|---|---|---|
-| A child fails | Cancels the parent **and all siblings** | Only that child fails |
-| Used by | `coroutineScope { }`, plain `launch` | `viewModelScope`, `supervisorScope { }` |
-| Right for | All-or-nothing work | Independent tasks |
-
-### `coroutineScope` vs `supervisorScope`
-
-```kotlin
-// coroutineScope — one failure cancels all
-coroutineScope {
-    launch { taskA() }   // A fails → B is cancelled
-    launch { taskB() }
-}
-
-// supervisorScope — failures are isolated
-supervisorScope {
-    launch { taskA() }   // A fails → B continues
-    launch { taskB() }
-}
+```text
+ViewModel Destroyed
+       ↓
+Parent Scope Cancelled
+       ↓
+All Children (A, B, C) Cancelled Automatically
+       ↓
+Network sockets closed, resources freed, zero leaks
 ```
-
-### Cancellation
-
-> Coroutine cancellation is a **cooperative mechanism**. Calling `cancel()` marks the coroutine as cancelled, and cancellable suspending functions respond by throwing `CancellationException`. CPU-bound code that never checks cancellation may continue running.
-
-```kotlin
-val job = launch { delay(10_000) }
-job.cancel()   // delay() is cancellable — responds immediately
-```
-
-CPU-bound code must cooperate:
-
-```kotlin
-// Without ensureActive() — cancellation is ignored
-while (true) {
-    performCpuWork()
-}
-
-// With ensureActive() — responds to cancellation
-while (isActive) {
-    ensureActive()
-    performCpuWork()
-}
-```
-
-### `NonCancellable`
-
-> `NonCancellable` is a special context for **cleanup operations that must complete even when the surrounding coroutine has been cancelled**.
-
-```kotlin
-try {
-    upload()
-} finally {
-    withContext(NonCancellable) {
-        releaseResource()   // Must finish even after cancel
-    }
-}
-```
-
-### Timeouts
-
-```kotlin
-// Throws TimeoutCancellationException on timeout
-withTimeout(5_000) { api.getUser() }
-
-// Returns null on timeout — safer
-val user = withTimeoutOrNull(5_000) { api.getUser() }
-```
-
-### Code Example
-
-```kotlin
-// Cooperating with cancellation in CPU-bound work
-suspend fun compress(frames: List<Frame>) = withContext(Dispatchers.Default) {
-    frames.map { frame ->
-        ensureActive()   // Throws CancellationException if cancelled
-        encode(frame)
-    }
-}
-
-// Cleanup that must run even after cancellation
-suspend fun upload(data: ByteArray) {
-    try {
-        api.upload(data)
-    } finally {
-        withContext(NonCancellable) { releaseLock() }
-    }
-}
-
-// All-or-nothing vs independent
-suspend fun loadAll() = coroutineScope {
-    val a = async { repo.a() }
-    val b = async { repo.b() }
-    Combined(a.await(), b.await())
-}
-
-suspend fun loadIndependently() = supervisorScope {
-    launch { runCatching { repo.header() }.onSuccess(::setHeader) }
-    launch { runCatching { repo.feed() }.onSuccess(::setFeed) }
-}
-```
-
-### Common Pitfalls
-* **Catching `Exception` around a suspending call.** `CancellationException` is an `Exception`; swallowing it breaks cancellation. Rethrow it explicitly, or catch specific types.
-* **`GlobalScope.launch`.** No parent, never cancelled — a leak by construction.
-* **`launch(SupervisorJob())`.** Supervision is a property of the scope's parent job; passing one to a child detaches it from the real scope instead.
 
 ---
 
-## 14.6 Exception Handling
+## 14.21 `viewModelScope`
 
 ### Definition
-> How an exception behaves depends on **which builder started the coroutine** and **what kind of `Job` its scope has**.
-> * **`launch`** — exception propagates upward immediately through the coroutine hierarchy to a `CoroutineExceptionHandler` or the thread's default handler.
-> * **`async`** — exception is **stored in the `Deferred`** and re-thrown when `await()` is called. In a non-supervisor scope, it also propagates to the parent.
-> * **`CoroutineExceptionHandler`** — a context element that receives exceptions reaching a **root** coroutine. Installing it on a child coroutine is a no-op.
-> * **`CancellationException`** — signals normal cancellation, not failure. It must always be **re-thrown**, never swallowed.
 
-### Code Example
+`viewModelScope` is an Android lifecycle-aware `CoroutineScope` bound to a `ViewModel`'s lifecycle. It uses `Dispatchers.Main.immediate` by default and is **automatically cancelled when `ViewModel.onCleared()` is invoked**.
 
 ```kotlin
-class DashboardViewModel : ViewModel() {
+class UserViewModel(private val repository: UserRepository) : ViewModel() {
 
-    // Handler on the ROOT coroutine's context — child handler would never fire
-    private val handler = CoroutineExceptionHandler { _, e ->
-        _state.update { it.copy(error = e.message) }
-    }
+    private val _state = MutableStateFlow<UiState>(UiState.Loading)
+    val state: StateFlow<UiState> = _state.asStateFlow()
 
-    fun load() = viewModelScope.launch(handler) {
-        val page = coroutineScope {
-            val user = async { repo.user() }
-            val feed = async { repo.feed() }
-            Page(user.await(), feed.await())   // Failure propagates to handler
+    fun loadUser() {
+        viewModelScope.launch {
+            try {
+                val user = repository.getUser()
+                _state.value = UiState.Success(user)
+            } catch (e: CancellationException) {
+                throw e // Always rethrow cancellation!
+            } catch (e: Exception) {
+                _state.value = UiState.Error(e.message)
+            }
         }
-        _state.update { it.copy(page = page) }
+    }
+}
+```
+
+Lifecycle flow:
+
+```text
+ViewModel Created
+      ↓
+viewModelScope active
+      ↓
+launch coroutine
+      ↓
+user navigates back → ViewModel cleared
+      ↓
+viewModelScope cancelled
+      ↓
+active network / DB coroutine cancelled immediately
+```
+
+---
+
+## 14.22 Why `GlobalScope` Is Dangerous
+
+```kotlin
+GlobalScope.launch { // ❌ HIGH RISK OF MEMORY & RESOURCE LEAKS
+    uploadUserData()
+}
+```
+
+`GlobalScope` creates unparented, top-level coroutines tied to the entire application lifetime:
+* They are **never automatically cancelled** when an Activity or Fragment is destroyed.
+* They hold references to outer objects, creating severe **memory leaks**.
+* They waste CPU, battery, and network resources executing work for abandoned screens.
+
+> **Rule:** Always use lifecycle-bound scopes (`viewModelScope`, `lifecycleScope`) or structured scopes (`coroutineScope`, `supervisorScope`).
+
+---
+
+## 14.23 `Job`
+
+### Definition
+
+A `Job` is a handle representing the **lifecycle and execution state of a coroutine**.
+
+```kotlin
+val job = scope.launch {
+    doWork()
+}
+
+job.isActive     // true if coroutine is currently running
+job.isCompleted  // true when coroutine finished or cancelled
+job.isCancelled  // true if cancel() has been requested
+
+job.cancel()     // Request cooperative cancellation
+job.join()       // Suspend until coroutine completes
+```
+
+### Job State Lifecycle Machine
+
+```text
+                                      wait children
+    ┌──────────┐     ┌───────────┐     ┌──────────┐     ┌───────────┐
+    │   New    │ ──► │  Active   │ ──► │ Completing│ ──►│ Completed │
+    └──────────┘     └───────────┘     └──────────┘     └───────────┘
+                           │                 │
+                           │ cancel / fail   │
+                           ▼                 ▼
+                     ┌───────────┐     ┌───────────┐
+                     │ Cancelling│ ──► │ Cancelled │
+                     └───────────┘     └───────────┘
+```
+
+---
+
+## 14.24 Cancellation
+
+### Definition
+
+Coroutine cancellation is **cooperative**.
+
+Calling `job.cancel()` does **not** abruptly terminate the underlying OS thread. Instead:
+1. It marks the `Job`'s state as `isCancelled = true`.
+2. It causes suspending functions (like `delay()`, `yield()`, or `await()`) to throw a `CancellationException`.
+3. CPU-bound code that never suspends must **explicitly check its cancellation state**.
+
+### Example 1 — Suspending calls cooperate automatically
+
+```kotlin
+val job = launch {
+    while (true) {
+        delay(1000) // delay() checks cancellation and throws CancellationException
+        println("Heartbeat")
     }
 }
 
-// Safe wrapping that respects cancellation
-suspend fun <T> safely(block: suspend () -> T): Result<T> = try {
+job.cancel() // Responds immediately
+```
+
+### Example 2 — CPU-Bound Loops Must Cooperate
+
+```kotlin
+// ❌ WRONG: Non-cooperative CPU loop ignores cancellation
+val job = launch(Dispatchers.Default) {
+    while (true) {
+        computeHeavyMath() // Will NEVER stop even after job.cancel()!
+    }
+}
+
+// ✅ CORRECT: Cooperating with isActive
+val job = launch(Dispatchers.Default) {
+    while (isActive) {
+        computeHeavyMath()
+    }
+}
+
+// ✅ CORRECT: Cooperating with ensureActive()
+val job = launch(Dispatchers.Default) {
+    for (frame in frames) {
+        ensureActive() // Throws CancellationException immediately if cancelled
+        processFrame(frame)
+    }
+}
+```
+
+---
+
+## 14.25 `coroutineScope` vs `supervisorScope`
+
+| Scope Builder | Failure Propagation Behavior | Use Case |
+|---|---|---|
+| **`coroutineScope`** | **All-or-Nothing**: If one child fails, the scope cancels **all sibling children** and propagates error up. | Dependent tasks where all data is mandatory. |
+| **`supervisorScope`** | **Isolated Failures**: If one child fails, **sibling children continue executing uninterrupted**. | Independent tasks (e.g. multi-widget dashboard). |
+
+### `coroutineScope` (All-or-Nothing)
+
+```kotlin
+suspend fun loadCheckoutData() = coroutineScope {
+    val cart = async { api.getCart() }
+    val payment = async { api.getPaymentMethods() } // If this throws...
+
+    // ...cart coroutine is automatically CANCELLED immediately.
+    Checkout(cart.await(), payment.await())
+}
+```
+
+### `supervisorScope` (Independent Isolation)
+
+```kotlin
+suspend fun loadDashboard() = supervisorScope {
+    val user = async { api.getUser() }
+    val news = async { api.getNews() } // If news fails...
+
+    // ...user API coroutine CONTINUES successfully.
+    val userData = try { user.await() } catch (e: Exception) { null }
+    val newsData = try { news.await() } catch (e: Exception) { emptyList() }
+    Dashboard(userData, newsData)
+}
+```
+
+---
+
+## 14.26 `SupervisorJob`
+
+A `SupervisorJob` provides a parent `Job` where **the failure of one child does not automatically cancel other sibling children**.
+
+```kotlin
+val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+scope.launch {
+    // Child A fails ❌ -> Child B and Child C continue running ✅
+}
+
+scope.launch {
+    // Child B
+}
+```
+
+> [!WARNING]
+> **Common Trap: `launch(SupervisorJob())` does NOT create a supervisor scope!**
+> Passing `SupervisorJob()` as an argument to `launch` creates a detached job that breaks structured concurrency with the caller. Use `supervisorScope { }` instead!
+
+---
+
+## 14.27 Exception Handling
+
+### Exception Behavior: `launch` vs `async`
+
+```text
+launch { }
+  → Exception propagates UPWARD immediately through parent hierarchy
+  → Must be caught via CoroutineExceptionHandler or try/catch INSIDE the builder
+
+async { }
+  → Exception is ENCAPSULATED inside the Deferred<T>
+  → Thrown when .await() is called
+  → In a standard coroutineScope, it STILL cancels siblings and parent even before await()
+```
+
+```kotlin
+// launch exception handling:
+scope.launch {
+    try {
+        throw IllegalStateException("Failed")
+    } catch (e: Exception) {
+        println("Caught: ${e.message}") // ✅ Caught locally
+    }
+}
+
+// async exception handling:
+supervisorScope {
+    val deferred = async {
+        throw IllegalStateException("API error")
+    }
+
+    try {
+        deferred.await() // 💥 Throws IllegalStateException here
+    } catch (e: Exception) {
+        println("Caught during await: ${e.message}")
+    }
+}
+```
+
+---
+
+## 14.28 `CoroutineExceptionHandler`
+
+### Definition
+
+`CoroutineExceptionHandler` is a `CoroutineContext` element used to catch **uncaught exceptions that have reached the root coroutine**.
+
+```kotlin
+val handler = CoroutineExceptionHandler { _, exception ->
+    println("Root uncaught exception: ${exception.message}")
+}
+
+val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + handler)
+
+scope.launch {
+    throw RuntimeException("Boom!") // Caught by handler
+}
+```
+
+> [!IMPORTANT]
+> **Trap:** Installing a `CoroutineExceptionHandler` on a **child** coroutine (`scope.launch { launch(handler) { ... } }`) is a **no-op and has no effect**. In structured concurrency, child coroutines propagate exceptions to their parent. Handlers only work on **root** coroutines or scopes!
+
+---
+
+## 14.29 Never Swallow `CancellationException`
+
+`CancellationException` is a subclass of `Exception` used to signal normal coroutine cancellation.
+
+```kotlin
+// ❌ CRITICAL BUG: Swallowing cancellation
+try {
+    api.downloadLargeFile()
+} catch (e: Exception) {
+    showErrorDialog("Download failed") // Treats user back-navigation as an error & breaks cancellation!
+}
+
+// ✅ CORRECT: Catch and rethrow CancellationException
+try {
+    api.downloadLargeFile()
+} catch (e: CancellationException) {
+    throw e // Must rethrow to allow coroutine teardown
+} catch (e: Exception) {
+    showErrorDialog("Download failed")
+}
+```
+
+### The `runCatching` Hazard
+
+Kotlin's standard `runCatching { }` catches `Throwable`, which **swallows `CancellationException`**:
+
+```kotlin
+// ❌ DANGEROUS inside coroutines:
+runCatching {
+    delay(5000) // CancellationException is swallowed!
+}
+
+// ✅ SAFE helper extension:
+inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
     Result.success(block())
-} catch (e: CancellationException) {
-    throw e                // ALWAYS rethrow CancellationException
-} catch (e: Throwable) {
-    Result.failure(e)
-}
-```
-
-### Why NOT to catch `CancellationException`
-
-`CancellationException` indicates **normal coroutine cancellation**, not an application failure.
-
-Bad:
-```kotlin
-try {
-    apiCall()
-} catch (e: Exception) {
-    showError()   // accidentally treats cancellation as an error
-}
-```
-
-Better:
-```kotlin
-try {
-    apiCall()
-} catch (e: CancellationException) {
-    throw e        // rethrow cancellation
-} catch (e: Exception) {
-    showError()
-}
-```
-
-### `runCatching` — the hidden problem
-
-`runCatching` catches `Throwable`, including `CancellationException`, which can accidentally swallow coroutine cancellation.
-
-Safer:
-```kotlin
-try {
-    Result.success(apiCall())
 } catch (e: CancellationException) {
     throw e
 } catch (e: Throwable) {
@@ -6943,206 +7531,321 @@ try {
 }
 ```
 
-### Common Pitfalls
-* **`runCatching` around suspending code.** It catches `CancellationException`. Rethrow it, or use a helper.
-* **A handler installed on a child coroutine.** It silently never fires.
-* **Expecting `try/catch` around `launch` to catch the body's exception.** `launch` returns immediately; the exception happens later, in the coroutine body.
-
 ---
 
-## 14.7 Bridging Callback APIs
+## 14.30 `NonCancellable`
 
 ### Definition
-> A **callback API** invokes a method later when a result is ready. **Bridging** wraps such an API so it becomes a `suspend` function. `suspendCancellableCoroutine` is the standard-library builder that performs the bridge — it hands you a `Continuation` to resume with a value or an exception, plus a hook to cancel the underlying work.
 
-### Code Example
+`NonCancellable` is an always-active `Job` context used inside `finally` blocks when **cleanup work must run even if the surrounding coroutine is cancelled**.
 
 ```kotlin
-suspend fun getToken(): String =
-    suspendCancellableCoroutine { continuation ->
-
-        val call = requestToken(object : Callback {
-            override fun onSuccess(token: String) {
-                continuation.resume(token)
-            }
-            override fun onError(error: Throwable) {
-                continuation.resumeWithException(error)
-            }
-        })
-
-        // Without this, cancelling the coroutine leaves the SDK call running
-        continuation.invokeOnCancellation {
-            call.cancel()
+suspend fun uploadFile(file: File) {
+    try {
+        api.upload(file)
+    } finally {
+        // Suspending inside finally on a cancelled coroutine requires NonCancellable
+        withContext(NonCancellable) {
+            file.close()
+            api.releaseLock()
         }
     }
+}
 ```
 
-### Common Pitfalls
-* **Omitting `invokeOnCancellation`.** The coroutine cancels but the underlying work continues — a resource leak.
-* **Resuming twice.** Throws `IllegalStateException: Already resumed`. Guard with `cont.isActive` when the callback can fire more than once.
+> [!WARNING]
+> Use `NonCancellable` strictly for short cleanup operations. Never wrap long-running business logic in `NonCancellable`.
 
 ---
 
-## 14.8 Parallel Decomposition Pattern
-
-This is a **very common senior Android interview question**.
+## 14.31 `withTimeout`
 
 ```kotlin
-suspend fun loadDashboard(): Dashboard = coroutineScope {
-
-    val user = async { repository.getUser() }
-    val feed = async { repository.getFeed() }
-
-    Dashboard(
-        user = user.await(),
-        feed = feed.await()
-    )
+// Throws TimeoutCancellationException if block takes > 5 seconds
+withTimeout(5_000) {
+    api.getUser()
 }
+
+// Returns null on timeout instead of throwing
+val user: User? = withTimeoutOrNull(5_000) {
+    api.getUser()
+}
+```
+
+---
+
+## 14.32 Bridging Callback APIs (`suspendCancellableCoroutine`)
+
+### Definition
+
+`suspendCancellableCoroutine` bridges legacy asynchronous callback-based APIs into idiomatic `suspend` functions with full cancellation support.
+
+```kotlin
+suspend fun fetchLocation(): Location = suspendCancellableCoroutine { continuation ->
+    val listener = object : LocationListener {
+        override fun onLocationChanged(loc: Location) {
+            continuation.resume(loc)
+        }
+        override fun onError(error: Exception) {
+            continuation.resumeWithException(error)
+        }
+    }
+
+    locationClient.requestLocation(listener)
+
+    // Unregister callback when coroutine is cancelled
+    continuation.invokeOnCancellation {
+        locationClient.removeLocationUpdates(listener)
+    }
+}
+```
+
+### Senior Traps with Callbacks:
+1. **Forgetting `invokeOnCancellation`**: The coroutine cancels, but the underlying listener leaks and keeps polling hardware.
+2. **Resuming more than once**: Invoking `continuation.resume()` twice throws `IllegalStateException: Already resumed`. Guard with `if (continuation.isActive)`.
+
+---
+
+## 14.33 The Complete Android Architecture Example
+
+Let's combine everything into a production-grade Android Dashboard implementation:
+
+```kotlin
+// 1. Data Layer (Guarantees Main-Safety)
+class DashboardRepository(
+    private val api: DashboardApi,
+    private val dispatchers: DispatcherProvider
+) {
+    suspend fun loadDashboard(): Dashboard = supervisorScope {
+        val userDeferred = async(dispatchers.io) { api.getUser() }
+        val transactionsDeferred = async(dispatchers.io) { api.getTransactions() }
+        val notificationsDeferred = async(dispatchers.io) { api.getNotifications() }
+
+        Dashboard(
+            user = userDeferred.await(),
+            transactions = transactionsDeferred.await(),
+            notifications = notificationsDeferred.await()
+        )
+    }
+}
+
+// 2. Presentation / ViewModel Layer
+class DashboardViewModel(
+    private val repository: DashboardRepository
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<DashboardUiState>(DashboardUiState.Loading)
+    val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    fun fetchDashboard() {
+        viewModelScope.launch {
+            _uiState.value = DashboardUiState.Loading
+            try {
+                val dashboard = repository.loadDashboard()
+                _uiState.value = DashboardUiState.Success(dashboard)
+            } catch (e: CancellationException) {
+                throw e // Mandatory: Do not catch cancellation as an error!
+            } catch (e: Exception) {
+                _uiState.value = DashboardUiState.Error(e.localizedMessage ?: "Unknown error")
+            }
+        }
+    }
+}
+```
+
+Execution Hierarchy:
+
+```text
+                 ViewModel
+                    │
+              viewModelScope
+                    │
+                  launch
+                    │
+             DashboardRepository
+                    │
+             supervisorScope
+                    │
+       ┌────────────┼────────────┐
+       │            │            │
+     async        async        async
+       │            │            │
+    User API   Transactions  Notifications
+       │            │            │
+       └────────────┼────────────┘
+                    │
+                 await()
+                    │
+                Dashboard
+                    │
+                    ▼
+               UI State Flow
+```
+
+---
+
+## 14.34 The Most Important Mental Model
+
+```text
+                 Coroutine
+                     │
+                     ▼
+             CoroutineContext
+                     │
+       ┌─────────────┼─────────────┐
+       │             │             │
+      Job       Dispatcher      Name / Handler
+                    │
+          ┌─────────┼─────────┐
+          │         │         │
+        Main        IO      Default
+          │         │         │
+         UI       Blocking    CPU
+                  I/O         Work
 ```
 
 ```text
-async(user)  ──┐
-               ├── both run concurrently
-async(feed)  ──┘
-               ↓
-await user + feed
-```
+Builders & Primitives:
+ • launch        → Start new concurrent coroutine; returns Job
+ • async         → Start concurrent coroutine producing a value; returns Deferred<T>
+ • withContext   → Temporarily switch context; returns block result sequentially
+ • suspend       → Declares suspension point; does NOT block thread or create thread
+ • runBlocking   → Bridges blocking code to suspend code; BLOCKS underlying thread
 
-**Don't write** sequential async:
-```kotlin
-// WRONG — sequential, not parallel
-val user = async { getUser() }.await()   // waits for user first
-val feed = async { getFeed() }.await()   // then starts feed
-```
-
----
-
-## 14.9 Lifecycle-Aware Scopes
-
-### `viewModelScope`
-> `viewModelScope` is an Android lifecycle-aware `CoroutineScope` associated with a `ViewModel`. Coroutines launched here are automatically cancelled when the `ViewModel` is cleared.
-
-```kotlin
-class UserViewModel : ViewModel() {
-    fun loadUser() {
-        viewModelScope.launch {
-            val user = repository.getUser()
-            _uiState.value = UiState.Success(user)
-        }
-    }
-}
-```
-
-### `GlobalScope` — avoid it
-> `GlobalScope` creates coroutines not tied to any lifecycle. Work is never automatically cancelled, leading to leaks and uncontrolled background execution.
-
-```kotlin
-// Avoid
-GlobalScope.launch { doWork() }
-
-// Prefer
-viewModelScope.launch { doWork() }
+Hierarchy & Scopes:
+ • coroutineScope  → All-or-nothing (child failure cancels siblings)
+ • supervisorScope → Independent isolation (child failure does not cancel siblings)
+ • cancellation    → Cooperative (delay / yield / ensureActive / isActive)
 ```
 
 ---
 
-## 14.10 Interview Q&A — Coroutines
+## 14.35 Senior Interview Traps & Pitfalls
+
+1. **`Dispatchers.Main` vs `Dispatchers.Main.immediate`**
+   * *Trap*: Using `withContext(Dispatchers.Main)` while already on the UI thread posts to the event queue, adding a minimum 16ms (1-frame) latency.
+   * *Fix*: Use `Dispatchers.Main.immediate` for synchronous inline execution.
+
+2. **Running CPU-Intensive Tasks on `Dispatchers.IO`**
+   * *Trap*: `Dispatchers.IO` expands up to 64 threads. 64 CPU-heavy threads will thrash CPU caches and cause massive OS context switching.
+   * *Fix*: Run CPU tasks on `Dispatchers.Default` (strictly clamped to physical CPU core count).
+
+3. **Blocking on `Dispatchers.Default`**
+   * *Trap*: Calling blocking I/O (`Thread.sleep`, blocking sockets) on `Dispatchers.Default` starves all worker threads across the entire app.
+   * *Fix*: Offload blocking calls strictly to `Dispatchers.IO`.
+
+4. **`withContext` Inside a Tight Loop**
+   * *Trap*: Putting `withContext(Dispatchers.IO)` inside a loop of 1,000 iterations creates 1,000 thread hops.
+   * *Fix*: Wrap the entire loop inside `withContext(Dispatchers.IO)` for a single thread switch.
+
+5. **Sequential `async` Anti-Pattern**
+   * *Trap*: `val a = async { ... }.await(); val b = async { ... }.await()` executes sequentially, losing concurrency.
+   * *Fix*: Launch all `async` coroutines first, then call `.await()` on all.
+
+6. **Swallowing `CancellationException` via `runCatching`**
+   * *Trap*: Broadly catching `Throwable` breaks coroutine cancellation.
+   * *Fix*: Explicitly rethrow `CancellationException`.
+
+---
+
+## 14.36 Interview Q&A — Coroutines
 
 ### Q1. What is a coroutine?
-A lightweight unit of asynchronous execution that can suspend and resume without blocking the underlying thread. Thousands of coroutines can share a small thread pool, unlike threads.
+A lightweight unit of asynchronous execution that can suspend and resume without blocking the underlying thread. Thousands of coroutines can share a small thread pool.
 
 ### Q2. What is a `suspend` function?
-A function that is allowed to suspend its execution without blocking the underlying thread. `suspend` does **not** create a thread — the coroutine's dispatcher controls threading.
+A function that is allowed to suspend its execution without blocking the underlying thread. `suspend` does **not** create a thread — the coroutine dispatcher controls threading.
 
 ### Q3. What is a Continuation?
-A `Continuation` represents the point at which a suspended coroutine can resume. It contains the coroutine context and provides `resumeWith()` to continue with a value or exception.
+A `Continuation` represents the point at which a suspended coroutine can resume. It holds the `CoroutineContext` and a `resumeWith(Result<T>)` callback.
 
 ### Q4. Does a `suspend` function always suspend?
-No. If the operation completes immediately (e.g., a cache hit), there is no actual suspension — execution falls through to the next step without releasing the thread.
+No. If the operation completes immediately (e.g. cache hit), execution falls through to the next step without releasing the thread.
 
 ### Q5. Difference between `launch` and `async`?
-
-| | `launch` | `async` |
-|---|---|---|
-| Result | None | `Deferred<T>` via `await()` |
-| Returns | `Job` | `Deferred<T>` |
-| Exception | Propagates immediately | Held in Deferred; thrown at `await()` |
-| Use for | Fire-and-manage work | Parallel tasks returning values |
+`launch` starts a fire-and-forget coroutine returning a `Job`. `async` starts a coroutine returning a `Deferred<T>` whose value is retrieved using `.await()`.
 
 ### Q6. What is `runBlocking` and when should it be used?
-`runBlocking` creates a coroutine scope while **blocking the current thread**. Use it in `main()` and unit tests to bridge blocking and suspending code. Never use it in Android application code — it can cause ANRs.
+`runBlocking` starts a coroutine and blocks the current thread until it completes. Use in `main()` and unit tests. Never use in Android UI code.
 
 ### Q7. What are the main dispatchers?
-
-```text
-Dispatchers.Main    → UI thread work
-Dispatchers.IO      → Blocking I/O (network, disk, database)
-Dispatchers.Default → CPU-intensive work
-Dispatchers.Unconfined → Not recommended for application code
-```
+* `Dispatchers.Main`: UI thread operations.
+* `Dispatchers.IO`: Blocking I/O (files, legacy DBs, sockets).
+* `Dispatchers.Default`: CPU-intensive computations (JSON, bitmaps, sorting).
+* `Dispatchers.Unconfined`: Starts in caller thread, resumes in arbitrary thread (avoid in production).
 
 ### Q8. What does `withContext` do?
-Temporarily changes the coroutine context (typically the dispatcher) for a block and returns the block's result. It does **not** create a new independent coroutine — it runs within the current coroutine.
+Temporarily switches the coroutine context (e.g. dispatcher) and returns the result of the block. It does not spawn a new coroutine.
 
 ### Q9. Difference between `withContext` and `launch`?
-
-```text
-launch       → starts a new concurrent coroutine; returns Job
-withContext  → changes context within current coroutine; returns a result
-```
+`launch` creates a new concurrent coroutine and returns a `Job`. `withContext` reuses the current coroutine, suspends the caller, and returns the block's result.
 
 ### Q10. What is CoroutineContext?
-A collection of elements defining a coroutine's behavior: `Job`, `CoroutineDispatcher`, `CoroutineName`, `CoroutineExceptionHandler`. Elements are combined with `+`.
-
-```kotlin
-val context = SupervisorJob() + Dispatchers.Default + CoroutineName("DataSync")
-```
+A type-safe indexed map of elements configuring a coroutine: `Job`, `CoroutineDispatcher`, `CoroutineName`, and `CoroutineExceptionHandler`.
 
 ### Q11. What is structured concurrency?
-A design principle where every coroutine has a parent. Cancelling the parent cancels all descendants, and no parent completes before its children. This prevents coroutine leaks.
+A design pattern where coroutines exist in a parent-child hierarchy. Parents wait for children, and cancellation/failures propagate predictably.
 
-### Q12. What is a `Job`?
-The handle representing a coroutine's lifecycle. Supports `cancel()`, `join()`, `isActive`, `isCancelled`, `isCompleted`.
+### Q12. What is `Job` vs `SupervisorJob`?
+In a regular `Job`, if one child fails, all siblings and parent are cancelled. In a `SupervisorJob`, failure of one child does not cancel siblings.
 
-### Q13. What is `SupervisorJob`?
-A `Job` variant where a child's failure does **not** automatically cancel its sibling children. Used for logically independent tasks.
+### Q13. Difference between `coroutineScope` and `supervisorScope`?
+`coroutineScope` cancels all children if any child fails (all-or-nothing). `supervisorScope` isolates child failures so siblings continue executing.
 
-### Q14. Difference between `coroutineScope` and `supervisorScope`?
+### Q14. Is coroutine cancellation automatic?
+No, it is **cooperative**. Code must reach a suspension point (`delay()`, `yield()`) or explicitly check `isActive` / `ensureActive()`.
+
+### Q15. What is `ensureActive()`?
+Throws `CancellationException` immediately if the current `Job` is no longer active.
+
+### Q16. What is `NonCancellable`?
+A context element used inside `finally` blocks to perform cleanup that must complete even after a coroutine is cancelled.
+
+### Q17. Difference between `withTimeout` and `withTimeoutOrNull`?
+`withTimeout` throws `TimeoutCancellationException`; `withTimeoutOrNull` returns `null` on timeout.
+
+### Q18. How does exception handling differ between `launch` and `async`?
+`launch` propagates exceptions up the hierarchy immediately. `async` encapsulates exceptions inside `Deferred`, throwing them upon calling `.await()`.
+
+### Q19. What is `CoroutineExceptionHandler`?
+A context element that catches uncaught exceptions reaching a **root** coroutine. Installing it on child coroutines has no effect.
+
+### Q20. Why must `CancellationException` never be swallowed?
+It signals normal cancellation. Swallowing it treats user back-navigation or screen exits as generic errors and leaves jobs running.
+
+### Q21. Why avoid `GlobalScope`?
+Coroutines in `GlobalScope` are not lifecycle-bound, leading to memory leaks and background battery drain.
+
+### Q22. How do you run two independent API calls in parallel?
+Use `coroutineScope` or `supervisorScope` with `async { ... }` for each call, then `await()` both.
+
+### Q23. How do you bridge a callback API to a suspend function?
+Use `suspendCancellableCoroutine { continuation -> ... }` and register `continuation.invokeOnCancellation { }`.
+
+---
+
+## 14.37 Senior Interview Quick Revision
 
 ```text
-coroutineScope  → child failure cancels all siblings and propagates up
-supervisorScope → child failure is isolated; siblings continue
-```
-
-### Q15. Is coroutine cancellation automatic?
-Not for all code. Cancellation is **cooperative** — `cancel()` only marks the job inactive. Code must reach a suspension point or call `ensureActive()` to respond.
-
-### Q16. What is `ensureActive()`?
-Checks whether the current coroutine is still active. If cancelled, throws `CancellationException`. Use it in CPU-bound loops to make them respond to cancellation.
-
-### Q17. What is `NonCancellable`?
-A special context for cleanup that must complete even when the coroutine is cancelled. Use inside `finally` blocks for operations that must not be interrupted.
-
-### Q18. Difference between `withTimeout` and `withTimeoutOrNull`?
-
-```text
-withTimeout       → throws TimeoutCancellationException on timeout
-withTimeoutOrNull → returns null on timeout (safer for most cases)
-```
-
-### Q19. How does exception handling differ between `launch` and `async`?
-
-```text
-launch → exception propagates immediately through hierarchy
-async  → exception stored in Deferred; surfaces at await()
-         (also propagates to parent in non-supervisor scope)
-```
-
-### Q20. What is `CoroutineExceptionHandler`?
-A `CoroutineContext` element that handles **uncaught exceptions from root coroutines**. Installing it on a child coroutine has no effect — the exception has already propagated to the parent.
-
-### Q21. Why must `CancellationException` be re-thrown?
-It represents **normal cooperative cancellation**, not an error. Swallowing it with a broad `catch (e: Exception)` breaks the cancellation mechanism.
+Coroutine              → Lightweight unit of async execution; suspends without blocking thread
+suspend                → Allows function to suspend; does NOT create or block thread
+Continuation           → State machine handle representing suspension point & resumption
+launch                 → Starts coroutine; returns Job; fire-and-forget
+async                  → Starts coroutine; returns Deferred<T>; awaited with .await()
+withContext            → Temporarily switches context; returns block result sequentially
+Dispatchers.Main       → UI thread event loop
+Dispatchers.Main.immediate → UI thread; executes inline if already on Main
+Dispatchers.IO         → Blocking I/O; elastic thread pool up to max(64, cores)
+Dispatchers.Default    → CPU-intensive work; thread pool clamped to CPU core count
+Structured Concurrency → Parent-child hierarchy; automatic cancellation propagation
+viewModelScope         → Android ViewModel scope; auto-cancelled on onCleared()
+SupervisorJob          → Isolated child failure; does not cancel siblings
+coroutineScope         → All-or-nothing child execution
+supervisorScope        → Independent child execution with isolated failure handling
+ensureActive()         → Checks cancellation in CPU-bound loops; throws CancellationException
+NonCancellable         → Context for cleanup inside finally blocks
+suspendCancellableCoroutine → Bridges callback APIs into cancellable suspend functions
+```ception)` breaks the cancellation mechanism.
 
 ### Q22. What is the problem with `runCatching` in coroutines?
 `runCatching` catches `Throwable`, including `CancellationException`, which can accidentally suppress coroutine cancellation. Use explicit `try/catch` with `CancellationException` re-thrown.
