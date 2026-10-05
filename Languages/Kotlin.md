@@ -6269,7 +6269,7 @@ When a suspending operation suspends, the coroutine's execution frame and state 
 
 ---
 
-# 14.2 Coroutine vs Thread
+## 14.2 Coroutine vs Thread
 
 | Feature / Metric | Thread | Coroutine |
 |---|---|---|
@@ -6302,7 +6302,7 @@ Thread Pool Worker
 
 ---
 
-# 14.3 `suspend` Function
+## 14.3 `suspend` Function
 
 ### Definition
 
@@ -6359,7 +6359,7 @@ Object getUser(String id, Continuation<? super User> continuation);
 
 ---
 
-# 14.4 Important: `suspend` Does Not Guarantee Suspension
+## 14.4 Important: `suspend` Does Not Guarantee Suspension
 
 Consider a cached repository:
 
@@ -6383,7 +6383,7 @@ Returns immediately (Zero suspension overhead)
 
 ---
 
-# 14.5 Coroutine Builders
+## 14.5 Coroutine Builders
 
 A **coroutine builder** creates and starts a new coroutine within a `CoroutineScope`.
 
@@ -6397,7 +6397,7 @@ The three fundamental builders are:
 
 ---
 
-## 14.5.1 `launch`
+### 14.5.1 `launch`
 
 ### Definition
 
@@ -6445,7 +6445,7 @@ job.join()   // Suspend until job finishes
 
 ---
 
-# 14.6 `async`
+## 14.6 `async`
 
 ### Definition
 
@@ -6514,7 +6514,7 @@ suspend fun loadProductPage(id: String): ProductScreenData = coroutineScope {
 
 ---
 
-# 14.7 `runBlocking`
+## 14.7 `runBlocking`
 
 ### Definition
 
@@ -6555,7 +6555,7 @@ fun onButtonClick() {
 
 ---
 
-# 14.8 CoroutineContext
+## 14.8 CoroutineContext
 
 ### Definition
 
@@ -6583,7 +6583,7 @@ val customContext: CoroutineContext =
 
 ---
 
-# 14.9 CoroutineDispatcher
+## 14.9 CoroutineDispatcher
 
 ### Definition
 
@@ -6597,7 +6597,7 @@ Coroutine (Work)  ──►  CoroutineDispatcher  ──►  Underlying OS Threa
 
 ---
 
-# 14.10 `Dispatchers.Main` & `Dispatchers.Main.immediate`
+## 14.10 `Dispatchers.Main` & `Dispatchers.Main.immediate`
 
 ### `Dispatchers.Main`
 Binds coroutine execution to the platform UI thread (Android `Looper.getMainLooper()`).
@@ -6628,7 +6628,7 @@ Dispatchers.Main.immediate ──► Execute INLINE immediately (Zero frame late
 
 ---
 
-# 14.11 `Dispatchers.IO`
+## 14.11 `Dispatchers.IO`
 
 ### Definition
 
@@ -6650,7 +6650,7 @@ val fileContent = withContext(Dispatchers.IO) {
 
 ---
 
-# 14.12 Senior Interview Trap: Blind `Dispatchers.IO` with Asynchronous Libraries
+## 14.12 Senior Interview Trap: Blind `Dispatchers.IO` with Asynchronous Libraries
 
 ### ⚠️ Common Misconception:
 > *"All network calls must be wrapped in `withContext(Dispatchers.IO)`."*
@@ -6672,7 +6672,7 @@ suspend fun getUser(id: String): User {
 
 ---
 
-# 14.13 `Dispatchers.Default`
+## 14.13 `Dispatchers.Default`
 
 ### Definition
 
@@ -6695,7 +6695,7 @@ val parsedList = withContext(Dispatchers.Default) {
 
 ---
 
-# 14.14 Dispatcher Selection Cheat Sheet
+## 14.14 Dispatcher Selection Cheat Sheet
 
 | Workload Category | Dispatcher | Thread Pool Sizing | Examples |
 |---|---|---|---|
@@ -6706,7 +6706,7 @@ val parsedList = withContext(Dispatchers.Default) {
 
 ---
 
-# 14.15 `Dispatchers.Unconfined`
+## 14.15 `Dispatchers.Unconfined`
 
 `Dispatchers.Unconfined` starts the coroutine in the caller thread, but once suspended, it resumes in whichever thread executed the resumption `Continuation.resumeWith()`.
 
@@ -6714,7 +6714,7 @@ Because execution hops across unpredictable threads, it should be avoided in pro
 
 ---
 
-# 14.16 `withContext`
+## 14.16 `withContext`
 
 ### Definition
 
@@ -6732,7 +6732,7 @@ class UserRepository(private val localDb: LegacyUserDb) {
 
 ---
 
-# 14.17 `launch` vs `withContext`
+## 14.17 `launch` vs `withContext`
 
 | Dimension | `launch` | `withContext` |
 |---|---|---|
@@ -6752,7 +6752,7 @@ Parent Coroutine ────► [Switch Context ──► Execute Block ──�
 
 ---
 
-# 14.18 Structured Concurrency
+## 14.18 Structured Concurrency
 
 ### Definition
 
@@ -6774,7 +6774,7 @@ If Parent is cancelled ──► Child 1, 2, 3 are ALL cancelled automatically.
 
 ---
 
-# 14.19 `viewModelScope` & Scope Lifecycle
+## 14.19 `viewModelScope` & Scope Lifecycle
 
 `viewModelScope` is an Android Jetpack extension property provided on `ViewModel`.
 
@@ -6800,7 +6800,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
 
 ---
 
-# 14.20 Cooperative Cancellation & `ensureActive()`
+## 14.20 Cooperative Cancellation & `ensureActive()`
 
 ### Definition
 
@@ -6832,7 +6832,7 @@ val job = scope.launch(Dispatchers.Default) {
 
 ---
 
-# 14.21 `coroutineScope` vs `supervisorScope`
+## 14.21 `coroutineScope` vs `supervisorScope`
 
 | Scope Builder | Failure Policy | Use Case |
 |---|---|---|
@@ -6852,7 +6852,7 @@ Widget C (Profile)  ──► Continues & Renders Successfully ✅
 
 ---
 
-# 14.22 `SupervisorJob` Trap
+## 14.22 `SupervisorJob` Trap
 
 ### ⚠️ Senior Interview Trap: Passing `SupervisorJob` into `launch`
 ```kotlin
@@ -6867,7 +6867,7 @@ coroutineScope {
 
 ---
 
-# 14.23 Exception Handling Rules
+## 14.23 Exception Handling Rules
 
 ### 1. `launch` Exception Propagation
 Exceptions in `launch` propagate immediately up the hierarchy to the root scope:
@@ -6893,7 +6893,7 @@ try {
 
 ---
 
-# 14.24 `CoroutineExceptionHandler`
+## 14.24 `CoroutineExceptionHandler`
 
 `CoroutineExceptionHandler` is a context element used as a **last-resort global error handler for uncaught exceptions reaching a root coroutine**.
 
@@ -6913,7 +6913,7 @@ scope.launch {
 
 ---
 
-# 14.25 Never Swallow `CancellationException`
+## 14.25 Never Swallow `CancellationException`
 
 `CancellationException` is the internal control-flow signal used by Kotlin coroutines to unwind the stack during cancellation.
 
@@ -6937,7 +6937,7 @@ try {
 
 ---
 
-# 14.26 `NonCancellable`
+## 14.26 `NonCancellable`
 
 When a coroutine is cancelled, its suspension points will immediately throw `CancellationException`. If you need to perform suspending cleanup inside a `finally` block (such as closing sockets, releasing database locks, or logging telemetry), wrap it in **`withContext(NonCancellable)`**:
 
@@ -6955,7 +6955,7 @@ try {
 
 ---
 
-# 14.27 `withTimeout` and `withTimeoutOrNull`
+## 14.27 `withTimeout` and `withTimeoutOrNull`
 
 Enforces execution time limits:
 
@@ -6973,7 +6973,7 @@ val safeUser: User? = withTimeoutOrNull(5_000L) {
 
 ---
 
-# 14.28 `suspendCancellableCoroutine` (Callback Bridging)
+## 14.28 `suspendCancellableCoroutine` (Callback Bridging)
 
 To bridge legacy asynchronous listener / callback APIs into modern suspend functions, use **`suspendCancellableCoroutine`**:
 
@@ -7000,7 +7000,7 @@ suspend fun LocationManager.awaitCurrentLocation(): Location =
 
 ---
 
-# 14.29 Complete Multi-Service Android Architecture Example
+## 14.29 Complete Multi-Service Android Architecture Example
 
 ```kotlin
 // Data Layer: Clean, concurrent, and main-safe
@@ -7047,7 +7047,7 @@ class DashboardViewModel(
 
 ---
 
-# 14.30 Senior Interview Quick Reference & Summary
+## 14.30 Senior Interview Quick Reference & Summary
 
 ```text
                  Coroutine
