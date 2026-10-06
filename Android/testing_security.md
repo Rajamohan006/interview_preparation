@@ -25,6 +25,7 @@
 | 10 | [App Hardening](#10-app-hardening-root-detection-tamper-detection-and-anti-reversing) | Root/tamper/Frida detection, R8 hardening, Play Integrity |
 | 11 | [OWASP MASVS & Mobile Top 10](#11-owasp-masvs-and-the-mobile-top-10) | MASVS control groups, Top 10 with Android specifics |
 | 12 | [Interview Questions](#12-interview-questions) | Pointer to the question bank |
+| 13 | [Biometric Authentication & Play Integrity API](#13-biometric-authentication-keystore--google-play-integrity-api) | BiometricPrompt + CryptoObject, Key Invalidated by Enrollment, Play Integrity architecture & verification flow |
 
 ---
 
@@ -1642,6 +1643,200 @@ webView.webViewClient = object : WebViewClient() {
 
 **Follow-up:** *If you could only implement three of those, which?*
 > Server-side authorization (defeating BOLA), TLS with a correctly-operated pinning setup, and Keystore-backed storage with `FLAG_SECURE`. Those cover the network attacker, the lost-device case, and the most damaging server-side flaw. Everything else is defense in depth on top.
+
+---
+
+# 13. Biometric Authentication, Keystore & Google Play Integrity API
+
+## 13.1 Hardware-Backed Biometric Authentication (`BiometricPrompt` + `CryptoObject`)
+
+### Why `BiometricPrompt` Alone is Insecure
+Calling `BiometricPrompt.authenticate(promptInfo)` with a basic callback is **vulnerable to memory hooking / tampering**:
+1. An attacker using Frida or Xposed can simply hook `AuthenticationCallback.onAuthenticationSucceeded()` and invoke it directly.
+2. The app believes the user authenticated even if biometrics were bypassed or no finger touched the sensor.
+
+### Cryptographic Biometric Binding (`CryptoObject`)
+To make biometric authentication bulletproof:
+* A cryptographic key is created in the hardware **Android Keystore** with `.setUserAuthenticationRequired(true)`.
+* The key can **never** be used by the CPU or OS unless the biometric hardware (Secure Element / TEE) validates the user's physical fingerprint/face.
+* The app initializes a `Cipher` with this key and wraps it inside a `BiometricPrompt.CryptoObject(cipher)`.
+* When authentication succeeds, the Keystore unlocks the `Cipher`. The app must use this cipher to decrypt a stored refresh token or sign a challenge payload. If an attacker hooks the Java callback, they still **do not possess the cryptographic key**, and the cipher remains locked, preventing API authorization!
+
+```kotlin
+class BiometricSecurityManager(private val context: Context) {
+
+    private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    private val KEY_ALIAS = "biometric_auth_token_key"
+    private val TRANSFORMATION = "${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_CBC}/${KeyProperties.ENCRYPTION_PADDING_PKCS7}"
+
+    /**
+     * 1. Generate hardware-backed AES-256 key restricted to Biometric Strong
+     */
+    fun generateBiometricKey() {
+        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        val builder = KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
+            .setKeySize(256)
+            .setUserAuthenticationRequired(true) // Key requires biometric unlock
+            // Key is invalidated if user adds or changes biometric enrollments in System Settings
+            .setInvalidatedByBiometricEnrollment(true)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            builder.setUserAuthenticationParameters(
+                0, // 0 = requires auth for EVERY single cipher operation
+                KeyProperties.AUTH_BIOMETRIC_STRONG
+            )
+        }
+
+        keyGenerator.init(builder.build())
+        keyGenerator.generateKey()
+    }
+
+    /**
+     * 2. Initialize Cipher in Decrypt mode with stored IV
+     */
+    fun getCipherForDecryption(iv: ByteArray): Cipher {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        val secretKey = keyStore.getKey(KEY_ALIAS, null) as SecretKey
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
+        return cipher
+    }
+
+    /**
+     * 3. Prompt user with BiometricPrompt + CryptoObject
+     */
+    fun authenticateUser(
+        activity: FragmentActivity,
+        cipher: Cipher,
+        onSuccess: (Cipher) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val executor = ContextCompat.getMainExecutor(context)
+        val cryptoObject = BiometricPrompt.CryptoObject(cipher)
+
+        val biometricPrompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    val authenticatedCipher = result.cryptoObject?.cipher
+                    if (authenticatedCipher != null) {
+                        onSuccess(authenticatedCipher)
+                    } else {
+                        onError("CryptoObject null — potential tampering")
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    when (errorCode) {
+                        BiometricPrompt.ERROR_LOCKOUT -> onError("Too many failed attempts. Try later.")
+                        BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> onError("Biometrics locked. PIN/Password required.")
+                        else -> onError(errString.toString())
+                    }
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Authenticate to Authorize")
+            .setSubtitle("Confirm your biometric identity")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .setNegativeButtonText("Cancel")
+            .build()
+
+        biometricPrompt.authenticate(promptInfo, cryptoObject)
+    }
+}
+```
+
+---
+
+## 13.2 Google Play Integrity API Architecture & Verification Flow
+
+### Why SafetyNet was Deprecated
+SafetyNet Attestation was deprecated due to lack of per-request telemetry, vulnerability to replayed tokens, and inability to detect sideloading or license state. Google introduced the **Play Integrity API** as the modern, unified defense.
+
+### What Play Integrity Verifies
+A Play Integrity response evaluates 3 core dimensions:
+1. **Application Integrity (`appRecognitionVerdict`):**
+   * `PLAY_RECOGNIZED`: Downloaded from Google Play Store and matches expected signing key.
+   * `UNRECOGNIZED_VERSION`: Sideloaded APK or unknown binary.
+2. **Device Integrity (`deviceRecognitionVerdict`):**
+   * `MEETS_STRONG_INTEGRITY`: Hardware-backed attestation (Locked bootloader, TEE/StrongBox validated, verified boot).
+   * `MEETS_DEVICE_INTEGRITY`: Passes Google Play Services compatibility and system integrity checks.
+   * `MEETS_BASIC_INTEGRITY`: Basic Android system running, but might be rooted or running in an emulator.
+3. **Account Integrity (`appLicensingVerdict`):**
+   * `LICENSED`: User acquired or purchased the app legitimately through Google Play.
+4. **Environment Details:**
+   * Checks Google Play Protect status and whether known malware or aggressive screen overlay apps are active.
+
+### The Complete End-to-End Attestation Flow
+```
+[Android App]               [Backend Server]              [Google Play Integrity API]
+      |                            |                                   |
+      | 1. Request nonce           |                                   |
+      |--------------------------->|                                   |
+      | 2. Fresh SHA-256 Nonce     |                                   |
+      |<---------------------------|                                   |
+      |                                                                |
+      | 3. requestIntegrityToken(nonce)                                |
+      |--------------------------------------------------------------->|
+      | 4. Signed JWE Token (Encrypted)                                |
+      |<---------------------------------------------------------------|
+      |                                                                |
+      | 5. Submit Transaction + Token                                  |
+      |--------------------------->|                                   |
+      |                            | 6. Decrypt & Verify Token         |
+      |                            |---------------------------------->|
+      |                            | 7. JSON Verdicts                  |
+      |                            |<----------------------------------|
+      |                            |                                   |
+      |                            | [Server Checks]:                  |
+      |                            | - Nonce == stored nonce           |
+      |                            | - Package name == expected        |
+      |                            | - Certificate sha256 matches      |
+      |                            | - MEETS_DEVICE_INTEGRITY verified |
+      | 8. Auth Success / Reject   |                                   |
+      |<---------------------------|                                   |
+```
+
+### Android Client Implementation (Kotlin)
+
+```kotlin
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityTokenRequest
+import com.google.android.play.core.integrity.IntegrityTokenResponse
+import kotlinx.coroutines.tasks.await
+
+class PlayIntegrityClient(private val context: Context) {
+
+    private val integrityManager = IntegrityManagerFactory.create(context)
+
+    /**
+     * Request an integrity token from Play Services.
+     * @param serverNonce Cryptographically random nonce obtained from backend
+     */
+    suspend fun fetchIntegrityToken(serverNonce: String): String {
+        val request = IntegrityTokenRequest.builder()
+            .setNonce(serverNonce) // Protects against token replay attacks
+            .setCloudProjectNumber(123456789012L) // Google Cloud Project number linked in Play Console
+            .build()
+
+        val response: IntegrityTokenResponse = integrityManager.requestIntegrityToken(request).await()
+        return response.token() // Send this JWE string to backend for verification
+    }
+}
+```
+
+### Critical Rules for Interview Success:
+1. **Never decrypt or parse the integrity token on the Android device:** An attacker can hook the client parser or return a spoofed JSON response. Decryption requires Google Cloud service credentials, which must NEVER exist inside an APK.
+2. **Always bind requests with a server nonce:** The backend must generate a single-use random nonce (or a hash of `userId + action + timestamp`), save it with a 2-minute TTL, and reject the integrity response if the returned nonce differs.
 
 ---
 

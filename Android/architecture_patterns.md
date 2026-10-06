@@ -1006,6 +1006,60 @@ class CheckoutViewModel @Inject constructor(
 ) : ViewModel()
 ```
 
+### 5.3 Advanced Modularization Patterns: API / Implementation Split
+
+### The API vs. Implementation Split Pattern
+When scaling past 20+ feature modules, even standard feature modularization suffers: if Module A depends on Module B, every time an engineer edits a ViewModel or internal logic in Module B, Module A must be recompiled.
+
+**The Solution:** Split every feature into two Gradle modules:
+1. **`:feature:profile:api`**: Contains public interfaces, data models (DTOs), and navigation contracts. Contains ZERO heavy implementations, NO Room, NO Retrofit, NO Compose screens. Compiles in milliseconds and rarely changes.
+2. **`:feature:profile:impl`**: Implements the API interfaces, internal UI, ViewModels, and Hilt bindings. Marked `internal` so no other module can access its internals.
+
+```
+                  ┌──────────────────────┐
+                  │      :feature:feed   │
+                  └──────────┬───────────┘
+                             │ depends on API only
+                             ▼
+                  ┌──────────────────────┐
+                  │ :feature:profile:api │
+                  └──────────▲───────────┘
+                             │ implements interface
+                  ┌──────────┴───────────┐
+                  │:feature:profile:impl │
+                  └──────────────────────┘
+```
+
+#### Code Implementation
+```kotlin
+// In :feature:profile:api
+interface ProfileApi {
+    fun getUserPublicProfile(userId: String): Flow<UserProfile>
+}
+
+@Serializable
+data class ProfileRoute(val userId: String)
+
+// In :feature:profile:impl
+internal class ProfileApiImpl @Inject constructor(
+    private val localDb: ProfileDao,
+    private val remoteApi: ProfileService
+) : ProfileApi {
+    override fun getUserPublicProfile(userId: String): Flow<UserProfile> = ...
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class ProfileModule {
+    @Binds
+    internal abstract fun bindProfileApi(impl: ProfileApiImpl): ProfileApi
+}
+```
+
+### Result:
+* When `:feature:profile:impl` changes, `:feature:feed` **does NOT recompile** because the ABI of `:feature:profile:api` did not change!
+* Maximum build caching and compilation parallelism in CI/CD.
+
 ### Common Pitfalls
 * **Over-modularizing early.** 40 modules for a 12-screen app makes every change touch five build files. Split when a real pain appears (build time, ownership conflicts).
 * **`api` everywhere.** It leaks transitive dependencies onto every consumer's compile classpath and destroys incremental build benefits.
@@ -2036,6 +2090,359 @@ Not with a rewrite. Rewrites of working software fail more often than they succe
 
 **Follow-up:** *The team wants to rewrite it in Compose from scratch. How do you respond?*
 > Ask what problem it solves that incremental migration does not. Usually the honest answer is developer experience, which is real but does not justify halting delivery and reintroducing every bug the old code has already fixed. Compose interop exists precisely so this can be incremental — and if after a year most screens are Compose, you have arrived at the same place without the risk.
+
+---
+
+# 8. Design Patterns in Android Practice
+
+> A concise, interview-ready reference. Every pattern includes an Android real-world example and the key interview question it answers.
+
+---
+
+## 8.1 Creational Patterns
+
+### Singleton
+Ensures **one instance** and a global access point.
+
+```kotlin
+// Kotlin object = thread-safe singleton (JVM class-loading guarantee)
+object NetworkClient {
+    val okHttp = OkHttpClient.Builder().build()
+}
+// Android use: single Room DB, single Retrofit, app-level CoroutineScope
+```
+> **Interview trap:** Holding an `Activity` context in a Singleton → memory leak. Always use `applicationContext`.
+
+---
+
+### Factory Method
+Defines an interface for creating objects; subclasses decide the type.
+
+```kotlin
+object LoggerFactory {
+    fun create(type: LoggerType, ctx: Context): Logger = when (type) {
+        LoggerType.LOGCAT -> LogcatLogger()
+        LoggerType.FILE   -> FileLogger(File(ctx.filesDir, "app.log"))
+        LoggerType.NONE   -> NoOpLogger()
+    }
+}
+```
+> **Android use:** `ViewModelProvider.Factory`, `WorkerFactory`, `LayoutInflater.from(context)`.
+
+---
+
+### Builder
+Constructs a complex object step-by-step with optional parameters.
+
+```kotlin
+// Kotlin named + default parameters replace most Builders
+data class ApiConfig(val baseUrl: String, val timeout: Long = 30L, val debug: Boolean = false)
+val cfg = ApiConfig(baseUrl = "https://api.example.com", debug = BuildConfig.DEBUG)
+
+// Traditional builder still needed for Android framework objects:
+// AlertDialog.Builder, NotificationCompat.Builder, OkHttpClient.Builder
+```
+
+---
+
+### Prototype
+Creates new objects by **copying an existing instance**.
+
+```kotlin
+// data class copy() IS the Prototype pattern
+val baseSession = UserSession("u1", "token", setOf("read"), expiry)
+val adminSession = baseSession.copy(permissions = setOf("read", "write", "admin"))
+```
+
+---
+
+### Abstract Factory
+Creates **families of related objects** without specifying their concrete classes.
+
+```kotlin
+interface ThemeFactory { fun createButton(ctx: Context): Button }
+class MaterialThemeFactory : ThemeFactory { override fun createButton(ctx: Context) = MaterialButton(ctx) }
+class LegacyThemeFactory  : ThemeFactory { override fun createButton(ctx: Context) = AppCompatButton(ctx) }
+// Swap the entire theme family by swapping the factory — no client changes
+```
+
+---
+
+## 8.2 Structural Patterns
+
+### Adapter
+Converts one interface into another that clients expect.
+
+```kotlin
+// Wrap a third-party SDK behind your own interface
+class FirebaseAnalyticsAdapter(private val sdk: FirebaseAnalyticsSDK) : Analytics {
+    override fun logScreen(name: String)   = sdk.trackScreenView(name, Bundle())
+    override fun logEvent(event: String, props: Map<String,String>) = sdk.trackCustomEvent(event, props)
+}
+// RecyclerView.Adapter adapts your data model → ViewHolder UI
+```
+
+---
+
+### Decorator
+Adds behaviour to an object **dynamically** without subclassing.
+
+```kotlin
+// OkHttp Interceptors are a chain of Decorators
+class AuthInterceptor(private val token: () -> String) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response =
+        chain.proceed(chain.request().newBuilder().addHeader("Authorization","Bearer ${token()}").build())
+}
+// chain.proceed() delegates to the next decorator
+```
+> Kotlin `by` automates the Decorator: forward all methods to delegate, override only what changes.
+
+---
+
+### Facade
+Provides a **simplified interface** to a complex subsystem.
+
+```kotlin
+class UserRepository(remote: RemoteDS, local: LocalDS, mapper: Mapper) {
+    fun getUsers(): Flow<List<User>> = flow {
+        emit(local.getUsers().map(mapper::toDomain))           // cache first
+        val fresh = remote.getUsers()
+        local.saveUsers(fresh.map(mapper::toEntity))
+        emit(fresh.map(mapper::toDomain))                      // then network
+    }
+}
+// ViewModel only calls repository.getUsers() — no knowledge of network/DB
+```
+
+---
+
+### Proxy
+Provides a **surrogate** to control access to another object.
+
+```kotlin
+// Protection proxy
+class AdminGuardProxy(private val real: UserRepository, private val user: User) : UserRepository {
+    override suspend fun deleteUser(id: String) {
+        check(user.isAdmin) { "Only admins can delete users" }
+        real.deleteUser(id)
+    }
+}
+// Retrofit generates a dynamic Proxy for your API interface
+// Room generates a Proxy for your DAO interface
+```
+
+---
+
+### Composite
+Composes objects into **tree structures** to represent part-whole hierarchies.
+
+```kotlin
+// Android View hierarchy IS the Composite pattern
+// ViewGroup (composite) contains View (leaf)
+// Both override draw(), measure(), layout() — client treats them uniformly
+```
+
+---
+
+### Bridge
+Decouples abstraction from implementation — **both can vary independently**.
+
+```kotlin
+interface Renderer { fun renderCircle(r: Float) }
+abstract class Shape(protected val renderer: Renderer) { abstract fun draw() }
+class Circle(r: Float, renderer: Renderer) : Shape(renderer) {
+    override fun draw() = renderer.renderCircle(r)
+}
+// Swap OpenGLRenderer / VulkanRenderer without changing Shape
+```
+
+---
+
+## 8.3 Behavioral Patterns
+
+### Observer
+**One-to-many** dependency — state change notifies all observers.
+
+```kotlin
+// StateFlow: Android's idiomatic Observer
+class CartViewModel : ViewModel() {
+    private val _items = MutableStateFlow<List<CartItem>>(emptyList())
+    val items: StateFlow<List<CartItem>> = _items.asStateFlow()
+    fun addItem(item: CartItem) { _items.update { it + item } }
+}
+// Also: LiveData, BroadcastReceiver, ContentObserver, AdapterDataObserver
+```
+
+---
+
+### Strategy
+Defines a **family of algorithms** — encapsulates each, makes them interchangeable.
+
+```kotlin
+fun interface SortStrategy<T> { fun sort(items: MutableList<T>) }
+
+class Sorter<T : Comparable<T>>(private var strategy: SortStrategy<T>) {
+    fun sort(items: MutableList<T>) = strategy.sort(items)
+}
+val sorter = Sorter(QuickSort<Int>())
+if (items.size < 20) sorter.setStrategy(BubbleSort())
+// Payment strategies: CardPayment, UPIPayment, WalletPayment
+```
+
+---
+
+### Command
+Encapsulates a **request as an object** — supports undo/redo and queuing.
+
+```kotlin
+interface Command { fun execute(); fun undo() }
+class AddTextCommand(private val editor: TextEditor, private val text: String) : Command {
+    override fun execute() { editor.insertText(text) }
+    override fun undo()    { editor.deleteText(text.length) }
+}
+class CommandHistory {
+    private val stack = ArrayDeque<Command>()
+    fun execute(cmd: Command) { cmd.execute(); stack.addLast(cmd) }
+    fun undo() { stack.removeLastOrNull()?.undo() }
+}
+// WorkManager WorkRequest = Command for background tasks
+```
+
+---
+
+### Chain of Responsibility
+Passes a request along a **chain of handlers**.
+
+```kotlin
+// OkHttp interceptors = Chain of Responsibility + Decorator
+// LoggingInterceptor → AuthInterceptor → CacheInterceptor → Network
+// Each calls chain.proceed() to pass to the next handler
+// Android touch dispatch: dispatchTouchEvent → onInterceptTouchEvent → onTouchEvent
+```
+
+---
+
+### Template Method
+Defines **skeleton of an algorithm** — subclasses fill in specific steps.
+
+```kotlin
+abstract class DataSyncTask {
+    fun sync() { fetch(); transform(); save(); notifyUI() }   // skeleton
+    protected abstract fun fetch(): List<Any>
+    protected abstract fun transform(): List<Any>
+    private fun save() { /* common */ }
+    private fun notifyUI() { /* common */ }
+}
+// RecyclerView.Adapter: framework calls onCreateViewHolder/onBindViewHolder (your steps)
+```
+
+---
+
+### State Pattern
+Object **alters behaviour** when its internal state changes.
+
+```kotlin
+sealed interface PlayerState { object Idle : PlayerState; object Playing : PlayerState; object Paused : PlayerState }
+class MediaPlayer {
+    private var state: PlayerState = PlayerState.Idle
+    fun play() {
+        state = when (state) {
+            PlayerState.Idle, PlayerState.Paused -> { startPlayback(); PlayerState.Playing }
+            PlayerState.Playing -> state
+        }
+    }
+}
+// MVI sealed UiState is the State pattern in architecture
+```
+
+---
+
+## 8.4 Android-Specific Patterns
+
+### ViewHolder Pattern
+Caches view references to eliminate `findViewById()` on every scroll.
+
+```kotlin
+class UserAdapter : ListAdapter<User, UserAdapter.VH>(DiffCB()) {
+    class VH(private val b: ItemUserBinding) : RecyclerView.ViewHolder(b.root) {
+        fun bind(u: User) { b.name.text = u.name; b.email.text = u.email }
+        companion object { fun from(p: ViewGroup) = VH(ItemUserBinding.inflate(LayoutInflater.from(p.context), p, false)) }
+    }
+    override fun onCreateViewHolder(p: ViewGroup, t: Int) = VH.from(p)
+    override fun onBindViewHolder(h: VH, pos: Int) = h.bind(getItem(pos))
+}
+```
+
+---
+
+## 8.5 Design Patterns Interview Questions (20 Questions)
+
+### Q1. What are the three GoF pattern categories?
+**Creational** (how objects are made), **Structural** (how objects are composed), **Behavioral** (how objects communicate).
+
+### Q2. How does Kotlin's `object` implement Singleton?
+Compiled to a class with a static `INSTANCE` field initialized in the class static initializer — JVM class-loading guarantees thread-safe lazy initialization.
+
+### Q3. Why is Singleton an anti-pattern for testable code?
+Global state cannot be reset between tests. The singleton cannot be replaced with a test double. Prefer DI — inject a scoped singleton in production, inject a fake in tests.
+
+### Q4. What is the difference between Factory Method and Abstract Factory?
+Factory Method creates **one product**; subclasses decide the type. Abstract Factory creates **families of related products** that are designed to work together.
+
+### Q5. Where is Factory Method used in Android?
+`ViewModelProvider.Factory`, `WorkerFactory`, `FragmentFactory`, `LayoutInflater.from(context)`.
+
+### Q6. How does Kotlin's `copy()` implement the Prototype pattern?
+`data class copy()` creates a new instance by copying all properties, allowing selective overrides — the classic Prototype intent of cloning an existing object.
+
+### Q7. What problem does Builder solve and when does Kotlin eliminate it?
+Builder solves telescoping constructors and optional parameters. Kotlin named + default parameters replace most Builders. Use Builder only for complex, multi-step construction with validation.
+
+### Q8. What is the Adapter pattern? Example in Android?
+Converts an incompatible interface to the expected one. `RecyclerView.Adapter` adapts a data list to the `ViewHolder` UI contract. Wrapping a third-party analytics SDK behind your own interface is another example.
+
+### Q9. How does OkHttp use both Decorator and Chain of Responsibility?
+Each `Interceptor` is a Decorator (wraps the call, adds behavior). The chain passes the request through each in order (Chain of Responsibility). `chain.proceed()` delegates to the next.
+
+### Q10. What is the difference between Decorator and Proxy?
+Decorator **adds** new behavior. Proxy **controls access** (lazy loading, protection, remote). OkHttp interceptors = Decorator; Retrofit's generated API implementation = Proxy.
+
+### Q11. What is the Repository pattern and how does it relate to Facade?
+Repository facades the data layer — it hides whether data comes from network, cache, or DB. The ViewModel only calls the repository; it has no knowledge of the underlying sources.
+
+### Q12. How does the Observer pattern appear in Android?
+`StateFlow`/`LiveData`, `BroadcastReceiver`, `ContentObserver`, `RecyclerView.AdapterDataObserver`.
+
+### Q13. What is the difference between Strategy and State patterns?
+**Strategy**: the algorithm is chosen externally by the client; the object doesn't know about its strategies. **State**: behavior changes based on the object's internal state; the object transitions between states itself.
+
+### Q14. How does the Command pattern apply to WorkManager?
+Each `WorkRequest` encapsulates a unit of work (the command). It can be enqueued, chained, cancelled, and retried — like a command queue with retry logic.
+
+### Q15. Where is the Template Method pattern in Android?
+`RecyclerView.Adapter` defines the template — the framework calls `onCreateViewHolder` and `onBindViewHolder` (your abstract steps) at the correct times.
+
+### Q16. What is the Composite pattern? Where does it appear in Android?
+Objects form a tree where leaf and composite are treated uniformly. Android `View`/`ViewGroup` hierarchy is a Composite — both implement `draw()`, `measure()`, `layout()`.
+
+### Q17. When should you NOT apply a design pattern?
+When a simpler solution works. Patterns add abstraction and complexity — apply them only when the recurring problem they solve actually exists in your codebase (avoid pattern-for-pattern's-sake).
+
+### Q18. How does class delegation (`by`) implement the Decorator pattern?
+`by` auto-forwards all interface methods to the delegate. You only override the methods where you add behavior — eliminating the boilerplate of writing every forwarding method manually.
+
+### Q19. Explain MVI as a combination of patterns.
+MVI combines **Observer** (StateFlow), **Command** (Intent objects), **State** (sealed UiState transitions), and **Strategy** (each Intent handler is a strategy for a specific action).
+
+### Q20. Design a payment system using design patterns.
+```
+Strategy:  PaymentStrategy (CardPayment, UPIPayment, WalletPayment)
+Factory:   PaymentStrategyFactory.create(type)
+Command:   PaymentCommand.execute() / refund() — supports undo/retry
+Observer:  PaymentEventFlow — notifies order service, analytics
+Facade:    PaymentFacade.pay(amount, method) — single entry point
+Chain:     ValidationChain → FraudCheck → PaymentGateway
+```
 
 ---
 

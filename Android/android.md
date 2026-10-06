@@ -22,8 +22,8 @@
 | 7 | [Background Execution & Pagination](#7-background-execution--pagination) | WorkManager, Paging 3, scheduler selection, Doze & standby buckets, FCM |
 | 8 | [Dependency Injection](#8-dependency-injection-di) | Dagger vs Hilt vs Koin, components & scopes, assisted injection, multibinding |
 | 9 | [Performance, Security & Diagnostics](./performance.md) | Dedicated 10-year guide: Memory & Leaks, ART GC, CPU/GPU, Profiler, Perfetto, AGI, Startup, Jank, 25 Senior Q&As |
-| 10 | [Media, Camera & Device APIs](#10-media-camera-and-device-apis) | CameraX, Media3/ExoPlayer, location, sensors, biometrics |
-| 11 | [Firebase & Google Play Services](#11-firebase-and-google-play-services) | Crashlytics, Analytics, Remote Config, Play Integrity, in-app updates, review, billing |
+| 10 | [Media, Camera, Connectivity & Device APIs](#10-media-camera-and-device-apis) | CameraX, Media3/ExoPlayer, BLE/GATT & Wi-Fi Direct, NFC, System Services (AlarmManager, Overlays, VpnService) |
+| 11 | [Firebase & Google Play Services](#11-firebase-and-google-play-services) | Crashlytics, Analytics, RTDB vs Firestore, Auth, Remote Config, Play Integrity, in-app updates, billing |
 | 12 | [Modern Platform UI](#12-modern-platform-ui-edge-to-edge-predictive-back-and-adaptive-layouts) | Edge-to-edge & insets, predictive back, foldables & window size classes |
 | 13 | [Accessibility & Internationalization](#13-accessibility-and-internationalization) | TalkBack semantics, contrast & targets, plurals, RTL, per-app language |
 | 14 | [Interoperability](#14-interoperability-java--kotlin-and-views--compose) | Java↔Kotlin interop, ComposeView & AndroidView |
@@ -7543,6 +7543,166 @@ class StepCounter(context: Context) : SensorEventListener {
 
 ---
 
+## 10.4 Bluetooth & Connectivity APIs
+
+### 10.4.1 Classic Bluetooth vs. Bluetooth Low Energy (BLE)
+
+| Dimension | Classic Bluetooth (BR/EDR) | Bluetooth Low Energy (BLE / Smart) |
+|---|---|---|
+| **Primary Use Case** | Continuous audio streaming (A2DP), large file transfer (FTP), car kits | Periodic sensor telemetry, wearables, IoT, beacons |
+| **Power Consumption** | High (milliwatts to watts, continuous connection) | Very Low (microwatts to milliwatts, duty-cycled bursts) |
+| **Data Throughput** | Up to 2-3 Mbps | ~100 kbps – 1.4 Mbps (BLE 5.x 2M PHY) |
+| **Payload Size** | Continuous stream (RFCOMM socket) | Characteristic attributes (default 20 bytes; up to 512 with MTU exchange) |
+| **Core Protocol** | RFCOMM, L2CAP, SDP | GATT (Generic Attribute Profile), ATT (Attribute Protocol) |
+
+---
+
+### 10.4.2 BLE Architecture: GATT Hierarchy
+```
+[GATT Server (Peripheral Device, e.g. Smart Watch)]
+└── Service (UUID: 0x180D - Heart Rate Service)
+    ├── Characteristic (UUID: 0x2A37 - Heart Rate Measurement)
+    │   ├── Value: [Flags, BPM: 78]
+    │   ├── Properties: NOTIFY, READ
+    │   └── Descriptor (UUID: 0x2902 - CCCD: Client Characteristic Configuration)
+    │       └── Value: 0x0100 (Notifications Enabled)
+    └── Characteristic (UUID: 0x2A38 - Body Sensor Location)
+        └── Properties: READ
+```
+
+* **Central (Client):** The Android phone. Scans for advertisements, initiates connection, reads/writes characteristics, requests notifications.
+* **Peripheral (Server):** The remote device (e.g. sensor). Broadcasts advertising packets, hosts the GATT database of Services and Characteristics.
+* **MTU (Maximum Transmission Unit):** Default ATT MTU is **23 bytes** (3 bytes ATT header + 20 bytes payload). Attempting to write 50 bytes without negotiating MTU will truncate data. The Central must invoke `gatt.requestMtu(512)` to transfer larger buffers in a single packet.
+
+### 10.4.3 Production BLE Scanner & GATT Client Implementation
+
+```kotlin
+class BleConnectionManager(private val context: Context) {
+
+    private val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
+    private val adapter: BluetoothAdapter? = bluetoothManager.adapter
+    private val scanner: BluetoothLeScanner? get() = adapter?.bluetoothLeScanner
+    private var activeGatt: BluetoothGatt? = null
+
+    // UUIDs
+    private val SERVICE_UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
+    private val CHAR_UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
+    private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+    /**
+     * 1. Targeted BLE Scan (Filtered & Low-Latency)
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_SCAN)
+    fun startScan(onDeviceFound: (BluetoothDevice) -> Unit) {
+        val filter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(SERVICE_UUID))
+            .build()
+
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        scanner?.startScan(listOf(filter), settings, object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                scanner?.stopScan(this) // Always stop scan upon discovery!
+                onDeviceFound(result.device)
+            }
+        })
+    }
+
+    /**
+     * 2. Connect GATT & Handle Callbacks sequentially
+     */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun connect(device: BluetoothDevice) {
+        activeGatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    // Step A: Request larger MTU immediately after connecting
+                    gatt.requestMtu(512)
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    gatt.close()
+                }
+            }
+
+            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                // Step B: Discover services only AFTER MTU negotiation finishes
+                gatt.discoverServices()
+            }
+
+            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    enableNotifications(gatt)
+                }
+            }
+
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                value: ByteArray
+            ) {
+                // Step C: Handle incoming notification packet
+                val bpm = value[1].toInt() and 0xFF
+                Log.d("BLE", "Heart rate received: $bpm BPM")
+            }
+        }, BluetoothDevice.TRANSPORT_LE)
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    private fun enableNotifications(gatt: BluetoothGatt) {
+        val service = gatt.getService(SERVICE_UUID) ?: return
+        val characteristic = service.getCharacteristic(CHAR_UUID) ?: return
+
+        // 1. Tell local Android OS to register for characteristic notifications
+        gatt.setCharacteristicNotification(characteristic, true)
+
+        // 2. Write to remote CCCD descriptor to tell peripheral hardware to start transmitting
+        val descriptor = characteristic.getDescriptor(CCCD_UUID) ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+        } else {
+            @Suppress("DEPRECATION")
+            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            @Suppress("DEPRECATION")
+            gatt.writeDescriptor(descriptor)
+        }
+    }
+}
+```
+
+---
+
+### 10.4.4 Wi-Fi Direct, NSD, NFC & Nearby Connections
+
+* **Wi-Fi Direct (P2P):** Allows devices to connect directly without a Wi-Fi router access point at speeds up to 250 Mbps (`WifiP2pManager`). Ideal for local offline high-speed file sharing.
+* **Network Service Discovery (NSD):** Discovers services published on a local Wi-Fi subnet using zero-configuration DNS-SD (`NsdManager`). Used for discovering Chromecast, smart bulbs, or local network printers without typing IP addresses.
+* **NFC & Host Card Emulation (HCE):** Short-range (under 4 cm) high-frequency RFID. `HostApduService` lets an Android app emulate an ISO 14443-4 smart card, intercepting APDU commands for transit cards or digital payment terminals.
+* **Google Nearby Connections API:** High-level P2P communications library built on top of Bluetooth, BLE, and Wi-Fi Direct. Handles automatic advertising, handshakes, authentication tokens, encryption, and automatic transport switching (BLE for handshake → Wi-Fi hotspot for bulk transfer).
+
+### Common Pitfalls
+* **Concurrent GATT calls:** The Android `BluetoothGatt` stack cannot handle multiple simultaneous async operations. If you call `writeCharacteristic` while another write/read is in-flight, Android drops it silently or fails with `GATT_BUSY`. **You must queue all GATT requests and process them sequentially.**
+* **Forgetting Android 12+ permissions:** Runtime permissions `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, and `BLUETOOTH_ADVERTISE` are required. Omitting `android:usesPermissionFlags="neverForLocation"` on `BLUETOOTH_SCAN` forces location runtime permission requests as well!
+
+---
+
+## 10.5 Platform System Services Deep Dive
+
+### 10.5.1 `AlarmManager`: Exact vs. Inexact Alarms
+* **Inexact Alarms (`set()`, `setInexactRepeating()`):** The system batches alarms across apps to wake the CPU as few times as possible to save power. Wake times may vary by several minutes.
+* **Exact Alarms (`setExact()`, `setExactAndAllowWhileIdle()`):** Wakes the device at the exact millisecond, even if the device is in deep **Doze Mode**.
+* **Android 12+ Permission Restrictions:** Because exact alarms drain batteries, apps targeting API 31+ must declare `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM` (restricted to clocks/alarms/calendars). Apps must check `alarmManager.canScheduleExactAlarms()` before calling exact APIs.
+
+### 10.5.2 `WindowManager` System Overlays
+* **System Alert Window:** Renders persistent UI overlays on top of other running applications (e.g. Chat Heads, screen recorders, call identifiers).
+* **Implementation:** `windowManager.addView(view, params)` using `WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY`.
+* **Security & Tapjacking Protection:** Sensitive banking or authentication screens must set `View.setFilterTouchesWhenObscured(true)` or `FLAG_SECURE` to prevent overlays from intercepting user taps or recording PIN codes via malicious transparent overlays.
+
+### 10.5.3 `AccessibilityService` & `VpnService`
+* **`AccessibilityService`:** Designed to assist users with disabilities by monitoring screen state (`onAccessibilityEvent`), inspecting view hierarchies (`AccessibilityNodeInfo`), and performing synthesized gestures. Requires explicit user opt-in in System Settings. Google Play strictly bans apps that misuse Accessibility for non-accessibility features (e.g. background data scraping).
+* **`VpnService`:** Configures local network interfaces (`Builder.establish()`) returning a file descriptor (`ParcelFileDescriptor`) representing a virtual TUN interface. The app reads raw outgoing IP packets and writes incoming IP packets, enabling local packet filtering, firewalls, and encrypted tunneling.
+
+---
+
 # 11. Firebase and Google Play Services
 
 ## 11.1 Crashlytics, Analytics, and Remote Config
@@ -7722,6 +7882,75 @@ fun requestReview(activity: Activity) {
 * **Prompting for review immediately on launch.** Play throttles the flow and the user is not in a position to judge. Trigger it after a genuine success moment.
 * **Using immediate updates for routine releases.** It blocks users and increases uninstalls.
 * **Not acknowledging a purchase within 3 days.** Play automatically refunds it.
+
+---
+
+## 11.3 Firebase Architecture: Realtime Database vs. Cloud Firestore, Auth & Performance Monitoring
+
+### 11.3.1 Firebase Realtime Database vs. Cloud Firestore
+
+| Architecture Dimension | Firebase Realtime Database (RTDB) | Cloud Firestore |
+|---|---|---|
+| **Data Model** | Single monolithic JSON tree | Collections containing Documents with subcollections |
+| **Querying Capabilities** | Deep query limitations; can only sort/filter on a single property per query | Rich compound queries; filters and sorts across multiple fields using composite indexes |
+| **Scalability & Sharding** | Single database instances max at ~200k concurrent connections; requires manual database sharding | Automatic horizontal multi-region scaling across millions of connections |
+| **Offline Persistence** | Basic in-memory and disk persistence (mobile only) | Advanced offline engine with local indexing and multi-tab web support |
+| **Pricing Model** | Charged by **Storage (GB)** and **Data Download Bandwidth (GB)** | Charged primarily by **Document Operations (Reads, Writes, Deletes)** |
+| **Best Used For** | Ultra-low latency state sync (presence indicators, multiplayer games, simple IoT state) | Enterprise mobile apps, structured e-commerce, complex relations, feeds |
+
+---
+
+### 11.3.2 Firebase Authentication Flows & Token Lifecycle
+
+* **OAuth & Federated Identity:** Handled via Google, Apple, or custom OIDC providers. The Android app obtains an ID token from the provider and exchanges it with Firebase via `AuthCredential`:
+  ```kotlin
+  val credential = GoogleAuthProvider.getCredential(googleIdToken, null)
+  val authResult = Firebase.auth.signInWithCredential(credential).await()
+  val firebaseUser = authResult.user
+  ```
+* **JWT Lifecycle:** Firebase issues a short-lived **ID Token (valid for 1 hour)** and a long-lived **Refresh Token**. The Firebase Android SDK manages token refresh transparently in the background.
+* **Securing Backend API Requests:** When calling your custom backend, never send the user's UID directly! Pass the cryptographically signed JWT ID Token in the `Authorization: Bearer <token>` header:
+  ```kotlin
+  val idToken = Firebase.auth.currentUser?.getIdToken(false)?.await()?.token
+  // Send idToken to your server; server validates using Firebase Admin SDK
+  ```
+
+---
+
+### 11.3.3 Firebase Performance Monitoring: Custom Traces & HTTP Metrics
+
+Beyond out-of-the-box App Start and Network traces, instrument critical code blocks with custom metrics:
+
+```kotlin
+class PerformanceTracker {
+    private val perf = FirebasePerformance.getInstance()
+
+    suspend fun trackImageProcessing(bitmapData: ByteArray): ProcessedImage {
+        val trace = perf.newTrace("image_processing_trace").apply {
+            start()
+            putAttribute("input_size_kb", (bitmapData.size / 1024).toString())
+        }
+
+        return try {
+            val processed = runHeavyTransformation(bitmapData)
+            trace.incrementMetric("filter_success_count", 1)
+            processed
+        } catch (e: Exception) {
+            trace.incrementMetric("filter_error_count", 1)
+            throw e
+        } finally {
+            trace.stop() // Calculates execution duration and uploads to Firebase console
+        }
+    }
+}
+```
+
+---
+
+### 11.3.4 Firebase Remote Config & A/B Testing Integration
+1. **Targeting & Variants:** In the Firebase Console, define an A/B experiment tied to an Analytics goal (e.g. `retention_rate` or `checkout_completed`).
+2. **Deterministic Assignment:** Firebase calculates a client hash based on the installation ID and assigns the device to Variant A or Variant B.
+3. **No App Store Release Required:** Rollout winners instantly to 100% of users directly from the server console without recompiling or submitting an APK update.
 
 ---
 

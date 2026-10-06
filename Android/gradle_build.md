@@ -24,6 +24,7 @@
 | 9 | [Build Performance](#9-build-performance) | Caching, parallelism, profiling a slow build |
 | 10 | [CI/CD](#10-cicd-for-android) | Pipeline stages, caching, secrets, release automation |
 | 11 | [Interview Questions](#11-interview-questions) | Pointer to the question bank |
+| 12 | [Dynamic Features, Custom Lint & Composite Builds](#12-dynamic-feature-modules-custom-lint-rules--composite-builds) | Dynamic Feature Modules, SplitInstallManager, Custom Lint Detector/IssueRegistry, includeBuild |
 
 ---
 
@@ -1264,6 +1265,202 @@ With: a Gradle cache action, a concurrency group cancelling superseded runs, ani
 
 **Follow-up:** *One team complains their module takes four minutes to build. How do you investigate?*
 > `--scan` on their specific task, and look at three things: whether the configuration cache is being reused, which upstream module invalidated them (usually an `api` dependency or a `:core:common` everyone depends on), and whether kapt is still present anywhere in their dependency chain.
+
+---
+
+# 12. Dynamic Feature Modules, Custom Lint Rules & Composite Builds
+
+## 12.1 Dynamic Feature Modules & Play Feature Delivery
+
+### Definition
+* **Dynamic Feature Modules:** Gradle modules compiled as separate APK splits delivered on-demand via the Google Play Store rather than bundled inside the base APK at initial install.
+* **Why It Is Used:**
+  * Drastically reduces initial download size (e.g. initial APK is 15MB instead of 100MB).
+  * Conditional delivery: Deliver features only to users whose devices have specific hardware (e.g. ARCore, camera depth sensors) or residing in specific countries.
+  * On-Demand delivery: Download heavy, rarely-used features (e.g. Video Editor, AR Viewer, Heavy Game Level) only when the user navigates to them.
+
+### Reverse Dependency Rule
+Unlike standard Gradle architecture where the app module depends on feature libraries, in Dynamic Delivery:
+* The `:app` base module declares `dynamicFeatures`:
+  ```kotlin
+  // in :app/build.gradle.kts
+  plugins {
+      id("com.android.application")
+  }
+  android {
+      dynamicFeatures = mutableSetOf(":features:video_editor")
+  }
+  ```
+* The dynamic feature module applies `com.android.dynamic-feature` and depends on `:app`:
+  ```kotlin
+  // in :features:video_editor/build.gradle.kts
+  plugins {
+      id("com.android.dynamic-feature")
+  }
+  dependencies {
+      implementation(project(":app")) // Inverted dependency!
+  }
+  ```
+
+### On-Demand Download with `SplitInstallManager`
+```kotlin
+import com.google.android.play.core.splitinstall.SplitInstallManager
+import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
+import com.google.android.play.core.splitinstall.SplitInstallRequest
+import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
+import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
+
+class DynamicModuleManager(private val context: Context) {
+    private val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
+
+    fun loadFeature(
+        moduleName: String,
+        onProgress: (Int) -> Unit,
+        onSuccess: () -> Unit,
+        onError: (Exception) -> Unit
+    ) {
+        if (splitInstallManager.installedModules.contains(moduleName)) {
+            onSuccess()
+            return
+        }
+
+        val request = SplitInstallRequest.newBuilder()
+            .addModule(moduleName)
+            .build()
+
+        val listener = SplitInstallStateUpdatedListener { state ->
+            when (state.status()) {
+                SplitInstallSessionStatus.DOWNLOADING -> {
+                    val percent = (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt()
+                    onProgress(percent)
+                }
+                SplitInstallSessionStatus.INSTALLED -> {
+                    onSuccess()
+                }
+                SplitInstallSessionStatus.FAILED -> {
+                    onError(Exception("Installation failed with error code: ${state.errorCode()}"))
+                }
+            }
+        }
+
+        splitInstallManager.registerListener(listener)
+        splitInstallManager.startInstall(request)
+            .addOnFailureListener { exception -> onError(exception) }
+    }
+}
+```
+
+---
+
+## 12.2 Custom Android Lint Rules
+
+### Definition
+* **Android Lint:** A static code analysis tool that checks Android project source files for potential bugs, correctness, security, performance, usability, accessibility, and internationalization issues.
+* **Custom Lint Rules:** Writing organization-specific detectors to enforce architectural rules (e.g., "Do not use `android.util.Log` directly; use `Timber`", or "ViewModels must never import `android.content.Context`").
+
+### Key Components of a Lint Check
+1. **`Detector`:** Inspects the AST (Abstract Syntax Tree via UAST - Universal AST) or XML DOM.
+2. **`Issue`:** Describes the warning/error, severity (`ERROR`, `WARNING`, `FATAL`), explanation, and priority.
+3. **`IssueRegistry`:** Aggregates and publishes all custom `Issue`s to the Lint engine.
+
+### Implementation: Prohibiting Raw `Log` Calls
+
+```kotlin
+import com.android.tools.lint.client.api.UElementHandler
+import com.android.tools.lint.detector.api.*
+import org.jetbrains.uast.UCallExpression
+
+class TimberLogDetector : Detector(), Detector.UastScanner {
+
+    companion object {
+        val ISSUE = Issue.create(
+            id = "RawLogUsage",
+            briefDescription = "Using android.util.Log directly is forbidden",
+            explanation = "Direct usage of android.util.Log leaks debug logs to production. Use Timber instead.",
+            category = Category.CORRECTNESS,
+            priority = 7,
+            severity = Severity.ERROR,
+            implementation = Implementation(TimberLogDetector::class.java, Scope.JAVA_FILE_SCOPE)
+        )
+    }
+
+    override fun getApplicableMethodNames(): List<String> =
+        listOf("v", "d", "i", "w", "e", "wtf")
+
+    override fun visitMethodCall(context: JavaContext, node: UCallExpression, method: PsiMethod) {
+        val evaluator = context.evaluator
+        if (evaluator.isMemberInClass(method, "android.util.Log")) {
+            val quickFix = fix().replace()
+                .text("Log.")
+                .with("Timber.")
+                .build()
+
+            context.report(
+                issue = ISSUE,
+                location = context.getLocation(node),
+                message = "Use Timber.${method.name}() instead of android.util.Log",
+                quickfixData = quickFix
+            )
+        }
+    }
+}
+
+class CustomIssueRegistry : IssueRegistry() {
+    override val issues: List<Issue> = listOf(TimberLogDetector.ISSUE)
+    override val api: Int = CURRENT_API
+    override val minApi: Int = 10
+}
+```
+
+### Wiring into Gradle
+```kotlin
+// In :lint-rules/build.gradle.kts
+plugins {
+    `kotlin`
+}
+dependencies {
+    compileOnly("com.android.tools.lint:lint-api:31.4.0")
+    compileOnly("com.android.tools.lint:lint-checks:31.4.0")
+}
+jar {
+    manifest {
+        attributes("Lint-Registry-v2" to "com.example.lint.CustomIssueRegistry")
+    }
+}
+
+// In app or library build.gradle.kts:
+dependencies {
+    lintPublish(project(":lint-rules"))
+}
+```
+
+---
+
+## 12.3 Composite Builds (`includeBuild`) vs Multi-Module
+
+### Definition
+* **Composite Build:** A build that includes other separate, standalone Gradle builds. Configured via `includeBuild("../another-repo")` in `settings.gradle.kts`.
+* **Dependency Substitution:** Gradle automatically intercepts binary dependency coordinates (e.g. `com.company.network:client:2.4.0`) and substitutes them with the subproject from the included build!
+
+```kotlin
+// settings.gradle.kts
+rootProject.name = "MyMainApp"
+
+include(":app")
+include(":core:common")
+
+// Seamlessly pulls and builds local checkout of an independent library repo:
+includeBuild("../network-sdk") {
+    dependencySubstitution {
+        substitute(module("com.company.network:sdk")).using(project(":"))
+    }
+}
+```
+
+### Why Composite Builds Beat Publishing to MavenLocal:
+1. **No local publishing overhead:** No need to run `./gradlew publishToMavenLocal` and wait for artifact uploads after every single edit.
+2. **Instant IDE integration:** Android Studio indexes the included project files as editable source code with full refactoring support.
+3. **Deterministic CI/CD:** Decouples repository ownership for multiple independent teams without breaking local iteration speed.
 
 ---
 

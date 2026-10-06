@@ -186,6 +186,52 @@ Your application cannot expand memory indefinitely. When available RAM drops bel
 adb shell cat /proc/$(adb shell pidof com.example.app)/oom_score_adj
 ```
 
+### Responding to Memory Pressure: `onTrimMemory()`
+Android notifies apps about changing memory pressure via `ComponentCallbacks2.onTrimMemory(level)`. Handling this prevents the LMKD from killing your cached process and avoids UI stutter when foreground.
+
+```kotlin
+class MyApplication : Application(), ComponentCallbacks2 {
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        when (level) {
+            // App is running in the background (UI is no longer visible)
+            ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> {
+                // 1. User pressed Home or switched apps
+                // Free UI resources, clear image disk/memory caches from RAM
+                Glide.get(this).clearMemory()
+            }
+            ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> {
+                // 2. Process is in LRU list; system is running low on memory
+                // Release non-essential caches and close inactive DB connections
+            }
+            ComponentCallbacks2.TRIM_MEMORY_MODERATE -> {
+                // 3. System is lower on memory; process is in danger
+                // Evict in-memory session caches, thumbnail pools
+            }
+            ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                // 4. LMK is about to kill cached processes; our process is next!
+                // Release every possible reclaimable object to survive
+                evictAllCaches()
+            }
+
+            // App is currently in the FOREGROUND
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE -> {
+                // System is starting to run low on RAM; prune unneeded memory
+            }
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+                // Device is severely constrained; background processes killed
+            }
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
+                // System is killing critical background processes; 
+                // free bitmap decoders, stop non-critical animations to avoid jank/ANR
+                Glide.get(this).trimMemory(level)
+            }
+        }
+    }
+}
+```
+
 ---
 
 # 5. Types of Memory an Android Engineer Must Understand
