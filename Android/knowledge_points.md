@@ -3,7 +3,7 @@
 > **Authoritative Technical Reference**
 > The platform internals interviewers use to separate "uses the SDK" from "understands the system".
 >
-> **68 platform internals & architecture interview questions:** [Section 15 (Internals)](#15-android-system-internals-interview-questions-30-questions) & [Section 16 (Multi-Service Architecture)](#16-dashboard-with-multiple-services--interview-questions--definitions-38-questions)
+> **114 platform internals, architecture & session management interview questions:** [Section 15 (Internals)](#15-android-system-internals-interview-questions-30-questions), [Section 16 (Multi-Service Architecture)](#16-dashboard-with-multiple-services--interview-questions--definitions-38-questions), and [Section 17 (Session Management)](#17-mobile-session-management-tokens--api-security-46-questions)
 
 ---
 
@@ -27,6 +27,7 @@
 | 14 | [ANR Traces & Triage](#14-anr-traces-and-crash-triage) | Reading thread dumps, lock contention, common causes |
 | 15 | [System Internals Questions (30 Qs)](#15-android-system-internals-interview-questions-30-questions) | 30 Core Android system internals Q&As |
 | 16 | [Multi-Service Dashboard Architecture (38 Qs)](#16-dashboard-with-multiple-services--interview-questions--definitions-38-questions) | Concurrency vs parallelism, coroutines, async/await, partial failure, StateFlow, BFF, timeouts, retries, cancellation, caching |
+| 17 | [Mobile Session Management & Auth (46 Qs)](#17-mobile-session-management-tokens--api-security-46-questions) | Session ID vs JWT, Access/Refresh tokens, Keystore storage, OkHttp Interceptor vs Authenticator, Concurrency Mutex, 46 Q&As |
 
 ---
 
@@ -1895,6 +1896,807 @@ A Staff/Lead engineer treats this as a **Distributed Systems & Product Orchestra
 > [!TIP]
 > **Core Takeaway:**  
 > A multi-service dashboard is fundamentally a **data-orchestration and state-modeling challenge**. Senior interviewers evaluate your ability to protect the user experience from network unpredictability through concurrent execution, failure containment, and architectural trade-offs.
+
+---
+
+# 17. Mobile Session Management, Tokens & API Security (46 Questions)
+
+> **Authoritative Technical Reference & Interview Guide**  
+> Session management is the core topic that connects **authentication**, **token lifecycles**, **hardware-backed Keystore security**, **OkHttp/Retrofit networking**, **concurrency race conditions**, **process lifecycles**, and **session revocation**.  
+>
+> Covers foundational concepts, complete production-ready Kotlin implementations, and an in-depth bank of **46 interview questions and answers** ranging from Junior to Senior/Staff levels.
+
+---
+
+## 17.1 The Big Picture: End-to-End Authentication Architecture
+
+In a secure mobile ecosystem, authentication establishes identity, and session management preserves that identity across subsequent stateless HTTP operations.
+
+```
+┌───────────┐                 ┌───────────────────────┐                 ┌─────────────────────┐
+│  Android  │                 │    API Gateway /      │                 │  Auth Microservice  │
+│  Client   │                 │    Reverse Proxy      │                 │  & Identity Server  │
+└─────┬─────┘                 └──────────┬────────────┘                 └──────────┬──────────┘
+      │                                  │                                         │
+      │ 1. POST /login (user, pass/OTP)  │                                         │
+      │─────────────────────────────────>│ 2. Forward credentials                  │
+      │                                  │────────────────────────────────────────>│
+      │                                  │                                         │ 3. Validate creds
+      │                                  │                                         │ 4. Issue Tokens
+      │                                  │ 5. { accessToken, refreshToken, exp }   │
+      │                                  │<────────────────────────────────────────│
+      │ 6. Response with Token Pair      │                                         │
+      │<─────────────────────────────────│                                         │
+      │                                  │                                         │
+      │ 7. Store securely (Keystore+DataStore)                                     │
+      │                                  │                                         │
+      │ 8. GET /profile [Bearer AccessToken]                                       │
+      │─────────────────────────────────>│                                         │
+      │                                  │ 9. Verify Signature (Stateless JWT)     │
+      │                                  │    OR query cache                       │
+      │ 10. HTTP 200 OK (User Data)      │                                         │
+      │<─────────────────────────────────│                                         │
+      │                                  │                                         │
+      │ [15 Minutes Later - Access Token Expires]                                  │
+      │                                  │                                         │
+      │ 11. GET /orders [Old Token]      │                                         │
+      │─────────────────────────────────>│ 12. Reject (Expired)                    │
+      │ 13. HTTP 401 Unauthorized        │                                         │
+      │<─────────────────────────────────│                                         │
+      │                                  │                                         │
+      │ 14. POST /refresh [RefreshToken] │                                         │
+      │─────────────────────────────────>│ 15. Forward token refresh               │
+      │                                  │────────────────────────────────────────>│
+      │                                  │ 16. New Access Token (+ rotated Refresh)│
+      │                                  │<────────────────────────────────────────│
+      │ 17. HTTP 200 { new accessToken } │                                         │
+      │<─────────────────────────────────│                                         │
+      │                                  │                                         │
+      │ 18. Retry original GET /orders   │                                         │
+      │─────────────────────────────────>│ 19. HTTP 200 OK                         │
+      │<─────────────────────────────────│                                         │
+```
+
+### Core Terminology Breakdown
+
+* **Authentication (AuthN):** "Who are you?" Validating identity via credentials (passwords, biometric proofs, OTP).
+* **Authorization (AuthZ):** "What are you allowed to do?" Determining access permissions to specific resources based on roles or scopes.
+* **Session:** An ongoing, bounded state of interaction between a client and server.
+* **Session ID:** An opaque reference token (e.g., `JSESSIONID=a1b2c3d4`) identifying a server-side session record.
+* **Access Token:** A short-lived credential (typically a JWT, valid for 5–15 minutes) sent in the `Authorization: Bearer <token>` header to access protected APIs.
+* **Refresh Token:** A long-lived credential (valid for days to months) securely stored on the device, used exclusively to acquire fresh access tokens when the current one expires.
+
+---
+
+## 17.2 Stateful vs. Stateless Authentication
+
+| Architectural Dimension | Stateful (Session ID) | Stateless (JWT / Access Token) |
+|---|---|---|
+| **Storage Location** | Server stores session state in RAM/Redis/DB | Server stores **zero session state**; client holds signed token |
+| **Token Contents** | Opaque random string (no intrinsic meaning) | Structured base64 JSON payload containing user ID, roles, exp |
+| **Verification Method** | Server performs a DB/cache lookup on **every single request** | Server cryptographically verifies signature using public/secret key |
+| **Horizontal Scalability** | Requires sticky sessions, distributed Redis cluster, or session sync | Trivially scalable across 1,000s of microservices without central session DB |
+| **Revocation / Invalidation** | **Instant:** Server simply deletes the session row in Redis | **Complex:** Token remains valid until `exp` unless a blocklist/revocation list is maintained |
+| **Payload Size** | Minimal (~32 bytes for session ID) | Moderate to Large (500B – 2KB+ containing claims and signatures) |
+| **Standard Transport** | `Set-Cookie` header or custom `X-Session-ID` | `Authorization: Bearer <token>` HTTP header |
+
+---
+
+## 17.3 Where to Store Session Credentials on Android
+
+A common junior mistake is writing credentials into plaintext `SharedPreferences` or standard `Preferences DataStore`. 
+
+```
+                               DEVICE COMPROMISE ATTACK VECTOR
+ Plaintext Storage ─────────> Rooted Device / ADB backup / Physical Extraction ─────────> Full Account Takeover!
+```
+
+### Storage Hierarchy & Security Posture
+
+1. **`SharedPreferences` (Plaintext):** ❌ **Never for credentials.** Stored in `/data/data/<package>/shared_prefs/*.xml` as unencrypted plaintext. Easily extracted on rooted devices or via `adb backup`.
+2. **`Preferences DataStore` (Plaintext):** ❌ Replaces SharedPreferences with Kotlin Coroutines/Flows and thread safety, but by default is **unencrypted plaintext** on disk.
+3. **`EncryptedSharedPreferences` (Jetpack Security):** ⚠️ Uses Android Keystore to encrypt keys and values with AES-256-SIV and AES-256-GCM. Note: Jetpack Security (`androidx.security.crypto`) is officially deprecated in favor of Android Keystore directly wrapping modern Proto DataStore.
+4. **Hardware-Backed Android Keystore + Encrypted Proto DataStore:** ✅ **Production Gold Standard.**
+   - Cryptographic master key is generated inside the hardware TEE (Trusted Execution Environment) or StrongBox Keymaster.
+   - Private key material **never leaves hardware memory**.
+   - Tokens are encrypted with AES-256-GCM before writing to DataStore.
+   - Cloud backup is strictly disabled via `res/xml/backup_rules.xml`.
+
+```xml
+<!-- res/xml/backup_rules.xml - Exclude tokens from auto-cloud backup -->
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude path="datastore/token_store.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude path="datastore/token_store.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>
+```
+
+---
+
+## 17.4 Production Networking Architecture: OkHttp Interceptor vs. Authenticator
+
+### Separation of Concerns: The Cardinal Rule
+> **`Interceptor` attaches authentication to outgoing requests.**  
+> **`Authenticator` recovers from authentication failure (401 Unauthorized).**
+
+| Component | Interface | Executes When? | Responsibility |
+|---|---|---|---|
+| **`AuthInterceptor`** | `okhttp3.Interceptor` | **Before** request is sent to network | Reads current access token from cache/memory and attaches `Authorization: Bearer <token>` header. |
+| **`TokenAuthenticator`** | `okhttp3.Authenticator` | **After** server responds with `HTTP 401 Unauthorized` | Intercepts 401, coordinates token refresh, updates storage, and returns a new `Request` with the updated token for automatic retry. |
+
+---
+
+## 17.5 The Concurrency Problem: Multiple Simultaneous 401s
+
+When a dashboard loads, it might fire 5–10 requests concurrently:
+```
+GET /user/profile   ──┐
+GET /user/orders    ──┼── All fire simultaneously with an EXPIRED access token
+GET /user/cart      ──┤
+GET /notifications  ──┘
+```
+
+All 4 requests receive `401 Unauthorized` at the exact same millisecond.
+
+### The Naive Antipattern (Race Condition)
+Each of the 4 requests invokes `TokenAuthenticator` independently and initiates its own `POST /refresh` network call.
+1. **Server-Side Token Rotation Invalidation:** If your backend employs Refresh Token Rotation (RTR), using the same refresh token 4 times in parallel triggers an **invalidation alert**, interpreting it as token theft and revoking the user's session entirely!
+2. **Wasted Network & Device Resources:** Redundant cryptographic round-trips.
+
+### The Solution: Single-Flight Refresh with Kotlin `Mutex`
+We use a thread-safe coroutine `Mutex` (or synchronized lock) to guarantee that:
+1. **Only ONE thread** executes the token refresh API call.
+2. The other 3–4 threads **suspend/wait** until the single refresh finishes.
+3. Once unlocked, waiting threads inspect if the token was already refreshed by the first request. If so, they immediately retry with the fresh token **without calling the refresh endpoint again!**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor App as 4 Concurrent Requests
+    participant Auth as TokenAuthenticator
+    participant Mutex as Refresh Mutex
+    participant Server as Auth Server
+
+    App->>Auth: Req 1, 2, 3 receive 401
+    Auth->>Mutex: Req 1 acquires Mutex lock
+    Note over Mutex: Req 2 and 3 WAIT on Mutex
+    Auth->>Server: Req 1 executes POST /refresh
+    Server-->>Auth: HTTP 200 { new_token_XYZ }
+    Auth->>Auth: Save new_token_XYZ to Storage
+    Auth->>Mutex: Req 1 releases Mutex lock
+    Auth-->>App: Req 1 retries with new_token_XYZ
+    
+    Note over Auth: Req 2 acquires Mutex
+    Auth->>Auth: Check: Is token in Req 2 != stored token?
+    Note over Auth: YES! Token was already refreshed!
+    Auth->>Mutex: Req 2 releases Mutex immediately
+    Auth-->>App: Req 2 retries with new_token_XYZ (ZERO refresh calls!)
+```
+
+---
+
+## 17.6 Complete Production Kotlin Implementation
+
+### 1. Token Storage Interface & DataStore Implementation
+
+```kotlin
+data class AuthTokens(
+    val accessToken: String?,
+    val refreshToken: String?,
+    val expiresAtEpochMs: Long = 0L
+)
+
+interface TokenRepository {
+    fun getTokens(): AuthTokens
+    suspend fun saveTokens(tokens: AuthTokens)
+    suspend fun clearTokens()
+}
+
+class InMemoryCachedTokenRepository(
+    private val dataStore: DataStore<Preferences>
+) : TokenRepository {
+
+    // Volatile in-memory cache for ultra-fast, zero-disk interceptor reads
+    @Volatile
+    private var cachedTokens: AuthTokens = AuthTokens(null, null, 0L)
+
+    override fun getTokens(): AuthTokens = cachedTokens
+
+    override suspend fun saveTokens(tokens: AuthTokens) {
+        cachedTokens = tokens
+        dataStore.edit { prefs ->
+            prefs[KEY_ACCESS] = tokens.accessToken.orEmpty()
+            prefs[KEY_REFRESH] = tokens.refreshToken.orEmpty()
+            prefs[KEY_EXPIRES] = tokens.expiresAtEpochMs
+        }
+    }
+
+    override suspend fun clearTokens() {
+        cachedTokens = AuthTokens(null, null, 0L)
+        dataStore.edit { it.clear() }
+    }
+
+    companion object {
+        private val KEY_ACCESS = stringPreferencesKey("access_token")
+        private val KEY_REFRESH = stringPreferencesKey("refresh_token")
+        private val KEY_EXPIRES = longPreferencesKey("expires_at")
+    }
+}
+```
+
+### 2. OkHttp `AuthInterceptor`
+
+```kotlin
+class AuthInterceptor(
+    private val tokenRepository: TokenRepository
+) : Interceptor {
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+
+        // 1. Skip auth header if endpoint is annotated as Public or is login/refresh
+        if (originalRequest.header("No-Authentication") != null) {
+            val strippedRequest = originalRequest.newBuilder()
+                .removeHeader("No-Authentication")
+                .build()
+            return chain.proceed(strippedRequest)
+        }
+
+        // 2. Read in-memory access token (O(1) memory lookup)
+        val accessToken = tokenRepository.getTokens().accessToken
+
+        val authenticatedRequest = if (!accessToken.isNullOrBlank()) {
+            originalRequest.newBuilder()
+                .header("Authorization", "Bearer $accessToken")
+                .build()
+        } else {
+            originalRequest
+        }
+
+        return chain.proceed(authenticatedRequest)
+    }
+}
+```
+
+### 3. Thread-Safe `TokenAuthenticator` with Single-Flight Concurrency Control
+
+```kotlin
+class TokenAuthenticator(
+    private val tokenRepository: TokenRepository,
+    private val authApiLazy: dagger.Lazy<AuthApiService>,
+    private val sessionManager: SessionManager
+) : Authenticator {
+
+    // Single-flight lock preventing multiple concurrent refresh operations
+    private val refreshMutex = Mutex()
+
+    override fun authenticate(route: Route?, response: Response): Request? {
+        // Step 1: Guard against infinite retry loops if refresh fails
+        if (responseCount(response) >= 3) {
+            return null // Give up; stop retrying
+        }
+
+        // Step 2: Extract the stale token from the failed request
+        val failedAccessToken = response.request.header("Authorization")
+            ?.removePrefix("Bearer ")
+            ?.trim()
+
+        // Step 3: Synchronize across all concurrent 401s using runBlocking + Mutex
+        val freshAccessToken: String? = runBlocking {
+            refreshMutex.withLock {
+                val currentStoredTokens = tokenRepository.getTokens()
+
+                // CHECK: Has another concurrent request already refreshed the token while we waited?
+                if (currentStoredTokens.accessToken != null && 
+                    currentStoredTokens.accessToken != failedAccessToken) {
+                    // Token was already refreshed by another thread! Return it immediately without calling backend
+                    return@withLock currentStoredTokens.accessToken
+                }
+
+                // If no refresh token exists, we cannot recover; force logout
+                val refreshToken = currentStoredTokens.refreshToken
+                if (refreshToken.isNullOrBlank()) {
+                    sessionManager.handleSessionExpired("No refresh token available")
+                    return@withLock null
+                }
+
+                // Step 4: Execute the actual token refresh network call
+                try {
+                    val refreshResponse = authApiLazy.get().refreshTokenCall(
+                        RefreshTokenRequest(refreshToken)
+                    ).execute()
+
+                    if (refreshResponse.isSuccessful && refreshResponse.body() != null) {
+                        val newTokensDto = refreshResponse.body()!!
+                        val newTokens = AuthTokens(
+                            accessToken = newTokensDto.accessToken,
+                            refreshToken = newTokensDto.refreshToken ?: refreshToken, // Supports token rotation
+                            expiresAtEpochMs = System.currentTimeMillis() + (newTokensDto.expiresInSeconds * 1000)
+                        )
+
+                        // Save newly minted tokens to disk & memory cache
+                        tokenRepository.saveTokens(newTokens)
+                        newTokens.accessToken
+                    } else {
+                        // Refresh token was rejected or revoked by server (e.g. 400 or 401)
+                        sessionManager.handleSessionExpired("Refresh token expired or revoked")
+                        null
+                    }
+                } catch (e: Exception) {
+                    // Network failure (timeout, no internet). Return null to propagate error without logging out
+                    null
+                }
+            }
+        }
+
+        // Step 5: If a fresh token was obtained, rebuild and retry the request
+        return if (!freshAccessToken.isNullOrBlank()) {
+            response.request.newBuilder()
+                .header("Authorization", "Bearer $freshAccessToken")
+                .build()
+        } else {
+            null // Cancel retry
+        }
+    }
+
+    /**
+     * Helper to detect and prevent infinite 401 loops
+     */
+    private fun responseCount(response: Response): Int {
+        var result = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            result++
+            prior = prior.priorResponse
+        }
+        return result
+    }
+}
+```
+
+---
+
+## 17.7 Graceful Logout vs. Session Expiration Architecture
+
+A production Android application must distinguish between **User-Initiated Logout** and **Forced Session Expiration**.
+
+```
+                           LOGOUT TRIGGER
+                          /              \
+             User Taps "Log Out"      Token Expired / 401 Unrecoverable
+                     │                                │
+        1. Call POST /logout (Best effort)            │
+                     │                                │
+                     └────────────────┬───────────────┘
+                                      │
+                         2. Global Cleanup Pipeline
+                                      │
+                   ┌──────────────────┼──────────────────┐
+                   ▼                  ▼                  ▼
+             Clear Tokens      Wipe Room DB       Cancel Background
+             (DataStore)       & Cache Files      Jobs (WorkManager)
+                   │                  │                  │
+                   └──────────────────┼──────────────────┘
+                                      │
+                         3. Emit SessionExpired Event
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   ▼                                     ▼
+           Root NavHost listens               Toast: "Session Expired"
+           Clears Backstack                   (Only if forced expiry)
+           Routes to Login Screen
+```
+
+### Production Session Manager & Event Bus
+
+```kotlin
+sealed interface SessionEvent {
+    object UserLoggedOut : SessionEvent
+    data class SessionExpired(val reason: String) : SessionEvent
+}
+
+@Singleton
+class SessionManager @Inject constructor(
+    private val tokenRepository: TokenRepository,
+    private val database: AppDatabase,
+    private val workManager: WorkManager,
+    @ApplicationScope private val scope: CoroutineScope
+) {
+    private val _sessionEvents = MutableSharedFlow<SessionEvent>(extraBufferCapacity = 1)
+    val sessionEvents: SharedFlow<SessionEvent> = _sessionEvents.asSharedFlow()
+
+    fun handleSessionExpired(reason: String) {
+        scope.launch {
+            performFullLocalCleanup()
+            _sessionEvents.emit(SessionEvent.SessionExpired(reason))
+        }
+    }
+
+    fun logoutUser(authApi: AuthApiService) {
+        scope.launch {
+            try {
+                // Best-effort remote revocation call
+                authApi.revokeSession()
+            } catch (_: Exception) {}
+
+            performFullLocalCleanup()
+            _sessionEvents.emit(SessionEvent.UserLoggedOut)
+        }
+    }
+
+    private suspend fun performFullLocalCleanup() {
+        tokenRepository.clearTokens()
+        database.clearAllTables()
+        workManager.cancelAllWork()
+        // Clear memory caches, Coil/Glide image disk caches, etc.
+    }
+}
+```
+
+---
+
+# 17.8 Comprehensive Session Management Interview Questions Bank (46 Questions)
+
+---
+
+### Level 1: Fundamentals
+
+#### Q1. What is the fundamental difference between Authentication and Authorization? `[Junior]`
+**Answer:**
+* **Authentication (AuthN):** The process of verifying **identity** ("Who are you?"). Examples: entering a username and password, submitting a biometric face scan, or supplying an SMS OTP.
+* **Authorization (AuthZ):** The process of verifying **permissions** ("What are you allowed to access?"). Examples: checking whether user `101` has the `ADMIN` role allowing them to delete other users' accounts, or if they have permission to read a specific document. Authentication always precedes authorization.
+
+#### Q2. What is a "Session" in client-server architecture? `[Junior]`
+**Answer:**
+A session represents a contiguous, bounded sequence of interactions between a client application and a backend server. Because the underlying protocol (HTTP) is stateless by design, a session maintains context and authenticated state across multiple independent HTTP requests so the user does not need to submit login credentials on every single tap.
+
+#### Q3. What is a Session ID and how does it work? `[Junior]`
+**Answer:**
+A Session ID is an opaque, pseudo-random string generated by the server upon successful login (e.g., `SES_98a7fbc2`). The server persists a record mapping that Session ID to the user's account in a backend store (like Redis). The client sends this Session ID on every subsequent request (in a Cookie or `X-Session-ID` header). The server looks up the ID in its database, identifies the user, and processes the request.
+
+#### Q4. Why do applications maintain sessions instead of sending credentials on every request? `[Junior]`
+**Answer:**
+1. **Security:** Storing raw passwords in client memory or transmitting them repeatedly drastically widens the window for credential interception, memory dumping, or log leakage.
+2. **Performance:** Validating raw passwords requires expensive cryptographic hashing (bcrypt/argon2, taking 100–300ms per verification). Verifying a session token takes sub-millisecond memory lookups.
+3. **Revocation:** A session can be independently revoked by either client or server without changing the user's master password.
+
+#### Q5. What is the difference between Stateful and Stateless Authentication? `[Mid]`
+**Answer:**
+* **Stateful:** The server holds the session state in memory or a database. The client only sends an ID. Pros: immediate server-side revocation. Cons: heavy database lookups on every request, harder to scale horizontally across distributed clusters.
+* **Stateless:** The server stores no session records. The client sends a self-contained, digitally signed token (JWT). Any backend microservice with the verification key can validate the token independently. Pros: limitless horizontal scaling. Cons: immediate revocation is difficult without maintaining a distributed blocklist.
+
+#### Q6. What is the difference between Cookies and Custom Header-Based Session IDs? `[Junior]`
+**Answer:**
+* **Cookies:** A standard HTTP header mechanism (`Set-Cookie` / `Cookie`) managed automatically by web browsers. In mobile Android, `HttpUrlConnection` or OkHttp requires an explicit `CookieJar` implementation to persist and serialize cookies.
+* **Custom Headers (`Authorization` or `X-Session-ID`):** Mobile apps explicitly extract the token from the login response body and inject it into headers via an OkHttp `Interceptor`. This is far more common, transparent, and easier to test in native Android development.
+
+#### Q7. Why is HTTPS / TLS mandatory for mobile session management? `[Junior]`
+**Answer:**
+Session IDs and Access Tokens are **bearer tokens** — whoever holds the token possesses the identity. Over plain HTTP, any intermediary on the same Wi-Fi network (packet sniffer, public hotspot router) can view the token in plaintext headers and hijack the session. TLS encrypts all HTTP headers and URLs, preventing eavesdropping and tampering.
+
+#### Q8. What happens during an HTTP 401 Unauthorized vs. HTTP 403 Forbidden? `[Junior]`
+**Answer:**
+* **`401 Unauthorized`:** The request lacks valid authentication credentials. The token is missing, expired, or invalid. The client **can retry** after refreshing credentials or authenticating.
+* **`403 Forbidden`:** The server knows who you are, but you **lack permission** to access the requested resource. Retrying with the same credentials will fail again; refreshing the token will not help.
+
+#### Q9. What is a Bearer Token? `[Junior]`
+**Answer:**
+A Bearer token is a security credential where the holder ("bearer") of the token is granted access without needing to prove possession of a corresponding private key. It is sent as `Authorization: Bearer <token>`. Because possession equals access, bearer tokens require strict protection (HTTPS, short lifespans, hardware encryption).
+
+---
+
+### Level 2: Mobile Session Management & Storage
+
+#### Q10. Why should you NEVER store session tokens in plain `SharedPreferences`? `[Mid]`
+**Answer:**
+`SharedPreferences` writes an unencrypted XML file to `/data/data/<package_name>/shared_prefs/`. 
+1. Any user with a rooted device or custom recovery can read this file directly.
+2. If `android:allowBackup="true"`, an attacker can extract the plaintext XML via `adb backup` without needing root.
+3. Malware exploiting Android OS zero-day sandbox escapes can dump plaintext preferences from disk.
+
+#### Q11. Compare `SharedPreferences` vs. `Preferences DataStore` vs. `Proto DataStore`. `[Mid]`
+**Answer:**
+* **`SharedPreferences`:** Synchronous API (`apply()` is async but blocks the main thread during `sp.get()` or during `Activity.onStop()`), throws runtime parsing exceptions, no Flow support, unencrypted.
+* **`Preferences DataStore`:** Built on Kotlin Coroutines and Flows, transactional, guaranteed thread-safe off the main thread, catches runtime exceptions. Plaintext by default.
+* **`Proto DataStore`:** Type-safe persistence using Protocol Buffers, eliminates key-value typos, faster serialization, can easily be combined with custom cryptographic ciphers for end-to-end encrypted storage.
+
+#### Q12. How does the Android Keystore system secure session credentials? `[Senior]`
+**Answer:**
+The Android Keystore protects encryption keys inside hardware-isolated security modules: the **TEE (Trusted Execution Environment)** or **StrongBox Keymaster** (separate hardware chip).
+1. The app generates an AES-256-GCM symmetric key inside the Keystore.
+2. The key material **never enters Android OS or application memory**.
+3. To encrypt or decrypt session tokens, the app feeds the ciphertext to the Keystore hardware chip, which performs the cryptographic operation inside its isolated vault and returns only the decrypted bytes.
+4. Even if an attacker gains root access, they cannot export the private key.
+
+#### Q13. What is the significance of `setInvalidatedByBiometricEnrollment(true)`? `[Senior]`
+**Answer:**
+When generating a Keystore key intended for biometric-authenticated sessions, setting this flag ensures that if an attacker or unauthorized user adds a new fingerprint to the Android device settings, the Keystore **permanently invalidates and destroys the key**. This prevents unauthorized access via newly enrolled biometrics on a stolen or borrowed device.
+
+#### Q14. How should session data be handled across Android Activity and Process death? `[Mid]`
+**Answer:**
+* **Tokens belong in persistent secure storage (DataStore), NOT in `SavedStateHandle` or Activity bundles.**
+* `SavedStateHandle` is serialized across configuration changes and system-initiated process death into Binder transactions (capped at 1MB). Storing auth tokens in Binder bundles is unnecessary and risks memory exposure.
+* Upon process restart, the Application class or Repository reads the token from encrypted DataStore and warms up an in-memory cache.
+
+#### Q15. How do you prevent sensitive session tokens from being backed up to Google Drive? `[Mid]`
+**Answer:**
+By default, Android Auto Backup backs up the entire app data directory to the user's Google Drive. Tokens must be explicitly excluded by configuring `android:dataExtractionRules="@xml/backup_rules"` in `AndroidManifest.xml` and creating `res/xml/backup_rules.xml` with `<exclude path="datastore/token_store.preferences_pb" />`.
+
+#### Q16. How should an app handle session state during deep-link navigation? `[Mid]`
+**Answer:**
+When an app is cold-started via a deep link (e.g. `app://orders/123`):
+1. The root navigation graph or Splash Activity must check the session state in `TokenRepository` **before** executing the navigation route.
+2. If authenticated, route to the deep-linked screen.
+3. If unauthenticated, route to the Login screen while stashing the target deep-link intent in memory or ViewModel. Once login succeeds, automatically pop back to the stashed target destination.
+
+#### Q17. What is the difference between Session Invalidation and Token Expiration? `[Mid]`
+**Answer:**
+* **Token Expiration:** Occurs naturally when `System.currentTimeMillis() > exp` timestamp stamped inside the token. It is expected, routine, and resolved automatically via a silent token refresh.
+* **Session Invalidation:** Occurs when the backend actively revokes the session (e.g., password changed, admin revoked session, concurrent login on another device, or refresh token rotation detected a reuse attack). Invalidation requires terminating the user's session and returning to the Login screen.
+
+#### Q18. What is the clean architecture placement for Session and Token logic? `[Mid]`
+**Answer:**
+Session management belongs strictly in the **Data Layer** (inside `TokenRepository`, OkHttp `Interceptor`, and `Authenticator`). 
+* UI and ViewModels should never touch raw tokens or OkHttp primitives.
+* ViewModels observe a high-level `AuthState` (`Authenticated`, `Unauthenticated`, `SessionExpired`) exposed by a `UserRepository` or `SessionManager`.
+
+---
+
+### Level 3: Modern Authentication & Tokens
+
+#### Q19. What is a JWT and what are its three components? `[Junior]`
+**Answer:**
+A JSON Web Token (JWT) is an open standard (RFC 7519) for securely transmitting information as a compact JSON object. It consists of three parts separated by dots (`.`):
+1. **Header:** Algorithm and token type (`{"alg": "RS256", "typ": "JWT"}`).
+2. **Payload (Claims):** Subject, expiration, user roles (`{"sub": "101", "exp": 1775432000, "role": "admin"}`).
+3. **Signature:** Cryptographic hash of `Header + Payload` generated by the issuer's private key.
+
+#### Q20. Can an attacker read the contents of a JWT? `[Junior]`
+**Answer:**
+**Yes!** A standard JWT is **encoded** with Base64URL, **not encrypted**. Anyone holding the JWT can decode the payload and read the claims. Therefore, **never store sensitive data** (passwords, social security numbers, credit card details) inside a JWT payload.
+
+#### Q21. Why do we pair an Access Token with a Refresh Token? `[Mid]`
+**Answer:**
+It balances **security** with **user experience**:
+* If we used only an Access Token with a long lifespan (30 days), an attacker who intercepts the token has 30 days of unrestricted access, with no easy way for the server to revoke it statelessly.
+* If we used an Access Token with a short lifespan (15 minutes) without a refresh token, the user would be forced to re-type their password every 15 minutes.
+* Pairing them allows the Access Token to be short-lived (15 min) for security, while the Refresh Token is securely stored and used only with the auth server to seamlessly obtain new access tokens.
+
+#### Q22. What is Refresh Token Rotation (RTR)? `[Senior]`
+**Answer:**
+RTR is a security mechanism where **every time a refresh token is used to obtain a new access token, the server also issues a NEW refresh token and invalidates the old one**.
+* If an attacker steals a refresh token and uses it, the legitimate client's next refresh attempt will send the invalidated old token.
+* The server detects that an already-used refresh token was submitted, **flags a token theft compromise**, and immediately invalidates the entire token family, killing all active sessions for that user.
+
+#### Q23. What is the difference between OAuth 2.0 and OpenID Connect (OIDC)? `[Mid]`
+**Answer:**
+* **OAuth 2.0:** An **authorization** framework that lets third-party applications access server resources on a user's behalf without sharing passwords (returns an `access_token`).
+* **OpenID Connect (OIDC):** An **authentication** identity layer built on top of OAuth 2.0 (returns an `id_token` in JWT format). OIDC answers "Who is the user?", while OAuth answers "What can the app access?".
+
+#### Q24. What is PKCE (Proof Key for Code Exchange) and why is it mandatory for mobile apps? `[Senior]`
+**Answer:**
+In standard OAuth Authorization Code flow, the client exchanges an authorization code and a `client_secret` for tokens. Mobile apps are "public clients" — they cannot securely store a `client_secret` because APKs can be decompiled.
+* **PKCE solves this:** The mobile app generates a cryptographically random `code_verifier` and hashes it into a `code_challenge`.
+* It sends the `code_challenge` during the initial authorization request.
+* When exchanging the returned auth code for tokens, it sends the original `code_verifier`.
+* The server hashes the verifier and matches it against the initial challenge. Even if a malicious app on the device intercepted the auth code via a custom URL scheme, it cannot exchange it without the unhashed `code_verifier`.
+
+#### Q25. How does a client know when an Access Token has expired? `[Mid]`
+**Answer:**
+Two complementary approaches:
+1. **Passive / Reactive (Standard):** The client sends the request as normal. If the server rejects it with `HTTP 401 Unauthorized`, OkHttp's `Authenticator` intercepts the 401 and triggers a refresh.
+2. **Proactive / Pre-emptive:** The client decodes the `exp` claim from the local JWT or checks `expiresAtEpochMs`. If `System.currentTimeMillis() >= exp - buffer (e.g. 60s)`, the client refreshes the token *before* sending the request, preventing an unnecessary round-trip 401.
+
+#### Q26. Can a JWT be revoked before its expiration date? `[Senior]`
+**Answer:**
+Not purely statelessly. Because a JWT's validity is self-contained in its signature, any service will trust it until `exp`. To achieve early revocation:
+1. **Short lifetimes:** Keep access tokens strictly short (5–15 minutes).
+2. **Token Blocklist / Revocation List:** The server maintains an in-memory cache (Redis) of revoked JWT `jti` (JWT ID) claims. Services check Redis for blocked IDs.
+3. **User Token Versioning:** Include a `token_version` claim in the JWT. When a user logs out or changes passwords, increment `user.token_version` in the DB. The service compares the token claim against the DB or cache.
+
+#### Q27. What is the difference between an ID Token and an Access Token in OIDC? `[Mid]`
+**Answer:**
+* **ID Token:** Intended for the **client application**. Contains user identity claims (name, email, picture, sub). Used by the Android app to render profile information.
+* **Access Token:** Intended for the **resource server / API Gateway**. Opaque to the client; passed in the `Authorization` header to authorize API calls.
+
+---
+
+### Level 4: Networking Architecture & Concurrency
+
+#### Q28. What is the architectural difference between an OkHttp Interceptor and an Authenticator? `[Senior]`
+**Answer:**
+* **Interceptor:** An application or network-level filter that intercepts requests **before** dispatch. It inspects, rewrites, or adds headers (e.g., adding `Authorization: Bearer <token>`). It runs on every request.
+* **Authenticator:** A dedicated reactive recovery handler that is invoked **only when the server returns a 401 response**. It is specifically designed to handle credential renewal and can return a new `Request` to be automatically retried, or `null` to abort.
+
+#### Q29. Why shouldn't you refresh tokens inside an OkHttp `Interceptor`? `[Senior]`
+**Answer:**
+1. **Duplicate logic:** OkHttp already provides `Authenticator` specifically engineered for 401 handling, including automatic retry handling and tracking `priorResponse` to stop loops.
+2. **Inefficient:** An interceptor checking expiration before every call requires date parsing and synchronization on every single request.
+3. **Concurrency races:** Handling token refresh inside an Interceptor without an explicit queue or Mutex causes multiple simultaneous in-flight requests to trigger multiple concurrent refresh requests.
+
+#### Q30. How do you prevent multiple concurrent 401s from triggering multiple token refresh calls? `[Senior]`
+**Answer:**
+By implementing a **Single-Flight Lock** using Kotlin Coroutines `Mutex` (or a Java `synchronized` block) inside the `Authenticator`:
+1. When Request 1 gets a 401, it acquires the `Mutex`.
+2. Requests 2, 3, and 4 get 401s and attempt to acquire the `Mutex`, suspending their execution.
+3. Request 1 executes the refresh API call, persists the fresh token to storage, and releases the `Mutex`.
+4. Request 2 resumes and checks if the token in its request header differs from the current stored token. Seeing that the stored token has already changed, it **skips calling the refresh API** and retries immediately with the new token.
+
+#### Q31. How do you prevent an infinite 401 loop in OkHttp `Authenticator`? `[Mid]`
+**Answer:**
+Count the number of prior responses using `response.priorResponse`:
+```kotlin
+if (responseCount(response) >= 3) {
+    return null // Return null to abort and prevent infinite looping
+}
+
+private fun responseCount(response: Response): Int {
+    var result = 1
+    var prior = response.priorResponse
+    while (prior != null) {
+        result++
+        prior = prior.priorResponse
+    }
+    return result
+}
+```
+If a request has already failed and retried 2–3 times, returning `null` tells OkHttp to stop retrying and bubble the 401 up to the caller.
+
+#### Q32. Should the Token Refresh API call use the same OkHttp client instance as regular APIs? `[Senior]`
+**Answer:**
+**No!** The API service used to execute the token refresh must **NOT** have the `TokenAuthenticator` or `AuthInterceptor` attached. If the refresh API itself returns a 401, using the same Authenticator creates a circular recursion deadlock where the authenticator attempts to authenticate the refresh request that failed authentication. Use a dedicated, unauthenticated OkHttp client for auth endpoints.
+
+#### Q33. Why do we inject `dagger.Lazy<AuthApiService>` into `TokenAuthenticator`? `[Senior]`
+**Answer:**
+To break a **Circular Dependency in Dagger/Hilt**:
+* `OkHttpClient` needs `TokenAuthenticator`.
+* `TokenAuthenticator` needs `AuthApiService` (to call `/refresh`).
+* `AuthApiService` needs `Retrofit`.
+* `Retrofit` needs `OkHttpClient`.  
+Using `dagger.Lazy<AuthApiService>` delays the instantiation of `AuthApiService` until the first 401 occurs, breaking the dependency cycle at compile time.
+
+#### Q34. How does OkHttp's connection pooling behave when tokens expire? `[Mid]`
+**Answer:**
+OkHttp pools and reuses open TCP/TLS connections via `ConnectionPool`. When an access token expires, the underlying TCP connection remains open and healthy; only the HTTP-level payload and headers change. Retrying a request with a new token reuses the existing socket connection, saving DNS and TLS handshake latency.
+
+#### Q35. How should a mobile app handle a refresh token call failing due to "No Internet Connection"? `[Mid]`
+**Answer:**
+The `Authenticator` must catch `IOException` (network timeout, unreachable host) and return `null`.
+* **Critical Distinction:** A network error is **NOT** a session expiration. Do **NOT** log the user out!
+* Bubble the network exception up to the repository/UI so the screen can display a "No Internet / Retry" banner. The user remains logged in, and when connectivity resumes, the next request will retry the refresh.
+
+#### Q36. What is the recommended timeout configuration for mobile authentication endpoints? `[Junior]`
+**Answer:**
+Auth endpoints should have relatively aggressive connect and read timeouts (e.g., 10–15 seconds) rather than 60+ seconds. If an authentication or refresh request hangs, the entire app's network pipeline is blocked from recovering.
+
+---
+
+### Level 5: Security, Threat Models & Attacks
+
+#### Q37. What is a Man-In-The-Middle (MITM) attack and how does it compromise mobile sessions? `[Junior]`
+**Answer:**
+An attacker positions themselves between the mobile app and the backend server (e.g., via a compromised public Wi-Fi router or proxy tool like Charles/Burp). If the app accepts untrusted certificates, the attacker intercepts the TLS traffic, reads the access tokens in plaintext, and gains full session control.
+
+#### Q38. How does Certificate Pinning protect session tokens? `[Mid]`
+**Answer:**
+Certificate Pinning (configured in OkHttp `CertificatePinner` or Android `network_security_config.xml`) restricts the app to accepting **only specific cryptographic public key hashes (SPKI)** for your server. Even if an attacker installs a malicious root CA certificate on the Android device, the app refuses to establish the TLS connection because the server's cert doesn't match the pinned public key.
+
+#### Q39. What is Session Fixation and how do modern mobile backends prevent it? `[Mid]`
+**Answer:**
+An attack where an attacker fixes a user's session identifier before the user logs in, then hijacks the session after login.
+* **Prevention:** The backend must **always issue a brand new session identifier / token pair upon successful credential authentication**, completely destroying any pre-login or anonymous session IDs.
+
+#### Q40. What is a Token Replay Attack and how is it mitigated? `[Mid]`
+**Answer:**
+An attacker intercepts a valid API request and replays it later to repeat an action (e.g., repeating a financial transfer).
+* **Mitigations:**
+  1. Mandatory TLS encryption to prevent interception.
+  2. Short access token expirations (`exp`).
+  3. One-time nonces or timestamped request signatures (`X-Timestamp` + `X-Signature` HMAC).
+  4. Backend idempotency keys (`Idempotency-Key: <UUID>`).
+
+#### Q41. How should session management behave on a rooted device? `[Senior]`
+**Answer:**
+A rooted device allows memory inspection, zygote hooking (Frida/Xposed), and access to `/data/data/` app sandboxes.
+1. Use **Google Play Integrity API** to verify device and binary integrity server-side.
+2. Store keys in **StrongBox / TEE Keystore** so raw keys cannot be extracted even with root.
+3. In high-security apps (banking), report root risk telemetry to the server and terminate active sessions or disable biometric session bypass.
+
+#### Q42. Why is client-side logout alone considered a vulnerability? `[Mid]`
+**Answer:**
+If an app simply deletes tokens from local DataStore without notifying the backend (`POST /logout`), the access and refresh tokens remain cryptographically valid on the server until expiration. If an attacker had previously exfiltrated the token, they can continue making API requests unimpeded.
+
+#### Q43. What is the danger of logging headers in production with `HttpLoggingInterceptor`? `[Junior]`
+**Answer:**
+`HttpLoggingInterceptor.Level.BODY` or `HEADERS` prints all HTTP headers — including `Authorization: Bearer <secret_token>` — directly to Logcat. Any other app with ADB access or any crash reporting SDK (Firebase Crashlytics, Sentry) will record the token in log dumps, exposing user accounts. Always strip or redact `Authorization` headers in release builds.
+
+#### Q44. What is Token Binding / DPoP (Demonstrating Proof-of-Possession)? `[Senior]`
+**Answer:**
+DPoP (RFC 9449) is a standard designed to prevent stolen access tokens from being used by attackers. 
+* The Android client generates an asymmetric public/private key pair.
+* On every request, the client creates a signed DPoP header proving possession of the private key.
+* Even if an attacker steals the access token over the network, they cannot use it without the private key stored inside the Android Keystore.
+
+#### Q45. What is the impact of Android's Low Memory Killer (LMK) on active sessions? `[Mid]`
+**Answer:**
+When Android terminates an app process in the background due to memory pressure, all in-memory singleton caches (static token variables, Volatile memory caches) are completely destroyed. When the user returns, the application process restarts from scratch. If tokens were stored *only* in memory, the user is unexpectedly logged out. Storing tokens persistently in encrypted DataStore ensures sessions survive process death.
+
+#### Q46. What security headers should the backend return to protect mobile sessions? `[Mid]`
+**Answer:**
+* `Cache-Control: no-store, no-cache`: Prevents HTTP caches and proxies from caching authenticated responses containing PII.
+* `Strict-Transport-Security (HSTS)`: Enforces HTTPS communication.
+* `X-Content-Type-Options: nosniff`: Prevents MIME-sniffing vulnerabilities.
+
+---
+
+## 17.9 Real-World Senior Interview Scenarios
+
+### Scenario 1: The Multi-API Dashboard Storm
+> **Question:** *"Your app has 10 APIs that fire simultaneously on the home screen. The user's access token expired 2 seconds ago. What happens, and how do you design the networking layer to avoid server overload?"*
+
+**Answer:**
+1. All 10 requests fire and receive an HTTP `401 Unauthorized` almost simultaneously.
+2. In the OkHttp `TokenAuthenticator`, we synchronize execution using a coroutine `Mutex`.
+3. The first request acquires the lock and initiates **one single `POST /refresh` call**. The other 9 requests suspend and wait.
+4. Once the refresh returns a new token, it updates the `TokenRepository` and releases the lock.
+5. The waiting requests resume, notice that the current token differs from the stale token they failed with, and immediately retry with the new token **without calling the refresh endpoint again**.
+6. Total network overhead: 1 refresh call instead of 10.
+
+---
+
+### Scenario 2: Refresh Token Invalid / Revoked
+> **Question:** *"What happens when the refresh token itself is invalid or expired? Walk me through the error propagation from OkHttp to the Compose UI."*
+
+**Answer:**
+1. When `TokenAuthenticator` calls `POST /refresh`, the backend responds with `401 Unauthorized` or `400 Bad Request` ("Invalid Refresh Token").
+2. The authenticator recognizes that the session cannot be recovered.
+3. It returns `null` to OkHttp, terminating request retries.
+4. It invokes `sessionManager.handleSessionExpired("Refresh token revoked")`.
+5. `SessionManager` performs atomic cleanup: clears encrypted DataStore, wipes Room database, and cancels active WorkManager jobs.
+6. It emits `SessionEvent.SessionExpired` onto a global `SharedFlow`.
+7. The root `MainActivity` / `NavHost` observes the event, clears the entire navigation backstack, and navigates to `LoginScreen`, displaying a friendly message: *"Your session has expired. Please log in again."*
+
+---
+
+### Scenario 3: Device Offline During Token Expiration
+> **Question:** *"The access token expires while the user is inside a subway tunnel with no network connectivity. Should the app log the user out?"*
+
+**Answer:**
+**Strictly NO.** 
+* When the app attempts a network call and the authenticator attempts a refresh, the network call throws an `IOException` (e.g., `UnknownHostException` or `SocketTimeoutException`).
+* The authenticator must catch this exception and return `null`, but **must not call `clearTokens()`**.
+* The user remains in an authenticated state locally. Offline cached data (Room DB) remains accessible.
+* The UI displays a "No connection" banner. When network connectivity is restored, the next outgoing request will trigger the authenticator and successfully refresh the token.
+
+---
+
+### Scenario 4: Token Rotation Reuse Detection (Token Theft)
+> **Question:** *"How do you handle Refresh Token Rotation (RTR) if an attacker intercepts a refresh token?"*
+
+**Answer:**
+1. Suppose Client holds `Refresh_A`. An attacker intercepts `Refresh_A`.
+2. Attacker calls `/refresh` with `Refresh_A`. Server issues `Access_2` + `Refresh_B` to attacker and invalidates `Refresh_A`.
+3. Later, the legitimate Client calls `/refresh` with `Refresh_A`.
+4. The server sees an attempt to use an **already-invalidated refresh token**. This is a definitive signal of token theft!
+5. The server immediately revokes the **entire token family** (invalidating `Refresh_B` as well).
+6. The server returns `401 Session Revoked`.
+7. The legitimate client clears local storage and forces re-authentication. The attacker's token is also dead.
+
+---
+
+### Scenario 5: User Changes Password on Another Device
+> **Question:** *"A user logs into their web browser and changes their account password. How does the Android app find out, and how does it react?"*
+
+**Answer:**
+1. When the password is changed, the backend increments the user's `token_version` or revokes all active refresh tokens in Redis.
+2. The Android app continues using its current access token until it expires (up to 10–15 minutes), or immediately if the API gateway validates token versions.
+3. Once the Android app makes a request and receives a 401, its `TokenAuthenticator` calls `POST /refresh`.
+4. The auth server rejects the refresh request because the refresh token was revoked during the password change.
+5. The Android app catches the failure, executes local cleanup, and redirects the user to the login screen with the message: *"Password changed on another device. Please log in again."*
 
 ---
 
