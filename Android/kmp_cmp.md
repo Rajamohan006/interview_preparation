@@ -21,7 +21,7 @@
 | 6 | [Delivery & Build Formats](#6-kmp-delivery--build-formats-xcframeworks) | XCFrameworks, CocoaPods, SPM |
 | 7 | [Testing in KMP](#7-testing-in-kotlin-multiplatform) | `commonTest`, MockEngine, platform test targets |
 | 8 | [Adoption Strategy](#8-adoption-strategy-and-team-trade-offs) | What to share and in what order, team trade-offs |
-| 9 | [Interview Questions](#9-interview-questions) | Pointer to the question bank |
+| 9 | [Interview Questions](#9-kotlin-multiplatform--compose-multiplatform-interview-questions-20-questions) | 20 KMP/CMP core & senior interview questions with follow-ups |
 
 ---
 
@@ -137,16 +137,21 @@ actual class PlatformDevice {
 ## 3.1 Under the Hood: Skiko and Skia
 
 ### Definition
-* **Skia** — the mature 2D graphics engine that renders Chrome and Flutter, providing paths, text, and image compositing on top of a GPU backend.
-* **Skiko** — "Skia for Kotlin": the bindings that let Kotlin code issue Skia drawing commands, plus the platform window and surface integration.
-* **The architectural consequence** — Compose composables are **not** translated into platform widgets. The Compose runtime and layout logic are identical everywhere, and only the final drawing backend differs.
-* **On iOS specifically** — the whole Compose UI is drawn into a single `CAMetalLayer` backed by Metal, so the hierarchy contains no `UIView` per element.
+* **Simple:** Compose Multiplatform (CMP) renders user interfaces by drawing custom pixels directly onto a hardware canvas using a 2D graphics engine (Skia), rather than converting Compose code into native platform UI widgets (like iOS `UIView`s).
+* **Advanced:** CMP decouples the declarative Compose UI compiler and layout runtime from the host operating system. While the runtime calculates measurements, composition trees, and state changes identically across platforms, rendering on non-Android platforms is handled by **Skiko** (Kotlin bindings for the Skia/Impeller 2D graphics engine). On iOS, Skiko issues direct GPU drawing commands onto an Apple `CAMetalLayer` housed inside a single root `UIViewController`, completely bypassing UIKit view hierarchies.
+* **Key Components:**
+  * **Skia / Impeller:** The low-level 2D graphics engine (also powering Google Chrome and Flutter) responsible for path rendering, typography rasterization, and GPU shader operations.
+  * **Skiko ("Skia for Kotlin"):** JetBrains' Kotlin library providing Cinterop bindings to Skia, plus window management, gesture/touch dispatch, and graphics surface integration across iOS, macOS, Windows, Linux, and WebAssembly.
+  * **Canvas-Level Rendering:** On Android, Compose renders onto native Android `Canvas`es. On iOS, the entire UI is painted into a single Metal graphics layer; there are no individual native `UIButton` or `UILabel` views in the iOS view hierarchy.
 
-### How CMP Draws UI on iOS
-Unlike Android where Compose uses native Android system canvases, iOS has no built-in support for Compose's rendering nodes. 
+### Why It Is Used
+Sharing UI with CMP eliminates the need to maintain two separate declarative UI codebases (Jetpack Compose on Android and SwiftUI on iOS). Because layout calculations and drawing instructions are shared, applications achieve 100% pixel-perfect visual consistency across Android, iOS, Desktop, and Web while cutting UI development effort by roughly half.
+
+### How It Works Internally
+Unlike Android where Compose uses native Android system canvases, iOS has no built-in support for Compose's rendering nodes:
 * On iOS, CMP uses **Skiko** (Kotlin bindings for the **Skia** / **Impeller** graphics library) to draw layout components.
-* During initialization, CMP wraps its root view inside a native iOS `UIViewController` subclass.
-* As states change, CMP measures, lays out, and draws the composable pixels directly onto a native Metal/OpenGL graphics canvas inside this view controller, completely bypassing Apple's UIKit view objects.
+* During initialization, CMP wraps its root view inside a native iOS `UIViewController` subclass (`ComposeUIViewController`).
+* As states change, CMP measures, lays out, and draws the composable pixels directly onto a native Metal graphics canvas inside this view controller, completely bypassing Apple's UIKit view objects.
 
 ```mermaid
 graph TD
@@ -159,25 +164,121 @@ graph TD
 ### Advantages & Disadvantages of Sharing UI on iOS
 
 * **Advantages:**
-  * Write UI code once, reducing UI development times by 50%.
-  * Visual consistency: the layout renders identically on both iOS and Android.
-  * No bridge serialization overhead (as seen in React Native).
+  * **Single Codebase for UI:** Write UI once in Kotlin, reducing feature development time by up to 50%.
+  * **Pixel Consistency:** Exact visual uniformity between iOS and Android without cross-platform styling discrepancies.
+  * **Zero Bridge Serialization Overhead:** Unlike React Native, there is no JSON serialization bridge between JavaScript and native threads.
 * **Disadvantages:**
-  * Bypasses iOS UIKit native behaviors: default scroll physics, text selection cursors, accessibility tree mappings, and text rendering may feel slightly un-native.
-  * Increased binary size due to packing the Skia engine inside the iOS framework.
+  * **Non-Native Micro-Interactions:** Bypasses native UIKit behaviors; platform-specific scroll physics, text selection handles, magnifier loupe, and dynamic font scaling must be emulated.
+  * **Accessibility & Screen Readers:** Apple VoiceOver semantics must be translated from Compose semantics nodes to UIKit accessibility elements, which can lag behind new iOS features.
+  * **Binary Size Footprint:** Packing the Skia rendering engine and Metal bindings adds ~5–10 MB to the compiled iOS binary.
+
+### Code Example
+```kotlin
+// commonMain: A shared CMP Composable that renders identically on Android and iOS
+@Composable
+fun AppContent() {
+    MaterialTheme {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Compose Multiplatform on iOS & Android",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { /* shared click handler */ }) {
+                Text("Shared Button")
+            }
+        }
+    }
+}
+
+// iosMain: Entry point that exposes a UIViewController to Swift
+fun MainViewController(): UIViewController = ComposeUIViewController {
+    AppContent()
+}
+```
+
+```swift
+// iOS Swift: Embedding the Compose screen inside a native SwiftUI / UIKit app
+import SwiftUI
+import Shared
+
+struct ContentView: View {
+    var body: some View {
+        ComposeView()
+            .ignoresSafeArea(.keyboard)
+    }
+}
+
+struct ComposeView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        MainViewControllerKt.MainViewController()
+    }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+```
+
+### Common Pitfalls
+* **Expecting Native UIKit Views in View Hierarchy Debugger:** In Xcode's View Hierarchy debugger, Compose appears as a single monolithic view (`ComposeView` / `CAMetalLayer`); individual composables cannot be inspected via Xcode.
+* **Ignoring Platform Text Input Behavior:** Software keyboards, autocorrect suggestions, and autofill require explicit Compose Multiplatform focus and keyboard options to match iOS user expectations.
+* **Large Framework Binary Overhead:** Failing to enable dead-code stripping or R8/LLVM optimizations leads to unnecessarily large iOS IPA bundles.
+
+---
 
 ## 3.2 Display Link Frame Synchronization (VSync & CADisplayLink)
 
 ### Definition
-* **VSync** — the display's refresh pulse. Rendering must complete between pulses or the previous frame is shown again, which the user sees as stutter.
-* **Frame budget** — the time available per frame: 16.6 ms at 60 Hz, 8.3 ms at 120 Hz.
-* **`CADisplayLink`** — the iOS timer synchronized to that refresh, which is what drives Compose Multiplatform's frame loop on Apple platforms.
-* **`Choreographer`** — the Android equivalent, receiving VSync from `SurfaceFlinger`.
-* **Why it matters here** — both platforms drive the *same* Compose frame clock, so animation and recomposition timing behave consistently even though the underlying mechanism differs.
+* **Simple:** Display frame synchronization is the technique that coordinates Compose Multiplatform's rendering loop with the physical screen's refresh rate (e.g., 60Hz or 120Hz ProMotion), preventing screen tearing and visual stutter.
+* **Advanced:** CMP synchronizes its frame clock with the operating system's vertical blanking interval (VSync). On iOS, it registers callbacks with Apple's native `CADisplayLink`. Whenever the hardware signals an upcoming frame, the display link triggers Compose's `MonotonicFrameClock`, which executes snapshot recompositions, evaluates animated transitions, measures layout changes, and issues Skiko GPU draw commands directly within the strict frame deadline (16.6ms for 60Hz, 8.3ms for 120Hz).
+* **Key Components:**
+  * **VSync (Vertical Synchronization):** The hardware refresh pulse generated by the display controller to synchronize the graphics pipeline with physical screen updates.
+  * **`CADisplayLink` (iOS):** A high-precision Core Animation timer that coordinates drawing with the refresh rate of the physical display (including ProMotion variable rates from 10Hz to 120Hz).
+  * **`Choreographer` (Android):** The Android system subsystem that receives VSync pulses from `SurfaceFlinger` and orchestrates animation frames, input callbacks, and view traversal.
+  * **`MonotonicFrameClock`:** Compose's unified internal clock interface that paces state updates and coroutine-based animations across all platforms.
+  * **Frame Budget:** The fixed time window to process a complete frame: ~16.6ms at 60 FPS or ~8.3ms at 120 FPS. Exceeding this budget causes dropped frames (jank).
 
-To achieve smooth 60Hz/120Hz (ProMotion) animations on iOS devices, Compose Multiplatform must synchronize its rendering loop with the iOS screen refresh rate.
+### Why It Is Used
+Without hardware-aligned synchronization, rendering loops either produce screen tearing (when a frame is written to the framebuffer mid-scanout) or dropped frames (when heavy state calculations miss the display refresh deadline). Syncing with `CADisplayLink` ensures smooth 60fps/120fps animations on Apple hardware.
+
+### How It Works Internally
+To achieve smooth 60Hz/120Hz (ProMotion) animations on iOS devices, Compose Multiplatform synchronizes its rendering loop with the iOS screen refresh rate:
 * **CADisplayLink:** On iOS, CMP uses Apple's native `CADisplayLink` (VSync timer). The display link binds a callback function to the hardware screen's refresh cycle.
 * When the display link ticks, it calls CMP's internal rendering loop inside Skiko. CMP calculates state updates (Composition), runs layout measurements, and triggers a GPU draw call on the Metal layer within the active VSync window. This prevents screen tearing and rendering stutter.
+
+### Code Example
+```kotlin
+// commonMain: Standard Compose animation using the unified MonotonicFrameClock
+@Composable
+fun PulsingLogo() {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(100.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .background(Color.Blue, shape = CircleShape)
+    )
+}
+```
+
+### Common Pitfalls
+* **Blocking the Main Thread During Recomposition:** Performing disk or network I/O on the main dispatcher blocks the `CADisplayLink` callback, causing frame drops and visible jank on iOS.
+* **ProMotion (120Hz) High Power Consumption:** Continuous unthrottled animations or unnecessary recompositions keep `CADisplayLink` ticking at 120Hz, draining the device battery quickly.
+* **Unbounded Recomposition Loops:** Recomposition loops that re-trigger state changes during composition will saturate the frame budget, dropping the frame rate to sub-30 FPS.
 
 ---
 
@@ -195,65 +296,214 @@ graph LR
 ## 4.1 Networking (Ktor)
 
 ### Definition
-* **Ktor Client** — a multiplatform HTTP client. Retrofit and OkHttp are JVM-only, so shared networking code cannot use them.
-* **Engine** — the platform-specific transport underneath: OkHttp on Android, Darwin (`NSURLSession`) on iOS, CIO or JS elsewhere. The engine is supplied per platform while the configuration stays common.
-* **Plugin (feature)** — an installable behavior: `ContentNegotiation` for serialization, `Logging`, `HttpTimeout`, `HttpRequestRetry`, `Auth`.
-* **`HttpClient` configuration block** — where those plugins and defaults are declared once in `commonMain` and reused by every target.
+* **Simple:** Ktor is an asynchronous multiplatform networking library created by JetBrains that lets you write shared HTTP network requests once in Kotlin, running on Android, iOS, Desktop, and Web.
+* **Advanced:** Ktor Client decouples request definition, serialization, and pipeline interceptors in `commonMain` from the underlying platform transport. It routes requests through swappable platform network engines—such as OkHttp on Android, Darwin (`NSURLSession`) on iOS, and WinHttp/CIO on desktop—while exposing a unified, non-blocking coroutine-based API.
+* **Key Components:**
+  * **Multiplatform Client (`HttpClient`):** The common Kotlin entry point managing request lifecycle, coroutine dispatchers, and response decoding.
+  * **Platform Engines:** Target-specific HTTP drivers (e.g., `OkHttp` for Android JVM, `Darwin` wrapping Apple's `NSURLSession` on iOS, `Js` on Web) injected into the client.
+  * **Plugins:** Pluggable features installed onto the request/response pipeline (`ContentNegotiation` for JSON serialization, `Logging`, `HttpTimeout`, `HttpRequestRetry`, and `Auth`).
+  * **Why Not Retrofit / OkHttp:** Retrofit and OkHttp depend on JVM reflection and Android/Java standard libraries, making them impossible to compile for Kotlin/Native on iOS.
 
-**Ktor** is JetBrains' Kotlin-native asynchronous HTTP client. It uses Coroutines for async requests and maps engine providers at runtime (e.g. OkHttp on Android, NSURLSession on iOS).
+### Why It Is Used
+Shared apps require a single source of truth for API endpoints, query parameters, auth headers, token refresh logic, and error handling. Ktor provides 100% shareable networking code across all platforms without duplicating network logic in Swift.
+
+### How It Works Internally
+Ktor uses Kotlin Coroutines for async execution. In `commonMain`, you instantiate an `HttpClient` with a generic or injected engine. At build time or runtime:
+* On Android, it delegates network sockets, connection pooling, and HTTP/2 multiplexing to `OkHttpEngine`.
+* On iOS, it routes requests through Apple's native `NSURLSession` via `DarwinEngine`, automatically inheriting system proxy settings, cellular data policies, and Apple network diagnostics.
+
+### Code Example
+```kotlin
+// commonMain: Shared Ktor client configuration with standard plugins
+fun createHttpClient(engine: HttpClientEngine): HttpClient = HttpClient(engine) {
+    install(ContentNegotiation) {
+        json(Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            prettyPrint = false
+        })
+    }
+    install(Logging) {
+        level = LogLevel.INFO
+    }
+    install(HttpTimeout) {
+        requestTimeoutMillis = 30_000
+        connectTimeoutMillis = 15_000
+    }
+    install(HttpRequestRetry) {
+        retryOnServerErrors(maxRetries = 3)
+        exponentialDelay()
+    }
+    defaultRequest {
+        url("https://api.example.com/")
+        header(HttpHeaders.ContentType, ContentType.Application.Json)
+    }
+}
+
+// commonMain: Making an asynchronous network request
+class UserApiClient(private val httpClient: HttpClient) {
+    suspend fun fetchUserProfile(userId: String): UserDto =
+        httpClient.get("users/$userId").body()
+}
+```
+
+### Common Pitfalls
+* **Hardcoding JVM Engines in `commonMain`:** Specifying `HttpClient(OkHttp)` directly in `commonMain` will fail compilation for iOS targets; always pass the engine via DI or `expect`/`actual`.
+* **Missing `NSURLSession` Configuration on iOS:** Failing to configure `DarwinEngine` for certificate pinning or background sessions when required by Apple enterprise policies.
+* **Forgetting to Install `ContentNegotiation`:** Attempting to deserialize responses via `.body<T>()` without installing `ContentNegotiation` throws `NoTransformationFoundException`.
+
+---
 
 ## 4.2 Storage (SQLDelight & Room Multiplatform)
 
 ### Definition
-* **The portability problem** — SQLite exists on every target, but the API for opening a database does not, so the **driver** must be platform-specific while the schema and queries stay shared.
-* **SQLDelight** — a SQL-first library: you write `.sq` files and it **generates typed Kotlin APIs** from them, verifying the SQL at build time.
-* **Driver** — the platform binding: `AndroidSqliteDriver`, `NativeSqliteDriver` on iOS.
-* **Room Multiplatform** — the newer alternative, keeping Room's familiar annotations for teams migrating an existing Android codebase.
-* **The threading rule** — query results must be mapped on a background dispatcher; unlike Android, iOS has no StrictMode to warn you about blocking its main thread.
+* **Simple:** Multiplatform storage libraries (SQLDelight and Room KMP) allow you to write database schemas and queries once in shared code while running on each device's native SQLite engine.
+* **Advanced:** Because native SQLite binaries exist across iOS, Android, and desktop, KMP storage solutions separate schema definition and query generation from the low-level SQLite database driver. SQLDelight generates type-safe Kotlin APIs from raw `.sq` files, while Room Multiplatform (Room 2.7+) uses Kotlin Symbol Processing (KSP) to generate SQLite implementations using familiar Room annotations across JVM and Native targets.
+* **Key Components:**
+  * **SQLDelight:** A SQL-first database tool where developers write native SQL queries that are validated at compile time into typed Kotlin models and Flow accessors.
+  * **Room Multiplatform:** Google's official persistence library ported to KMP, allowing Android developers to reuse existing `@Entity`, `@Dao`, and `@Database` abstractions across Android and iOS.
+  * **Platform SQLite Drivers:** Platform-specific implementations (e.g., `AndroidSqliteDriver` for Android `SQLiteDatabase`, `NativeSqliteDriver` wrapping iOS native SQLite3) that provide the actual database connection.
+  * **Threading Considerations:** Database operations must always be dispatched onto background threads (`Dispatchers.IO`), as blocking the main thread on iOS causes app freezes without Android-style `StrictMode` warnings.
 
-* **SQLDelight:** Generates type-safe Kotlin databases from raw SQL files. It uses platform-specific drivers (`AndroidSqliteDriver` on Android, `NativeSqliteDriver` on iOS).
-* **Room Multiplatform (Android 15 / Room 2.7+):** Google now officially supports Room in KMP projects, allowing databases to be defined in `commonMain` and run natively on Android, iOS, and JVM targets.
+### Why It Is Used
+Local databases contain complex business models, relational integrity constraints, caching policies, and migrations. Rewriting them separately in Swift (CoreData/SwiftData) and Android (Room) leads to schema divergence and duplicate testing effort. Multiplatform databases ensure 100% shared local data architecture.
+
+### How It Works Internally
+* **SQLDelight:** Compiles `.sq` files into type-safe Kotlin interfaces and query execution wrappers during the Gradle build. It links to `AndroidSqliteDriver` on Android and `NativeSqliteDriver` on iOS.
+* **Room Multiplatform (Room 2.7+):** Uses KSP to generate database access code at compile time, connecting to a `SQLiteDriver` implementation (like `BundledSQLiteDriver`) that links with the platform's native SQLite C library.
+
+### Code Example
+```kotlin
+// commonMain: SQLDelight definition & query observation
+// src/commonMain/sqldelight/com/example/db/User.sq
+// CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT);
+// selectAll: SELECT * FROM user;
+// insertUser: INSERT OR REPLACE INTO user(id, name, email) VALUES (?, ?, ?);
+
+class UserLocalDataSource(private val database: AppDatabase) {
+    fun observeUsers(): Flow<List<User>> =
+        database.userQueries.selectAll()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+
+    suspend fun insertUser(id: Long, name: String, email: String?) = withContext(Dispatchers.IO) {
+        database.userQueries.insertUser(id, name, email)
+    }
+}
+```
+
+### Common Pitfalls
+* **Blocking the iOS Main Thread with Database Reads:** Unlike Android, iOS lacks `StrictMode` to warn about main-thread disk access; executing un-dispatched queries freezes the iOS UI.
+* **Database Driver Initialization Order:** On Android, SQLite requires an `android.content.Context` to initialize the database path; on iOS, the path must point to the app's `NSDocumentDirectory`.
+* **Database Migrations Mismatch:** Failing to write cross-platform schema migration scripts causes crashes upon app update across both platforms.
+
+---
 
 ## 4.3 Compose Multiplatform Resources (Res Class)
 
 ### Definition
-* **The problem** — Android's `R` class is an Android build artifact, so shared code cannot use it to reach strings, images, or fonts.
-* **`Res` class** — the generated, **type-safe** accessor for resources declared under `composeResources/`, available from `commonMain` on every target.
-* **Qualifier directories** — the same idea as Android's: `values-es` for a locale, density-specific drawables, so one call resolves per the platform's current configuration.
-* **Composable accessors** — `stringResource(Res.string.x)` and `painterResource(Res.drawable.y)`, which read the current locale and density from the composition.
+* **Simple:** The `Res` class is Compose Multiplatform's type-safe replacement for Android's `R` class, letting you access shared strings, images, icons, and fonts across Android, iOS, Desktop, and Web from `commonMain`.
+* **Advanced:** The Compose Gradle Plugin compiles static assets located in `commonMain/composeResources/` into a generated Kotlin accessor object (`Res`). At build time, resources are packaged into Android APK asset directories for Android and Cocoa Framework resource bundles for iOS, providing compile-time type safety, density qualification (mdpi, hdpi, xhdpi), and automatic locale-based string resolution.
+* **Key Components:**
+  * **`Res` Object:** Auto-generated Kotlin singleton exposing strongly-typed fields (e.g., `Res.string`, `Res.drawable`, `Res.font`).
+  * **Resource Qualifiers:** Android-style folder conventions (e.g., `values-es/strings.xml`, `drawable-xxhdpi/`) that dynamically resolve the appropriate asset based on the runtime device configuration (locale, screen density, theme).
+  * **Composable Accessors:** Built-in composable helpers (`stringResource`, `painterResource`, `vectorResource`) that reactively observe configuration changes and update UI elements automatically.
 
-Compose Multiplatform 1.6+ provides a unified, type-safe API for accessing shared resources (strings, drawables, fonts, and raw files) located in the `commonMain/composeResources/` directory.
-* **The `Res` Class:** The Compose gradle plugin automatically parses resources at compile time, generating a Kotlin object pointer class named `Res` (similar to Android's `R` class).
-* **Accessing Assets:**
-  ```kotlin
-  // Kotlin KMP Resource Access
-  val greeting = Res.string.welcome_message
-  val icon = Res.drawable.ic_app_logo
-  ```
-* **Packaging:** During the build process, the plugin compiles resources into Android assets for Android targets, and automatically packages them into the Cocoa Framework bundle resources for iOS targets.
+### Why It Is Used
+Android's `R` class is a JVM/Android-specific build artifact that cannot be referenced in multiplatform code. Without CMP Resources, shared UI code would have to pass all strings and images from platform-specific layers via `expect`/`actual` or constructor parameters.
+
+### How It Works Internally
+The Compose Gradle plugin parses the `composeResources/` folder at compile time:
+* It generates a typed Kotlin file containing `Res` accessors.
+* For Android targets, assets are copied into the standard `res/` or `assets/` directories.
+* For iOS targets, assets are packaged directly into the Cocoa Framework bundle (`App.framework/compose-resources/`) and read at runtime using Apple's `NSBundle` APIs.
+
+### Code Example
+```kotlin
+// commonMain: Using type-safe resources in shared Composables
+@Composable
+fun ProfileHeader(userName: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(
+            painter = painterResource(Res.drawable.ic_user_avatar),
+            contentDescription = stringResource(Res.string.profile_avatar_cd)
+        )
+        Text(
+            text = stringResource(Res.string.welcome_user, userName),
+            style = MaterialTheme.typography.titleLarge
+        )
+    }
+}
+```
+
+### Common Pitfalls
+* **Using Android's `R` Class in `commonMain`:** Referencing `com.example.app.R` in shared code fails compilation on iOS; use `Res` instead.
+* **Missing Framework Resource Bundle on iOS:** When embedding the shared framework in Xcode manually (without SPM or CocoaPods plugin), forgetting to link `compose-resources` causes runtime asset missing crashes.
+* **Locale Not Updating on System Language Switch:** Failing to observe composition locals causes strings to retain the launch locale instead of updating dynamically.
+
+---
 
 ## 4.4 Shared Jetpack Lifecycle & ViewModels
 
 ### Definition
-* **The opportunity** — `androidx.lifecycle`, including `ViewModel` and `viewModelScope`, is now published as a **multiplatform** artifact, so presentation logic can move into shared code.
-* **Shared ViewModel** — one implementation of a screen's state and event handling, exposed as a `StateFlow` that each platform's UI binds to.
-* **The asymmetry to plan for** — on Android the framework clears the ViewModel automatically; on iOS **nothing does**, so the Swift side must call `clear()` when its view disappears or the ViewModel and its collections live on.
-* **Bridging** — the Swift-side adapter turning a Kotlin `StateFlow` into something SwiftUI observes, which is what SKIE or KMP-NativeCoroutines generates.
+* **Simple:** Shared ViewModels allow you to write screen presentation logic, UI state management, and async operations once in `commonMain` using Google's official `androidx.lifecycle:lifecycle-viewmodel` library for both Android and iOS.
+* **Advanced:** Google publishes official multiplatform artifacts for Jetpack Lifecycle components. A shared `ViewModel` manages reactive state using Kotlin `StateFlow` and handles background coroutines via `viewModelScope`. On Android, lifecycle clearance is automatic through the Activity/Fragment lifecycle, whereas on iOS, the lifecycle must be bound to the host `UIViewController` or SwiftUI view lifecycle to invoke `viewModelScope.cancel()` / `onCleared()`.
+* **Key Components:**
+  * **`androidx.lifecycle.ViewModel`:** Multiplatform base class providing lifecycle-aware state persistence and coroutine scope management.
+  * **`viewModelScope`:** A `CoroutineScope` tied to the ViewModel's lifetime; any running coroutines are automatically canceled when the ViewModel is cleared.
+  * **Swift/SwiftUI Bridging:** Because Swift cannot directly observe Kotlin coroutine Flows natively, bridges like **SKIE** or **KMP-NativeCoroutines** wrap Kotlin `StateFlow` into Swift's `ObservableObject` or `AsyncSequence`.
+  * **Lifecycle Asymmetry:** Android manages ViewModel teardown automatically on backstack pop/configuration change; iOS requires manual disposal or navigation wrapper binding to avoid memory leaks.
 
-Google officially supports Jetpack Lifecycle components in Kotlin Multiplatform.
-* **`androidx.lifecycle.ViewModel`:** You can define ViewModels directly in `commonMain` to hold screen state and manage coroutine scopes via `viewModelScope`.
-* **iOS Integration:** The lifecycle of the shared ViewModel is linked to the hosting UIViewController lifecycle. When the iOS view controller is popped from the UINavigationController backstack, it triggers the ViewModel's `onCleared()` callback, canceling active coroutines and freeing native memory.
+### Why It Is Used
+UI screens change, but presentation rules—loading states, pagination triggers, form validation, error dialog state—are identical across platforms. Sharing ViewModels allows native Android (Compose) and native iOS (SwiftUI) to bind to the exact same state machine.
+
+### How It Works Internally
+* In `commonMain`, `ViewModel` extends `androidx.lifecycle.ViewModel`. Coroutines launched in `viewModelScope` run on the shared Kotlin coroutine dispatcher.
+* On Android, Jetpack's `ViewModelProvider` retains instances across configuration changes and calls `onCleared()` when the Activity finishes.
+* On iOS, the lifecycle of the shared ViewModel is linked to the hosting `UIViewController` or SwiftUI lifecycle. When the iOS view is popped or dismissed, calling `clear()` cancels active coroutines and frees native memory.
+
+### Code Example
+```kotlin
+// commonMain: Shared ViewModel exposing UI state via StateFlow
+class ProductListViewModel(
+    private val repository: ProductRepository
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<ProductListState>(ProductListState.Loading)
+    val state: StateFlow<ProductListState> = _state.asStateFlow()
+
+    init {
+        loadProducts()
+    }
+
+    fun loadProducts() {
+        viewModelScope.launch {
+            _state.value = ProductListState.Loading
+            runCatching { repository.getProducts() }
+                .onSuccess { items -> _state.value = ProductListState.Success(items) }
+                .onFailure { error -> _state.value = ProductListState.Error(error.message ?: "Unknown error") }
+        }
+    }
+}
+```
+
+### Common Pitfalls
+* **Failing to Clear ViewModels on iOS:** Android clears ViewModels automatically; if iOS developers instantiate a ViewModel without cancelling or calling `clear()`, coroutines continue collecting and leak memory.
+* **Directly Exposing Kotlin `StateFlow` to SwiftUI Without a Bridge:** Swift cannot observe `StateFlow` natively; without SKIE or KMP-NativeCoroutines, SwiftUI views cannot re-render on state changes.
+* **Putting Android-Specific Types in ViewModel State:** Exposing Android `Context`, `Bitmap`, or `Uri` in shared ViewModel state breaks iOS target compilation.
 
 ---
 
-## 4.4 Dependency Injection in KMP (Koin)
+## 4.5 Dependency Injection in KMP (Koin)
 
 ### Definition
-* **The constraint** — Hilt and Dagger depend on Android component lifecycles and JVM annotation processing, so they **cannot compile** for `commonMain` or an iOS target.
-* **Koin** — a pure-Kotlin container using a DSL and a runtime lookup, with no code generation, which is why it works on every KMP target.
-* **Module** — a DSL block declaring how to construct each type.
-* **`expect fun platformModule()`** — the bridge: common code declares that each platform will contribute its own bindings (the HTTP engine, the SQLite driver, the Android `Context`).
-* **The trade-off to state** — resolution happens at runtime, so a missing binding surfaces on first use rather than at compile time. `checkModules()` in a test is what moves that failure into CI.
+* **Simple:** Koin is a lightweight, pure-Kotlin dependency injection framework that works seamlessly in KMP because it doesn't rely on Android-specific features, JVM reflection, or code generation.
+* **Advanced:** Unlike Dagger or Hilt (which require JVM annotation processors and tie directly to Android lifecycle classes), Koin uses a functional Kotlin Domain-Specific Language (DSL) to register and resolve dependencies at runtime via service locator semantics. Common code defines platform-agnostic dependencies, while platform-specific modules (providing Android `Context`, Apple `NSUserDefaults`, etc.) are injected through `expect`/`actual` functions.
+* **Key Components:**
+  * **Koin DSL (`module`, `single`, `factory`):** Kotlin-native declarations defining how instances are instantiated (singletons vs new instances per call) in `commonMain`.
+  * **`expect fun platformModule(): Module`:** Architectural pattern allowing `commonMain` to declare dependencies that each target platform (`androidMain`, `iosMain`) fulfills with platform-specific implementations.
+  * **Runtime vs Compile-Time Safety:** Koin resolves dependencies dynamically at runtime rather than generating compile-time dependency graphs like Dagger. Teams use Koin's `checkModules()` API in unit tests to catch missing dependencies in CI builds.
+  * **Why Hilt/Dagger Cannot Be Used in `commonMain`:** Hilt and Dagger rely on JVM kapt/ksp code generation and JVM reflection, making them incompatible with Kotlin/Native (iOS).
 
 ### Why It Is Used
 The shared module needs a way to wire repositories, API clients, and databases without knowing which platform it runs on. Koin's DSL lives in `commonMain`, and platform-specific bindings are supplied through `expect`/`actual` modules.
@@ -330,15 +580,17 @@ struct iOSApp: App {
 
 ---
 
-## 4.5 Serialization and Shared Data Models
+## 4.6 Serialization and Shared Data Models
 
 ### Definition
-* **The constraint** — Gson and Moshi rely on **JVM reflection**, and Kotlin/Native has none. Shared models therefore cannot use them.
-* **kotlinx.serialization** — a **compiler-plugin** based library that generates a serializer for each `@Serializable` class at build time, so it needs no reflection and works on every target.
-* **`@Serializable`** — marks a class for serializer generation.
-* **`@SerialName`** — maps a JSON field name to a differently-named Kotlin property.
-* **`KSerializer`** — the generated (or hand-written) object that performs the conversion, which you supply manually for types the plugin does not know.
-* **`ignoreUnknownKeys`** — the configuration that lets an already-shipped client survive the backend adding a field. Without it the first new field breaks every installed app.
+* **Simple:** `kotlinx.serialization` is Kotlin's official JSON/data serialization library designed to convert Kotlin data classes to and from JSON (or other formats) on all platforms without using reflection.
+* **Advanced:** Because Kotlin/Native (iOS) does not have a JVM reflection runtime, traditional Android parsers like Gson and Moshi cannot execute on iOS. `kotlinx.serialization` works as a Kotlin compiler plugin that analyzes data classes annotated with `@Serializable` during compilation and automatically generates reflection-free binary serializer classes (`KSerializer`) for every platform target.
+* **Key Components:**
+  * **`@Serializable`:** Annotation triggering the compiler plugin to generate a companion serializer without any reflection overhead.
+  * **`@SerialName`:** Annotation mapping JSON key names (e.g., snake_case) to idiomatic Kotlin property names (camelCase).
+  * **`KSerializer<T>`:** Custom serialization interface implemented when handling third-party types (like `Instant` or platform UUIDs) that cannot be directly annotated.
+  * **`ignoreUnknownKeys = true`:** Critical configuration setting that prevents client crashes when backend APIs introduce new schema fields before the app is updated.
+  * **Reflection-Free Compilation:** By avoiding reflection, serialization is both high-performance and fully compatible with Kotlin/Native LLVM compilation and R8/ProGuard obfuscation.
 
 ### Why It Is Used
 Gson and Moshi are JVM-only. Any shared DTO must use `kotlinx.serialization`, which is also what Ktor's content negotiation expects.
@@ -395,14 +647,15 @@ fun createHttpClient(engine: HttpClientEngine) = HttpClient(engine) {
 
 ---
 
-## 4.6 Multiplatform Key-Value and Preferences Storage
+## 4.7 Multiplatform Key-Value and Preferences Storage
 
 ### Definition
-* **The portability problem** — every platform has a key-value store, but they are entirely different APIs: `SharedPreferences` on Android, `NSUserDefaults` on iOS.
-* **DataStore Preferences** — the official Jetpack store, now multiplatform, exposing an asynchronous `Flow`-based API backed by a file whose **path** is the only platform-specific part.
-* **multiplatform-settings** — a third-party wrapper that delegates to each platform's native store, with a simpler synchronous API.
-* **SQLDelight / Room** — the right choice once the data is relational rather than a handful of keys.
-* **The security note** — none of these encrypt anything. `NSUserDefaults` and `SharedPreferences` are plaintext, so secrets belong in the iOS Keychain and the Android Keystore behind an `expect`/`actual` abstraction.
+* **Simple:** Multiplatform Key-Value Storage allows you to save simple data (like user preferences, auth tokens, or feature flags) across Android and iOS using a single shared API instead of writing separate platform code.
+* **Advanced:** While Android offers `SharedPreferences` / `DataStore` and iOS provides `NSUserDefaults`, their native APIs are completely disjoint. In KMP, developers either use Google's official **Jetpack DataStore Preferences** (which shares file-based atomic persistence logic and exposes asynchronous Kotlin `Flow`s across all targets) or lightweight wrappers like **multiplatform-settings** that map directly to native storage mechanisms under the hood.
+* **Key Components:**
+  * **Jetpack DataStore Multiplatform:** Google's official preference library powered by Okio file storage; handles transactional reads/writes asynchronously via Coroutines and Kotlin `Flow`.
+  * **Multiplatform-Settings (Russell Wolf):** Popular community library providing synchronous and asynchronous key-value storage delegated directly to Android `SharedPreferences` and Apple `NSUserDefaults`.
+  * **Security Distinction:** Neither `DataStore` nor `NSUserDefaults`/`SharedPreferences` encrypt data by default. Sensitive credentials (tokens, private keys) must be stored in Apple Keychain and Android EncryptedSharedPreferences / Keystore via an `expect`/`actual` abstraction.
 
 ### How It Works Internally
 
@@ -459,58 +712,233 @@ class UserLocalSource(private val db: AppDatabase) {
 * **Blocking reads on the main thread on iOS.** SQLDelight queries must be mapped on a background dispatcher.
 
 ---
+
 # 5. Kotlin/Native & Swift Interoperability
 
 ## 5.1 Swift Interop Constraints
 
 ### Definition
-* **The path Kotlin takes to Swift** — Kotlin/Native exports an **Objective-C** header, and Swift consumes that. Anything Objective-C cannot express is therefore lost in between.
-* **What is lost** — generics are largely erased (`List<User>` becomes `NSArray`), `sealed` hierarchies arrive as plain classes so Swift `switch` is not exhaustive, default arguments disappear, and `suspend` functions become completion-handler methods.
-* **Name mangling** — Kotlin names that clash with Objective-C conventions are renamed; `init` becomes `doInit`, and overloads gain suffixes.
-* **SKIE** — a compiler plugin that generates an idiomatic **Swift** layer on top of that header, restoring exhaustive enums, `async` functions, and `Flow` as `AsyncSequence`.
+* **Simple:** Swift Interop Constraints refer to the language differences and limitations encountered when calling Kotlin code from iOS Swift, because Kotlin/Native exports its API through an Objective-C compatibility bridge.
+* **Advanced:** Kotlin/Native compiles shared Kotlin code into native Apple binaries accompanied by an **Objective-C header (`.h`) file**. Because Swift consumes this Objective-C bridge rather than raw Kotlin ASTs, modern Kotlin language features that cannot be expressed in Objective-C (advanced generic variance, sealed class hierarchies, default parameters, coroutines, and inline value classes) are degraded or erased unless bridged with modern tooling like SKIE.
+* **Key Components & Constraints:**
+  * **The Objective-C Bridge:** The intermediate translation layer that forces Kotlin language constructs into Objective-C semantics before Swift can access them.
+  * **Type & Generics Erasure:** Complex Kotlin generic constraints and collections degrade into untyped or loosely typed Objective-C collections (e.g., `NSArray` / `NSDictionary` or `id`).
+  * **Sealed Classes Degradation:** Kotlin sealed classes compile to flat class hierarchies in Objective-C; Swift `switch` statements cannot prove exhaustiveness and require a fallback default case.
+  * **Coroutines to Callbacks:** Kotlin `suspend` functions compile to Objective-C completion-handler callbacks (`(Result?, Error?) -> Void`), stripping native structured concurrency and cancellation propagation.
+  * **SKIE (Swift-Kotlin Interface Enhancer):** A critical compiler plugin by Touchlab that generates an idiomatic Swift layer on top of the framework, restoring exhaustive Swift enums for sealed classes, native `async/await` for coroutines, and Swift `AsyncSequence` for Kotlin `Flow`s.
 
-When compiling a Kotlin framework for iOS, Kotlin types are mapped to Objective-C / Swift structures. This leads to several constraints:
+### Why It Is Used
+Understanding interop constraints allows developers to design clean, Swift-friendly Kotlin APIs in `commonMain` so iOS team members can consume shared repositories and ViewModels seamlessly without boilerplate or confusion.
+
+### How It Works Internally
+When compiling a Kotlin framework for iOS, Kotlin types are mapped to Objective-C / Swift structures:
 
 1. **Coroutines and Suspend Functions:**
-   * A `suspend` function in Kotlin is compiled into a function that accepts a completion callback (`completionHandler`) in Swift/Objective-C.
+   * A `suspend` function in Kotlin compiles into a function that accepts a completion callback (`completionHandler`) in Swift/Objective-C.
    * Swift handles this as an `async/await` function, but exception cancellation flows do not propagate back to Kotlin naturally.
 2. **Generics Erasure:**
    * Kotlin generics compile to Objective-C generics, which do not support the same covariance or contravariance constraints as Swift, occasionally erasing type definitions to `Any`.
 3. **Value Classes:**
    * Kotlin `value class` inline optimizations are not visible to Objective-C/Swift. They are exposed as raw wrapper classes, losing their memory efficiency benefits.
 
+### Code Example
+```kotlin
+// commonMain: Exposing a sealed class and suspend function to iOS
+sealed class AuthState {
+    object Unauthenticated : AuthState()
+    data class Authenticated(val userId: String) : AuthState()
+    data class Error(val message: String) : AuthState()
+}
+
+class AuthService {
+    suspend fun login(token: String): AuthState {
+        // network login logic
+        return AuthState.Authenticated("user_123")
+    }
+}
+```
+
+```swift
+// Swift without SKIE (Objective-C Bridge)
+// Sealed classes require runtime type checks and a default case
+authService.login(token: "xyz") { state, error in
+    if let authenticated = state as? AuthStateAuthenticated {
+        print("Logged in: \(authenticated.userId)")
+    } else if state is AuthStateUnauthenticated {
+        print("Logged out")
+    } else {
+        print("Unknown / Error") // Compiler cannot enforce exhaustiveness
+    }
+}
+
+// Swift with SKIE (Idiomatic Swift generated layer)
+// Sealed classes become real Swift enums; suspend functions become async/await
+let state = try await authService.login(token: "xyz")
+switch state {
+case .unauthenticated:
+    print("Logged out")
+case .authenticated(let auth):
+    print("Logged in: \(auth.userId)")
+case .error(let err):
+    print("Error: \(err.message)")
+    // Exhaustive! No default case needed
+}
+```
+
+### Common Pitfalls
+* **Calling Kotlin `suspend` from Swift Without Cancellation Propagation:** If the Swift caller cancels an `async` Task, the underlying Kotlin coroutine may continue running unless handled via SKIE or explicit job tracking.
+* **Relying on Default Arguments from Swift:** Kotlin default arguments are not exported to Objective-C; Swift callers must provide values for all parameters unless overloads are manually defined.
+* **Name Clashes with Swift Keywords:** Function names like `default()`, `init()`, or `internal()` get mangled in Swift (e.g., `doInit()`).
+
+---
+
 ## 5.2 Reference Counting & Garbage Collection (Memory Cycles & Leaks)
 
 ### Definition
-* **Two memory managers, one object graph** — the root cause of every issue in this topic. Kotlin objects are managed by a **tracing garbage collector**; Objective-C and Swift objects are managed by **ARC** reference counting.
-* **Tracing GC** — periodically determines which objects are still reachable and frees the rest, so it can collect a cycle.
-* **ARC** — frees an object the moment its reference count reaches zero, so it **cannot** collect a cycle on its own.
-* **Cross-boundary cycle** — a Kotlin object holding a Swift closure that captures back into Kotlin. Neither manager sees the whole loop, so neither frees it.
-* **The new memory manager** — the current Kotlin/Native model, which removed the old object-freezing rules and made concurrency behave as it does on the JVM.
+* **Simple:** Memory management in KMP on iOS involves two completely different memory systems running side by side: Swift's Automatic Reference Counting (ARC) and Kotlin/Native's Tracing Garbage Collector (GC). If they strongly reference each other in a circle, a permanent memory leak occurs.
+* **Advanced:** When Kotlin objects cross into Swift, Kotlin/Native wraps them in Objective-C proxy references tracked by Apple's compile-time ARC. Concurrently, Kotlin/Native manages internal objects using a concurrent tracing Garbage Collector. Because neither system has full visibility into the other's object graph, cross-boundary retain cycles (e.g., Swift closures capturing Kotlin objects that hold strong references back to Swift) cannot be reclaimed by either collector, causing persistent memory leaks.
+* **Key Components:**
+  * **ARC (Automatic Reference Counting):** Apple's memory manager that increments/decrements reference counts at compile time and deallocates memory immediately when count reaches zero, but cannot automatically break cyclic references.
+  * **Tracing Garbage Collector (Kotlin/Native):** Kotlin's runtime engine that periodically traverses object graphs from root pointers to collect unreferenced memory cycles within Kotlin heap space.
+  * **Cross-Boundary Retain Cycle:** A leak where a Swift object holds a strong reference to a Kotlin proxy object, while that Kotlin object holds a callback or delegate reference back to the Swift object.
+  * **Mitigation Strategies:** Using Swift `weak` references (`[weak self]`), Kotlin `WeakReference` wrappers, and explicitly nullifying listener/observer references during screen teardown (`onCleared()`).
 
-A key architectural challenge for senior developers is managing memory across the Swift/Kotlin boundary.
+### Why It Is Used
+Understanding cross-boundary memory behavior is critical for senior developers to diagnose and prevent memory leaks that can quietly exhaust device RAM and degrade app performance on iOS devices.
+
+### How It Works Internally
+A key architectural challenge for senior developers is managing memory across the Swift/Kotlin boundary:
 * **Objective-C ARC:** iOS uses Automatic Reference Counting (ARC) to manage memory by tracking reference counts at compile time.
 * **Kotlin/Native GC:** Kotlin/Native uses a tracing Garbage Collector that manages memory concurrently at runtime.
 * **Memory Lifecycle Bridge:** When a Kotlin object is passed to Swift, Kotlin/Native wraps it in a proxy Objective-C object (`KotlinObjCProto`). Swift ARC tracks references to this proxy wrapper.
 * **Memory Cycle Leak Danger:** If a Swift object holds a strong reference to a Kotlin object proxy, and that Kotlin object holds a strong reference back to the Swift object (a typical delegate pattern or callback structure), the cycle cannot be resolved by either Swift's ARC or Kotlin's GC. This causes permanent memory leaks.
-* **Solution:** Break the cycle by using Kotlin **WeakReferences** or defining Swift delegates as `weak` references when bridging to Kotlin.
+* **Solution:** Break the cycle by using Kotlin `WeakReference`s or defining Swift delegates as `weak` references when bridging to Kotlin.
+
+### Code Example
+```kotlin
+// commonMain: Avoiding strong cross-boundary retain cycles
+class ProfilePresenter {
+    // Retain callback as nullable to allow explicit clearing
+    private var onProfileLoaded: ((String) -> Unit)? = null
+
+    fun attachCallback(callback: (String) -> Unit) {
+        this.onProfileLoaded = callback
+    }
+
+    fun detachCallback() {
+        this.onProfileLoaded = null // Breaks retain cycle when screen dismissed
+    }
+}
+```
+
+```swift
+// Swift: Preventing retain cycle with [weak self]
+class ProfileViewController: UIViewController {
+    let presenter = ProfilePresenter()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // MUST use [weak self] to prevent retain cycle across ARC / GC boundary
+        presenter.attachCallback { [weak self] profileName in
+            self?.updateUI(name: profileName)
+        }
+    }
+
+    deinit {
+        presenter.detachCallback()
+    }
+
+    private func updateUI(name: String) { /* update views */ }
+}
+```
+
+### Common Pitfalls
+* **Omitting `[weak self]` in Closures Passed to Kotlin:** Closures passed into Kotlin objects will retain `self` in Swift ARC memory indefinitely if the Kotlin object is retained.
+* **Relying on ARC to Clean Up Kotlin Objects Immediately:** Kotlin/Native uses a concurrent tracing GC, meaning Kotlin objects are cleaned up asynchronously during GC cycles, not instantaneously when Swift ARC releases its wrapper.
+* **Ignoring Xcode Leaks / Instruments Diagnostics:** Because Xcode Instruments only directly inspects ARC references, cross-boundary retain cycles require testing screen deallocation explicitly.
 
 ---
 
 # 6. KMP Delivery & Build Formats (XCFrameworks)
 
-To import KMP code into an iOS Swift project, the shared module compiles into an **XCFramework**.
+## 6.1 XCFrameworks & Distribution Formats (CocoaPods & SPM)
 
+### Definition
+* **Simple:** An XCFramework is Apple's binary packaging format that bundles multiple architecture versions of a framework (such as physical iPhone ARM64 and simulator ARM64/x86_64) into a single container that Xcode and Swift can easily consume.
+* **Advanced:** Apple created the XCFramework format to replace legacy "fat" universal binaries (which could not combine two architectures with identical instruction sets, like ARM64 for real devices and ARM64 for M-series Apple Silicon simulators). In KMP, Gradle compiles Kotlin/Native targets into platform-specific framework slices, which are bundled together into an `.xcframework` directory containing a manifest (`Info.plist`) that allows Xcode, CocoaPods, or Swift Package Manager (SPM) to automatically resolve the correct binary slice at build time.
+* **Key Components:**
+  * **XCFramework (`.xcframework`):** A multi-platform binary container holding separate framework slices for device and simulator architectures.
+  * **Slices & Architectures:**
+    * `iosArm64`: Physical 64-bit iOS devices.
+    * `iosSimulatorArm64`: Apple Silicon Mac iOS simulator.
+    * `iosX64`: Intel-based Mac iOS simulator.
+  * **Swift Package Manager (SPM):** Apple's native dependency manager; shared XCFrameworks can be imported as local path packages or distributed via git repositories with checksums.
+  * **CocoaPods:** Traditional dependency manager supported via the `kotlin("native.cocoapods")` Gradle plugin for automated bi-directional builds between Xcode and Gradle.
+
+### Why It Is Used
+iOS development teams need to consume the shared KMP module as a first-class iOS dependency without having to install Android Studio or configure Gradle on their local machines. Distributing pre-compiled XCFrameworks via SPM or CocoaPods provides clean separation of concerns and faster iOS build times.
+
+### How It Works Internally
 ```mermaid
 graph TD
-    Compile[Gradle assembleReleaseXCFramework] --> Arm64[iOS Arm64 Framework]
-    Compile --> Sim[iOS Simulator Framework]
-    Arm64 & Sim --> Package[Combine into App.xcframework]
-    Package --> Import[Import into Xcode / Swift Package Manager]
+    Compile[Gradle assembleXCFramework] --> Arm64[iOS Arm64 Framework]
+    Compile --> SimArm[iOS Simulator Arm64 Framework]
+    Compile --> SimX64[iOS Simulator x64 Framework]
+    Arm64 & SimArm & SimX64 --> Package[Combine into Shared.xcframework]
+    Package --> Distribution{Distribution Channel}
+    Distribution --> SPM[Swift Package Manager binaryTarget]
+    Distribution --> CocoaPods[CocoaPods Podspec]
+    Distribution --> Direct[Direct Xcode Drag & Drop]
+```
+During the build, Gradle invokes the Kotlin/Native LLVM compiler for each configured iOS target, creating separate frameworks with dSYM debug symbols. It then uses Apple's `xcodebuild -create-xcframework` utility to assemble them into a unified `.xcframework` bundle.
+
+### Code Example
+```kotlin
+// shared/build.gradle.kts: Configuring an XCFramework in Gradle
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+}
+
+kotlin {
+    val xcf = XCFramework("SharedKit")
+
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64(),
+        iosX64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "SharedKit"
+            xcf.add(this)
+        }
+    }
+}
 ```
 
-1. **XCFramework:** A packaging format designed by Apple that groups frameworks built for different architectures (e.g., native ARM64 for devices and x86_64/ARM64 for simulator targets) into a single bundle.
-2. **Swift Package Manager (SPM) / CocoaPods:** Developers configure Gradle to build the XCFramework, which is then referenced as a local or remote dependency inside Xcode projects, allowing Swift developers to call Kotlin methods directly.
+```swift
+// Package.swift: Distributing the XCFramework via Swift Package Manager
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "SharedKit",
+    platforms: [.iOS(.v15)],
+    products: [
+        .library(name: "SharedKit", targets: ["SharedKit"])
+    ],
+    targets: [
+        .binaryTarget(
+            name: "SharedKit",
+            path: "./build/XCFrameworks/release/SharedKit.xcframework"
+        )
+    ]
+)
+```
+
+### Common Pitfalls
+* **Missing Apple Silicon Simulator Slice (`iosSimulatorArm64`):** Building only `iosArm64` and `iosX64` causes linking errors when running on modern M1/M2/M3/M4 Macs.
+* **Large Git Repository Bloat:** Committing large binary XCFrameworks directly to Git repositories causes repository bloat; publish zip releases with checksums or use git-lfs.
+* **Missing dSYM Files for Crash Reporting:** Distributing XCFrameworks without corresponding dSYM symbol files prevents Crashlytics from symbolication of Kotlin crashes on iOS.
 
 ---
 
@@ -519,12 +947,14 @@ graph TD
 ## 7.1 Common Tests and Platform Test Targets
 
 ### Definition
-* **`commonTest`** — tests compiled and executed for **every** configured target, so the same assertions verify that shared logic behaves identically on the JVM and on the iOS simulator.
-* **Platform test source set** (`androidUnitTest`, `iosTest`) — tests for behavior that genuinely differs per platform.
-* **`kotlin.test`** — the multiplatform assertion API, mapping to JUnit on the JVM and to XCTest on Apple targets.
-* **`MockEngine`** — Ktor's test transport, which returns canned responses so network tests need no server and behave identically everywhere.
-* **Why JVM-only tooling is unavailable** — MockK and Robolectric depend on JVM bytecode manipulation and class loading, so `commonTest` relies on hand-written fakes instead.
-* **Why running only `jvmTest` is insufficient** — Kotlin/Native has different memory and concurrency semantics, so bugs can exist only there.
+* **Simple:** Testing in KMP allows you to write unit tests once in `commonTest` and execute them across all target platforms (Android JVM, iOS simulator, Desktop) to verify that shared business logic behaves identically everywhere.
+* **Advanced:** The KMP test architecture splits test suites into shared (`commonTest`) and target-specific source sets (`androidUnitTest`, `iosTest`). Common tests compile against `kotlin.test` (which delegates to JUnit on the JVM and Apple's XCTest on iOS) and `kotlinx-coroutines-test`. Because Kotlin/Native lacks JVM bytecode manipulation, reflection-based mocking frameworks (MockK, Mockito, Robolectric) cannot run in `commonTest`, requiring the use of manual fakes and transport-level test doubles like Ktor's `MockEngine`.
+* **Key Components:**
+  * **`commonTest`:** Source set containing platform-agnostic unit tests executed across all configured compilation targets.
+  * **Platform Test Source Sets (`androidUnitTest`, `iosTest`):** Dedicated test sets for platform-specific implementations, checking Android `Context` behavior or Apple Foundation APIs.
+  * **`kotlin.test`:** Unified multiplatform assertion library providing standard test annotations (`@Test`, `@BeforeTest`, `@AfterTest`) and assertions (`assertEquals`, `assertTrue`).
+  * **`MockEngine`:** Ktor's built-in client engine replacement that simulates HTTP responses locally without initiating real network calls or spinning up a local server.
+  * **Fakes vs Mocks:** In KMP, unit tests rely on hand-written fakes and state stubs rather than dynamic bytecode mocks (like MockK), ensuring full compatibility with Native LLVM targets.
 
 ### Why It Is Used
 A test written once in `commonTest` runs on the JVM, on the iOS simulator, and on any other configured target — which is how you verify that shared logic genuinely behaves identically everywhere, rather than assuming it does.
@@ -619,11 +1049,14 @@ kotlin {
 ## 8.1 What to Share, and in What Order
 
 ### Definition
-* **Incremental adoption** — the defining property of KMP: the shared module compiles to an ordinary framework the native app consumes, so you choose *which layers* move and migrate one at a time.
-* **The value curve** — sharing pays off most at the **bottom** of the stack and flattens sharply toward the UI. Models and business rules are pure logic with no platform surface; UI is where platform expectations are strongest.
-* **Divergence risk** — the real cost of *not* sharing: the same rule implemented twice drifts, and the two platforms slowly disagree about what the product does. This is what the shared layer buys, more than lines of code saved.
-* **Platform-intrinsic code** — navigation, notifications, camera, biometrics, widgets. These stay native and are reached through thin `expect`/`actual` or interface boundaries.
-* **The sequencing principle** — each step must be **independently shippable**, so the migration never blocks feature work and can be stopped at any layer that stops paying for itself.
+* **Simple:** Adoption strategy in KMP is an incremental, layer-by-layer roadmap that defines which parts of an application to share (starting from data models and network logic up to UI) to maximize code reuse while minimizing architectural risk.
+* **Advanced:** KMP's modular design allows teams to adopt cross-platform code incrementally without rewriting existing applications. Code sharing follows an inverse risk-to-value curve: pure data models and business rules offer high architectural consistency and zero UI risk, whereas sharing the UI layer (CMP) introduces platform fidelity tradeoffs, increased binary size, and iOS developer friction. A phased rollout ensures that each layer is independently tested, compiled, and deployed to production.
+* **Key Concepts:**
+  * **Incremental Adoption:** The ability to introduce KMP into an existing Android and iOS codebase module by module, starting with a single repository or helper function.
+  * **The Value vs Risk Curve:** Code sharing is most effective at the lower levels of the architecture (DTOs, networking, business logic) and carries higher risk at the presentation/UI layer.
+  * **Logic Divergence Prevention:** The primary architectural benefit of KMP is ensuring business rules, edge-case validations, and error mappings execute identically across platforms, eliminating silent cross-platform feature drift.
+  * **Platform-Intrinsic Boundaries:** Device-specific features (push notifications, biometrics, home screen widgets, camera) remain native and connect to shared logic via thin abstractions.
+  * **Recommended Migration Sequence:** Data Models & DTOs → Networking (Ktor) → Business Logic & Use Cases → Local Storage (SQLDelight/Room) → Presentation (ViewModels & StateFlow) → Shared UI (CMP, optional).
 
 ### Why It Is Used
 Attempting to share everything at once — including UI — is the most common way KMP adoption fails. The value curve is steepest at the bottom of the stack and flattens sharply toward the UI.
