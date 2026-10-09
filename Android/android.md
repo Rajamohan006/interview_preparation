@@ -2669,214 +2669,522 @@ suspend fun Context.saveToGallery(bytes: ByteArray, name: String): Uri? =
 
 ---
 
-## 2.8 Notifications, Channels, and PendingIntent
+## 2.8 Notifications, Channels, Styles, and Modern Architecture
 
-### 1. Notification
-
-**Definition**
-
-> A **Notification** is a message displayed by Android outside your application's normal UI to inform the user about an event, status, or action.
-
-**Examples:**
-- Message received
-- Download completed
-- Music currently playing
-- Sync completed
-- Active navigation in progress
+> **Authoritative Technical Reference**  
+> Notifications bridge your application to the Android SystemUI. They are executed asynchronously across process boundaries via `PendingIntent` security tokens and rendered inside the system notification shade.
 
 ---
 
-### 2. Notification Channel
+### 2.8.1 Anatomy of a Notification & Visual Hierarchy
 
-**Definition**
-
-> A **NotificationChannel** groups notifications of a particular category and allows the user to control their behavior, such as importance, sound, and vibration.
-
-Notification channels were introduced in **Android 8.0 (API 26)**.
-
-```kotlin
-val channel = NotificationChannel(
-    "sync",
-    "Sync notifications",
-    NotificationManager.IMPORTANCE_DEFAULT
-).apply {
-    description = "Notifications for background synchronization"
-}
-
-notificationManager.createNotificationChannel(channel)
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ [Small Icon] App Name • 5m ago                             [Badge / V] │
+│ Title: Order Dispatched                                                │
+│ Text: Your parcel #8921 is out for delivery with FedEx.                │
+│ [Optional Large Icon / Sender Avatar]                                  │
+│ ┌────────────────────────────────────────────────────────────────────┐ │
+│ │ [Action 1: Track Package]    [Action 2: Call Courier]              │ │
+│ └────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-Then post with:
+1. **Small Icon (`setSmallIcon`):** **Mandatory.** Must be a monochrome (white on transparent alpha) 24x24dp vector asset. Color assets are rendered as a solid white square by SystemUI.
+2. **Header Area:** App name (provided by OS), time stamp (`setWhen`, `setShowWhen`), subtext/summary (`setSubText`), and expand/collapse caret.
+3. **Content Title (`setContentTitle`):** The primary headline.
+4. **Content Text (`setContentText`):** The supporting detail.
+5. **Large Icon (`setLargeIcon`):** Optional bitmap displayed on the right (e.g., sender contact avatar or product thumbnail).
+6. **Action Buttons (`addAction`):** Up to 3 interactive touch targets executing `PendingIntent`s without opening the full UI.
 
+---
+
+### 2.8.2 Notification Channels, Groups & Importance Levels (Android 8.0+ / API 26)
+
+Notification Channels give users fine-grained control over individual notification categories. Once created by the app, **the user owns the channel**.
+
+```text
+App Defines Channels ────> Registered in OS ────> User Modifies Settings in System UI
+                                                        │
+                      App CANNOT programmatically override user modifications!
+```
+
+#### Importance Scale & Delivery Behavior
+
+| Importance Level | Constant | Status Bar Icon? | Sound / Vibrate? | Peeks as Heads-Up (HUN)? | Use Case |
+|---|---|---|---|---|---|
+| **None** | `IMPORTANCE_NONE` (0) | ❌ No | ❌ Silent | ❌ No | Completely blocked / muted |
+| **Min** | `IMPORTANCE_MIN` (1) | ❌ No | ❌ Silent | ❌ No | Subtle background operations, ambient data |
+| **Low** | `IMPORTANCE_LOW` (2) | ✅ Yes | ❌ Silent | ❌ No | Background sync, non-urgent status updates |
+| **Default** | `IMPORTANCE_DEFAULT` (3) | ✅ Yes | ✅ Sound/Vibrate | ❌ No | Standard messages, order updates, downloads |
+| **High** | `IMPORTANCE_HIGH` (4) | ✅ Yes | ✅ Sound/Vibrate | ✅ **Yes (Banner)** | Direct messages, urgent navigation, critical alerts |
+| **Max** | `IMPORTANCE_MAX` (5) | ✅ Yes | ✅ Sound/Vibrate | ✅ **Yes (Full Screen)** | Incoming phone calls, ringing alarms |
+
+#### Channel Immutability: The Core Rule
+Once a channel is registered via `createNotificationChannel()`, the app **cannot change its sound, vibration, or importance programmatically**. 
+* Any subsequent call with the same channel ID only updates the **name** and **description**.
+* If an app must change the sound or default importance, it must create a **brand new channel ID** (e.g., `orders_channel_v2`).
+
+#### Notification Channel Groups
+For apps supporting multiple accounts (e.g., personal vs work profile), group channels together:
 ```kotlin
-val notification = NotificationCompat.Builder(context, "sync")
-    .setSmallIcon(R.drawable.ic_sync)
-    .setContentTitle("Sync completed")
-    .setContentText("Your data is up to date")
+val group = NotificationChannelGroup("work_account", "Work Profile (user@work.com)")
+notificationManager.createNotificationChannelGroup(group)
+
+val workChannel = NotificationChannel("work_chat", "Work Messages", NotificationManager.IMPORTANCE_HIGH).apply {
+    group = "work_account"
+}
+notificationManager.createNotificationChannel(workChannel)
+```
+
+---
+
+### 2.8.3 Types of Notifications & Styles (With Complete Implementations)
+
+#### 1. Basic Standard Notification
+```kotlin
+val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_notification)
+    .setContentTitle("Backup Finished")
+    .setContentText("128 photos uploaded successfully.")
+    .setContentIntent(pendingIntent)
+    .setAutoCancel(true) // Automatically dismisses from shade when user taps it
     .build()
 ```
 
-#### Important Interview Point: Channel Immutability
-
-On Android 8+, the **channel's importance** controls notification behavior. You cannot programmatically override or raise channel importance after creation.
-
-```text
-Channel created: IMPORTANCE_DEFAULT
-        ↓
-User modifies settings in OS Settings (e.g. mutes channel)
-        ↓
-App cannot override user's choice programmatically
+#### 2. `BigTextStyle` (Expandable Long Text)
+Used when message text exceeds one line (e.g., email preview, article summary, release notes):
+```kotlin
+val bigTextNotification = NotificationCompat.Builder(context, CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_mail)
+    .setContentTitle("Weekly Security Digest")
+    .setContentText("Your weekly account report is ready...")
+    .setStyle(
+        NotificationCompat.BigTextStyle()
+            .bigText("We identified 0 suspicious login attempts this week. Two-factor authentication remains active. All 4 authorized Android devices are up-to-date with security patch level 2026-10.")
+            .setSummaryText("Security Digest")
+    )
+    .build()
 ```
 
-> **Interview Best Practice:** Once a channel is created, the app cannot programmatically alter user-customized channel settings. The user has full authority. While deleting and recreating with a new ID is technically possible, doing so purely to bypass user preferences is considered anti-pattern and user-hostile.
-
----
-
-### 3. PendingIntent
-
-**Definition**
-
-> A **PendingIntent** is a security token / wrapper that allows another application or the Android system (such as SystemUI or AlarmManager) to execute a specified Intent later, with the **identity and permissions of the application that created the PendingIntent**.
-
-```text
-User taps notification in System UI
-        ↓
-System UI executes PendingIntent
-        ↓
-PendingIntent fires with YOUR app's UID/Permissions
-        ↓
-Your Target Component (Activity/Service/Receiver) opens
+#### 3. `BigPictureStyle` (Rich Media & Image Banners)
+Displays an expanded promotional banner or screenshot. Use `bigLargeIcon(null)` so the thumbnail avatar is hidden when the large photo expands:
+```kotlin
+val bigPictureNotification = NotificationCompat.Builder(context, CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_camera)
+    .setContentTitle("New Photo Shared")
+    .setContentText("Sarah uploaded a sunset photo")
+    .setLargeIcon(userAvatarBitmap) // Collapsed thumbnail
+    .setStyle(
+        NotificationCompat.BigPictureStyle()
+            .bigPicture(highResBitmap)
+            .bigLargeIcon(null as Bitmap?) // Clears large icon when expanded to avoid visual clutter
+            .setContentDescription("High-resolution sunset over the mountains")
+    )
+    .build()
 ```
 
-#### Normal Intent vs PendingIntent
-
-* **Intent ("Do this now"):** Executed immediately by your application in your process context.
-  ```kotlin
-  startActivity(intent)
-  ```
-* **PendingIntent ("Keep this action and execute it later"):** Handed over to external processes (SystemUI, AlarmManager, App Widgets) to be executed on your behalf.
-  ```kotlin
-  val pendingIntent = PendingIntent.getActivity(
-      context,
-      requestCode,
-      intent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-  )
-  ```
-
----
-
-### 4. PendingIntent Mutability (Android 12+ / API 31)
-
-Starting with **Android 12 (API 31)**, developers must explicitly specify mutability flags:
-
-* `PendingIntent.FLAG_IMMUTABLE`: The receiving app/system cannot fill in or modify the underlying Intent. **Recommended default for security**.
-* `PendingIntent.FLAG_MUTABLE`: Allows the receiving system or component to update/fill in unresolved Intent fields (e.g., inline direct-reply text in notifications, Bubbles, or `RemoteViews` item clicks).
-
-> **Interview Answer:** For PendingIntents on Android 12 and later, developers must explicitly choose mutability. Default to `FLAG_IMMUTABLE` unless the specific use case (like inline replies or bubble intents) requires mutability.
-
----
-
-### 5. `FLAG_UPDATE_CURRENT` & Identity Mechanics
-
-`PendingIntent` equality is determined by:
-```text
-(requestCode, Intent action, Intent data/URI, Intent type, Intent component, Intent categories)
-```
-> **Critical Catch:** **Intent extras are NOT part of the PendingIntent identity check.**
-
-If you create a new `PendingIntent` matching an existing one but with different extras:
-* Without `FLAG_UPDATE_CURRENT`: The system keeps the old extras and ignores the new ones.
-* With `FLAG_UPDATE_CURRENT`: The system updates the extras of the existing instance with the new Intent's extras.
-
----
-
-### 6. Notification ID vs PendingIntent Request Code
-
-These two identifiers serve distinct purposes:
-
-| Identifier | Purpose | API Call |
-|---|---|---|
-| **Notification ID** | Identifies which notification to display, update, or cancel in the notification tray | `notificationManager.notify(id, notification)` |
-| **PendingIntent Request Code** | Differentiates distinct `PendingIntent` instances with the same target intent | `PendingIntent.getActivity(context, requestCode, intent, flags)` |
-
-```text
-Notification ID (Controls tray entry) ≠ PendingIntent requestCode (Controls intent instance)
+#### 4. `InboxStyle` (Digest & Bullet Points)
+Displays up to 5–6 brief summary lines:
+```kotlin
+val inboxNotification = NotificationCompat.Builder(context, CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_inbox)
+    .setContentTitle("5 New Emails")
+    .setContentText("user@example.com")
+    .setStyle(
+        NotificationCompat.InboxStyle()
+            .addLine("Alice: Standup meeting pushed to 11 AM")
+            .addLine("Bob: Pull request #42 reviewed")
+            .addLine("DevOps: Staging build successful")
+            .addLine("Finance: Invoice #104 approved")
+            .setSummaryText("+2 more emails")
+    )
+    .build()
 ```
 
----
-
-### 7. Android 13 (API 33) Runtime Permission (`POST_NOTIFICATIONS`)
-
-Starting in Android 13 (API 33), posting notifications requires runtime permission:
-
-```xml
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-```
-
-* For newly installed applications on API 33+, notifications are blocked until the user grants permission.
-* **Important nuance on `notify()` failure:** Do not assume `notify()` throws an exception when notifications or channels are blocked. It silently fails / drops delivery. Always verify using:
-  ```kotlin
-  val areEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-  ```
-
----
-
-### 8. Production-Grade Notification Implementation Example
+#### 5. `MessagingStyle` + `Person` & Direct Reply (`RemoteInput`)
+The industry standard for chat applications. Supports conversation history, sender avatars, multi-person threads, and inline text replies without opening the app:
 
 ```kotlin
-object Notifier {
-    private const val CHANNEL_SYNC = "sync_status_v1"
+// Step A: Define RemoteInput for direct inline reply
+val replyRemoteInput = RemoteInput.Builder("key_text_reply")
+    .setLabel("Type your reply...")
+    .build()
 
-    // Create channels in Application.onCreate — repeat calls are cheap no-ops
-    fun createChannels(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_SYNC,
-            context.getString(R.string.channel_sync_name),
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = context.getString(R.string.channel_sync_desc)
-            setShowBadge(false)
-        }
-        context.getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(channel)
-    }
+// Step B: Create a MUTABLE PendingIntent for the reply action (FLAG_MUTABLE required by RemoteInput)
+val replyIntent = Intent(context, ReplyReceiver::class.java)
+val replyPendingIntent = PendingIntent.getBroadcast(
+    context, 101, replyIntent,
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+)
 
-    fun showSyncComplete(context: Context, itemId: Long) {
-        val deepLink = Intent(
-            Intent.ACTION_VIEW,
-            "https://example.com/item/$itemId".toUri(),
-            context,
-            MainActivity::class.java
-        )
+val replyAction = NotificationCompat.Action.Builder(
+    R.drawable.ic_send, "Reply", replyPendingIntent
+).addRemoteInput(replyRemoteInput).build()
 
-        // TaskStackBuilder synthesizes a complete back stack so pressing Back returns to parent screens
-        val pendingIntent = TaskStackBuilder.create(context).run {
-            addNextIntentWithParentStack(deepLink)
-            getPendingIntent(
-                itemId.toInt(), // Unique request code per item prevents PendingIntent collision
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
+// Step C: Define Person objects
+val user = Person.Builder().setName("Me").build()
+val sender = Person.Builder()
+    .setName("Elena Rostova")
+    .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+    .build()
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_SYNC)
-            .setSmallIcon(R.drawable.ic_sync)
-            .setContentTitle(context.getString(R.string.sync_done_title))
-            .setContentText(context.getString(R.string.sync_done_body))
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Pre-Oreo compatibility
+// Step D: Construct MessagingStyle
+val messagingNotification = NotificationCompat.Builder(context, CHAT_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_chat)
+    .setStyle(
+        NotificationCompat.MessagingStyle(user)
+            .setConversationTitle("Mobile Core Team")
+            .addMessage("Hey, did we merge the session fix?", System.currentTimeMillis() - 60000, sender)
+            .addMessage("Yes, deployed in build #104!", System.currentTimeMillis() - 30000, user)
+            .addMessage("Awesome, validating on device now.", System.currentTimeMillis(), sender)
+    )
+    .addAction(replyAction)
+    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+    .build()
+```
+
+##### Handling the Inline Reply in `BroadcastReceiver`:
+```kotlin
+class ReplyReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val remoteInputBundle = RemoteInput.getResultsFromIntent(intent) ?: return
+        val replyText = remoteInputBundle.getCharSequence("key_text_reply")?.toString() ?: return
+
+        // 1. Send replyText to backend API via Repository/WorkManager
+        // 2. Update notification immediately to reflect sent message and dismiss loading spinner
+        val updatedNotification = NotificationCompat.Builder(context, CHAT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_chat)
+            .setContentText("Reply sent: $replyText")
+            .setTimeoutAfter(3000) // Auto-dismiss after 3s
             .build()
 
-        with(NotificationManagerCompat.from(context)) {
-            if (areNotificationsEnabled()) {
-                notify(itemId.toInt(), notification) // Distinct Notification ID prevents overwriting
-            }
-        }
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, updatedNotification)
     }
 }
 ```
+
+#### 6. `MediaStyle` (Playback Controls with MediaSessionCompat)
+Integrates playback actions with the OS lock screen, media carousel, and Wear OS/Bluetooth controllers:
+```kotlin
+val mediaNotification = NotificationCompat.Builder(context, MEDIA_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_music_note)
+    .setContentTitle("Midnight City")
+    .setContentText("M83 — Hurry Up, We're Dreaming")
+    .setLargeIcon(albumArtBitmap)
+    .addAction(R.drawable.ic_prev, "Previous", prevPendingIntent) // Action index 0
+    .addAction(R.drawable.ic_pause, "Pause", pausePendingIntent)   // Action index 1
+    .addAction(R.drawable.ic_next, "Next", nextPendingIntent)     // Action index 2
+    .setStyle(
+        androidx.media.app.NotificationCompat.MediaStyle()
+            // Compact shade shows only Action 1 (Pause) and Action 2 (Next)
+            .setShowActionsInCompactView(1, 2)
+            .setMediaSession(mediaSessionCompat.sessionToken)
+    )
+    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+    .build()
+```
+
+#### 7. Progress Indicator Notifications (Determinate vs. Indeterminate)
+```kotlin
+// Determinate: e.g. File download progress (50% complete)
+val determinateNotification = NotificationCompat.Builder(context, SYNC_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_download)
+    .setContentTitle("Downloading Update")
+    .setContentText("50% completed")
+    .setProgress(100, 50, false) // max, current, indeterminate = false
+    .setOngoing(true) // Cannot be swiped away while active
+    .setOnlyAlertOnce(true) // Crucial: prevents sound/vibration on every single progress tick!
+    .build()
+
+// Indeterminate: e.g. Connecting to server or calculating hash
+val indeterminateNotification = NotificationCompat.Builder(context, SYNC_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_sync)
+    .setContentTitle("Connecting to Server...")
+    .setProgress(0, 0, true) // Continuous running marquee animation
+    .setOngoing(true)
+    .setOnlyAlertOnce(true)
+    .build()
+```
+
+#### 8. Custom Layout Notifications (`RemoteViews` + `DecoratedCustomViewStyle`)
+When standard layouts cannot satisfy product branding. Always wrap with `DecoratedCustomViewStyle` so the system still renders the small icon, app name, and dismissal timestamp consistently:
+```kotlin
+val collapsedRemoteViews = RemoteViews(context.packageName, R.layout.notification_custom_collapsed).apply {
+    setTextViewText(R.id.tv_crypto_title, "Bitcoin Alert")
+    setTextViewText(R.id.tv_crypto_value, "$68,450.00 (+4.2%)")
+}
+
+val expandedRemoteViews = RemoteViews(context.packageName, R.layout.notification_custom_expanded).apply {
+    setTextViewText(R.id.tv_crypto_title, "Bitcoin 24h Summary")
+    setImageViewBitmap(R.id.iv_chart, sparklineBitmap)
+}
+
+val customNotification = NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_trending_up)
+    .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+    .setCustomContentView(collapsedRemoteViews)
+    .setCustomBigContentView(expandedRemoteViews)
+    .build()
+```
+
+#### 9. Grouped & Bundled Notifications (`setGroup` + Group Summary)
+When posting multiple related notifications (e.g. 5 chat messages from different friends), bundling them prevents flooding the user's notification tray:
+```kotlin
+val GROUP_KEY_MESSAGES = "com.example.chat.MESSAGES"
+
+// Notification 1
+val notif1 = NotificationCompat.Builder(context, CHAT_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_chat)
+    .setContentTitle("Alice")
+    .setContentText("See you at 5!")
+    .setGroup(GROUP_KEY_MESSAGES)
+    .build()
+
+// Notification 2
+val notif2 = NotificationCompat.Builder(context, CHAT_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_chat)
+    .setContentTitle("Bob")
+    .setContentText("Are we on for tomorrow?")
+    .setGroup(GROUP_KEY_MESSAGES)
+    .build()
+
+// Summary Notification (Aggregates the group)
+val summaryNotification = NotificationCompat.Builder(context, CHAT_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_chat)
+    .setStyle(
+        NotificationCompat.InboxStyle()
+            .addLine("Alice: See you at 5!")
+            .addLine("Bob: Are we on for tomorrow?")
+            .setSummaryText("2 new messages")
+    )
+    .setGroup(GROUP_KEY_MESSAGES)
+    .setGroupSummary(true) // Crucial: marks this as the parent bundle in SystemUI!
+    .build()
+
+notificationManager.notify(1, notif1)
+notificationManager.notify(2, notif2)
+notificationManager.notify(0, summaryNotification)
+```
+
+#### 10. Heads-Up Notification (HUN) & Full-Screen Intent (Incoming Call / Alarm)
+* **Heads-Up Banner:** Triggers when the channel importance is `IMPORTANCE_HIGH` (or `PRIORITY_HIGH` on pre-Oreo), sound/vibrate is enabled, and the device screen is currently on and in use.
+* **Full-Screen Intent:** When the screen is **locked or off**, the OS launches the specified Activity full-screen immediately (e.g. Ringing phone call). If the phone is unlocked, it displays as an interactive Heads-Up banner.
+
+```kotlin
+val callIntent = Intent(context, IncomingCallActivity::class.java)
+val fullScreenPendingIntent = PendingIntent.getActivity(
+    context, 201, callIntent,
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+)
+
+val incomingCallNotification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_call)
+    .setContentTitle("Incoming Call")
+    .setContentText("David Miller")
+    .setPriority(NotificationCompat.PRIORITY_MAX)
+    .setCategory(NotificationCompat.CATEGORY_CALL)
+    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+    .setOngoing(true)
+    // Full screen intent for locked screen; heads-up banner for unlocked screen
+    .setFullScreenIntent(fullScreenPendingIntent, true)
+    .addAction(R.drawable.ic_call_end, "Decline", declinePendingIntent)
+    .addAction(R.drawable.ic_call_accept, "Answer", answerPendingIntent)
+    .build()
+```
+> **Android 14+ Note:** TargetSdk 34+ requires declaring `<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />`. On Android 14, this permission is granted automatically only to calling/dialer and alarm apps; all other apps must prompt the user to enable it in Settings.
+
+---
+
+### 2.8.4 PendingIntent Mechanics, Synthetic Backstack & The Android 12 Trampoline Ban
+
+#### 1. Mutability Flags (`FLAG_IMMUTABLE` vs `FLAG_MUTABLE`)
+Mandatory on Android 12 (API 31+):
+* **`FLAG_IMMUTABLE`:** The receiving process (SystemUI) cannot mutate the intent's extras. **Default for 99% of notification taps.**
+* **`FLAG_MUTABLE`:** Required **only** when the intent payload must be populated by the system or another app (e.g. inline Direct Reply via `RemoteInput`, Bubbles, or `PendingIntent.fillIn()`).
+
+#### 2. The Android 12 Notification Trampoline Ban
+* **What is a Trampoline?** When tapping a notification launched an intermediary invisible `BroadcastReceiver` or `Service`, which then called `startActivity()`.
+* **Why Google Banned It:** Trampolines caused heavy UI lag (300ms–2000ms delay) while starting the background receiver before rendering the screen.
+* **The Rule:** TargetSdk 31+ apps **cannot launch an Activity from a Service or BroadcastReceiver triggered by a notification action**. Doing so throws an `AndroidRuntimeException` and is blocked by the OS.
+* **The Solution:** The notification action must point **directly to an Activity PendingIntent**.
+
+#### 3. Synthesizing the Complete Back Stack (`TaskStackBuilder`)
+When a user launches a deep screen from a notification (e.g., `OrderDetailsActivity`), pressing the Android Back button should navigate back to `OrderListActivity` and then `MainActivity`, **not exit to the Home Launcher**:
+```kotlin
+val detailIntent = Intent(context, OrderDetailsActivity::class.java).apply {
+    putExtra("order_id", 4521L)
+}
+
+// TaskStackBuilder synthesizes the parent stack declared in AndroidManifest.xml
+val pendingIntent = TaskStackBuilder.create(context).run {
+    addNextIntentWithParentStack(detailIntent)
+    getPendingIntent(
+        4521,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}
+```
+
+---
+
+### 2.8.5 Lockscreen Privacy, Permissions & Modern OS Rules (Android 13–16)
+
+#### Lockscreen Visibility Hierarchy
+* **`VISIBILITY_PUBLIC`:** Shows complete notification content, text, and icons on the lock screen.
+* **`VISIBILITY_PRIVATE` (Default):** Shows the notification on the lock screen, but **hides sensitive text** when the device is locked (shows "1 new message" or custom `setPublicVersion()`).
+* **`VISIBILITY_SECRET`:** Hides the notification completely from the lockscreen until unlocked.
+
+```kotlin
+// Public version shown on locked screen:
+val publicNotification = NotificationCompat.Builder(context, BANK_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_bank)
+    .setContentTitle("Bank of America")
+    .setContentText("1 new financial alert")
+    .build()
+
+// Private version shown when user unlocks device:
+val privateNotification = NotificationCompat.Builder(context, BANK_CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_bank)
+    .setContentTitle("Transaction Alert")
+    .setContentText("Wire transfer of $2,500.00 confirmed to Alice")
+    .setPublicVersion(publicNotification) // Swapped in automatically by OS on lockscreen!
+    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+    .build()
+```
+
+#### Android 13 (API 33) Runtime Permission (`POST_NOTIFICATIONS`)
+* Apps targeting API 33+ must request `Manifest.permission.POST_NOTIFICATIONS` at runtime.
+* Calling `notify()` without the permission silently drops delivery (no crash, but nothing renders).
+* Verify status before posting:
+  ```kotlin
+  val canPost = NotificationManagerCompat.from(context).areNotificationsEnabled()
+  ```
+
+#### Android 14 (API 34) Foreground Service Dismissal
+Prior to Android 14, notifications created with `setOngoing(true)` for Foreground Services could never be swiped away. In Android 14, **users can swipe away almost all ongoing notifications**, unless the service is of type `phoneCall` (`CallStyle`) or is enterprise device policy managed.
+
+#### Android 15 / 16 Notification Cooldown
+Introduced in Android 15 to combat notification spam: if an application posts a high volume of notifications within a short window, the OS automatically **lowers the alert volume** and **suppresses Heads-Up peeking banners** for subsequent notifications from that app.
+
+---
+
+### 2.8.6 Notification Interview Questions & Answers Bank (20 Questions)
+
+#### Q1. What triggers a Heads-Up Notification (HUN) on Android? `[Mid]`
+**Answer:**
+A notification renders as an overlay Heads-Up banner if all of the following conditions are met:
+1. The device screen is active (turned on and user is interacting with an app).
+2. The notification channel has `IMPORTANCE_HIGH` or `IMPORTANCE_MAX` (or pre-Oreo `priority >= PRIORITY_HIGH`).
+3. The channel has sound or vibration enabled.
+4. The device is not in Do Not Disturb (DND) mode blocking peeking.
+5. The notification contains a `PendingIntent` for user action or is a full-screen intent.
+
+#### Q2. What is the Notification Trampoline restriction in Android 12, and how do you fix it? `[Senior]`
+**Answer:**
+* **Definition:** A notification trampoline is an architecture where tapping a notification opens a `BroadcastReceiver` or background `Service`, which then calls `startActivity()`.
+* **The Restriction:** In Android 12 (`targetSdk 31`), launching an Activity indirectly from a notification-triggered receiver or service is banned to eliminate user-perceived touch-to-open latency. The OS blocks the launch and logs a warning.
+* **The Fix:** Point the notification's `setContentIntent()` or action buttons directly to an **Activity `PendingIntent`**. If background work must precede UI display, perform it inside the launched Activity or use WorkManager.
+
+#### Q3. Why is `PendingIntent.FLAG_MUTABLE` strictly required for Direct Reply notifications? `[Senior]`
+**Answer:**
+When a user types a reply into an inline notification text field, SystemUI must attach the user's typed input string as an extra into the underlying `Intent` before executing it. If the `PendingIntent` were marked `FLAG_IMMUTABLE`, the OS would block SystemUI from writing into the intent extras, causing `RemoteInput.getResultsFromIntent(intent)` to return `null`.
+
+#### Q4. What is the difference between a Notification ID and a PendingIntent Request Code? `[Junior]`
+**Answer:**
+* **Notification ID:** Used by `NotificationManager.notify(id, notification)` to identify the visual slot in the Android notification tray. Calling `notify()` with an existing ID updates that notification in-place.
+* **PendingIntent Request Code:** Used by the system's `PendingIntent` cache to differentiate multiple `PendingIntent` instances pointing to the same target component. If request codes match and intents match, the system reuses the existing `PendingIntent`.
+
+#### Q5. Why are Notification Channels immutable once created? `[Mid]`
+**Answer:**
+To protect user autonomy. Android design philosophy dictates that once an app registers a notification channel, the **user owns its configuration** (importance, sound, bypass DND). If apps could programmatically raise channel importance or unmute channels, spammy apps would override user preferences.
+
+#### Q6. How do you synthesize an Activity back stack using `TaskStackBuilder`? `[Mid]`
+**Answer:**
+When opening a deep child Activity from a notification, pressing Back should navigate to its logical parent screen instead of the Android Home launcher. By declaring `android:parentActivityName` in `AndroidManifest.xml` and creating the `PendingIntent` via `TaskStackBuilder.create(context).addNextIntentWithParentStack(intent).getPendingIntent(...)`, the framework generates the entire synthetic back stack in the task.
+
+#### Q7. What is `setOnlyAlertOnce(true)` and why is it critical for download notifications? `[Junior]`
+**Answer:**
+When updating a notification repeatedly (e.g. updating a progress bar from 1% to 100%), each call to `notify()` would normally trigger a sound, vibration, and peeking animation. `setOnlyAlertOnce(true)` ensures the notification plays sound and vibrates only on its initial post, and remains silent during subsequent updates.
+
+#### Q8. What happens if an app posts a notification without a NotificationChannel on Android 8.0+? `[Junior]`
+**Answer:**
+On Android 8.0 (API 26) and higher, posting a notification without a valid `channelId` (or with a deleted channel) **fails silently**. The notification is dropped, nothing is displayed in the tray, and Logcat outputs an error: *"Failed to post notification on channel '...' - channel doesn't exist."*
+
+#### Q9. How does `NotificationCompat.MessagingStyle` differ from `InboxStyle`? `[Mid]`
+**Answer:**
+* **`InboxStyle`:** Simple list of static text strings (e.g., list of unread email subject lines). Does not differentiate senders or avatars.
+* **`MessagingStyle`:** Purpose-built for conversations. Supports individual `Person` objects (with avatars, names, and URIs), separates timestamps per message, supports inline direct replies, and qualifies for Android's dedicated "Conversations" section in the notification shade and Bubbles.
+
+#### Q10. How does Notification Grouping (`setGroup` + `setGroupSummary`) work? `[Senior]`
+**Answer:**
+When an app posts 4 or more notifications, Android automatically bundles them. By explicitly setting `.setGroup("group_key")` on child notifications and posting one summary notification with `.setGroupSummary(true)`, the app controls how the bundle appears when collapsed (showing the summary) and how it expands into separate actionable cards when the user pulls it down.
+
+#### Q11. How do Lockscreen Visibility levels protect user privacy? `[Mid]`
+**Answer:**
+* `VISIBILITY_PUBLIC`: Full details visible on lock screen.
+* `VISIBILITY_PRIVATE`: Shows that a notification exists, but hides title/text behind a generic label ("1 new alert") until the user unlocks the screen via PIN or biometrics. You can specify a custom redacted layout using `setPublicVersion()`.
+* `VISIBILITY_SECRET`: Suppresses the notification entirely from the lock screen.
+
+#### Q12. Why should custom notification layouts use `DecoratedCustomViewStyle`? `[Mid]`
+**Answer:**
+Without `DecoratedCustomViewStyle`, your `RemoteViews` layout takes over the entire notification container, removing standard system affordances like the small app icon, app name, expand affordance, and timestamp. `DecoratedCustomViewStyle` renders the custom layout inside the standard system frame, ensuring consistent look, feel, and contrast across manufacturer skins.
+
+#### Q13. What is the Android 14 change regarding Foreground Service notifications? `[Senior]`
+**Answer:**
+In Android 13 and below, notifications bound to an active Foreground Service with `setOngoing(true)` could not be dismissed by the user. Starting in Android 14 (API 34), users are granted the ability to swipe away and dismiss ongoing notifications for most foreground services. Only call-style (`FOREGROUND_SERVICE_TYPE_PHONE_CALL`) and device admin services remain non-dismissible.
+
+#### Q14. What are Notification Bubbles and how are they implemented? `[Senior]`
+**Answer:**
+Bubbles (introduced in Android 11) allow ongoing messaging conversations to float over other apps as circular avatars. They require:
+1. A notification with `MessagingStyle`.
+2. A valid `NotificationCompat.BubbleMetadata.Builder(pendingIntent, icon)` pointing to an Activity configured with `android:resizeableActivity="true"` and `android:allowEmbedded="true"` in the manifest.
+3. User approval in system notification settings.
+
+#### Q15. How do you cancel / dismiss a notification programmatically? `[Junior]`
+**Answer:**
+* Cancel a specific notification: `notificationManager.cancel(notificationId)`.
+* Cancel with tag: `notificationManager.cancel(tag, notificationId)`.
+* Cancel all notifications from your app: `notificationManager.cancelAll()`.
+* Auto-dismiss on click: Set `.setAutoCancel(true)` on the builder.
+
+#### Q16. What is the maximum height / memory limit for a Custom `RemoteViews` notification? `[Senior]`
+**Answer:**
+* Collapsed custom views are constrained to **64dp** in height.
+* Expanded custom views (`setCustomBigContentView`) are constrained to **256dp** in height.
+* Memory limit: Notifications cross the Binder IPC bridge to the `system_server` process. Total bitmap payloads must remain well below the 1MB Binder transaction buffer; exceeding this throws `TransactionTooLargeException`.
+
+#### Q17. How does Android 13 runtime notification permission affect existing installed apps? `[Mid]`
+**Answer:**
+When an app targeting API 32 or lower is run on Android 13, the OS automatically grants permission during the first launch if the app already had notification channels configured, but prompts the user later. When an app updates its `targetSdkVersion` to 33, it must explicitly request `POST_NOTIFICATIONS` like any dangerous runtime permission.
+
+#### Q18. How do you attach a MediaSession to a Notification? `[Mid]`
+**Answer:**
+Using `androidx.media.app.NotificationCompat.MediaStyle()`:
+```kotlin
+.setStyle(
+    NotificationCompat.MediaStyle()
+        .setMediaSession(mediaSessionCompat.sessionToken)
+        .setShowActionsInCompactView(0, 1, 2)
+)
+```
+This enables the OS lockscreen media player, Quick Settings media carousel on Android 11+, and Wear OS playback controls.
+
+#### Q19. How do you check if a specific NotificationChannel is blocked by the user? `[Mid]`
+**Answer:**
+```kotlin
+val manager = context.getSystemService(NotificationManager::class.java)
+val channel = manager.getNotificationChannel(CHANNEL_ID)
+val isBlocked = channel?.importance == NotificationManager.IMPORTANCE_NONE
+```
+If blocked, you cannot unblock it in code; you must prompt the user to navigate to system settings using `Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)`.
+
+#### Q20. What is Android 15 Notification Cooldown and what is the best practice for developers? `[Senior]`
+**Answer:**
+* **Mechanism:** Android 15 monitors notification frequency per application. If an app posts rapid bursts of notifications (e.g., 10 messages within 30 seconds), the OS lowers notification alert volume and suppresses heads-up peeking banners to avoid sensory fatigue.
+* **Best Practice:** Debounce notifications, use grouped notifications with a single group summary update, or update an existing notification in-place using `setOnlyAlertOnce(true)` rather than firing new notifications repeatedly.
+
+---
 
 ---
 
