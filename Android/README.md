@@ -17,7 +17,7 @@ Updated for **Android 16 (API 36)**, **Kotlin 2.x**, **Jetpack Compose**, **Medi
 | Guide | Modules | Covers | Integrated Questions |
 |---|---|---|---|
 | [**android.md**](./android.md) | 15 | Platform stack, ART, components, Intents, permissions, notifications, views, RecyclerView, coroutines, Flow, Room, DataStore, Retrofit, WorkManager, Hilt/Koin, leaks, ANR, startup, profiling, CameraX, Media3, edge-to-edge, accessibility, interop | **215 Questions** (8 core sections) |
-| [**compose.md**](./compose.md) | 15 | Recomposition, compiler internals, slot table, stability, strong skipping, effect APIs, snapshot system, state hoisting, navigation, layouts, lazy lists, `TextFieldState`, UDF, semantics, Material 3, animation, gestures, Canvas, `Modifier.Node`, testing | **40 Questions** (§15) |
+| [**compose.md**](./compose.md) | 18 | Recomposition, compiler internals, slot table, stability, strong skipping, effect APIs, snapshot system, state hoisting, navigation, layouts, lazy lists, `TextFieldState`, UDF, semantics, Material 3, animation, gestures, Canvas, `Modifier.Node`, testing, interop (`ComposeView`/`AndroidView`), edge-to-edge & insets, adaptive layouts & foldables | **40 Questions** (§18) |
 | [**xml.md**](./xml.md) | 12 | XML architecture, custom attributes, custom views, resources, styles vs themes, drawables, inflation, adaptive layouts, ConstraintLayout helpers, selectors, animations, Data Binding, accessibility, MotionLayout, Navigation graphs | **30 Questions** (§12) |
 | [**architecture_patterns.md**](./architecture_patterns.md) | 9 | MVC/MVP/MVVM/MVI compared with code, UDF and state modelling, Clean Architecture, repository pattern, modularization, SOLID on Android, design patterns, choosing an architecture | **50 Questions** (§9, Architecture & System Design) |
 | [**gradle_build.md**](./gradle_build.md) | 11 | Gradle lifecycle, AGP pipeline, build variants, version catalogs, KSP vs kapt, convention plugins, R8, signing and distribution, build performance, CI/CD | **20 Questions** (§11) |
@@ -44,7 +44,7 @@ Difficulty is tagged inline: `[Junior]` · `[Mid]` · `[Senior]`.
 | 06 | Data & Networking | 30 | [`android.md#155`](./android.md#155-data-storage--networking-30-questions) |
 | 07 | Background Work | 20 | [`android.md#156`](./android.md#156-background-execution--scheduling-20-questions) |
 | 08 | Dependency Injection | 20 | [`android.md#157`](./android.md#157-dependency-injection-20-questions) |
-| 09 | Jetpack Compose | 40 | [`compose.md#15`](./compose.md#15-jetpack-compose-interview-questions-40-questions) |
+| 09 | Jetpack Compose | 40 | [`compose.md#18`](./compose.md#18-jetpack-compose-interview-questions-40-questions) |
 | 10 | Performance & Memory | 25 | [`performance.md#52`](./performance.md#52-10-year-level-android-interview-questions) & [`android.md#158`](./android.md#158-performance-memory--diagnostics-25-questions) |
 | 11 | Testing & Security | 25 | [`testing_security.md#12`](./testing_security.md#12-testing--security-interview-questions-25-questions) |
 | 12 | KMP & CMP | 20 | [`kmp_cmp.md#9`](./kmp_cmp.md#9-kotlin-multiplatform--compose-multiplatform-interview-questions-20-questions) |

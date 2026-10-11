@@ -5,7 +5,7 @@
 >
 > Updated for **Compose BOM 2025.x**, **Compose Compiler 2.x with strong skipping**, **Material 3**, **Navigation 2.8 type-safe routes**, and **Compose Multiplatform**.
 >
-> **40 Compose interview questions:** [Section 15](#15-jetpack-compose-interview-questions-40-questions)
+> **40 Compose interview questions:** [Section 18](#18-jetpack-compose-interview-questions-40-questions)
 
 ---
 
@@ -13,6 +13,7 @@
 
 | # | Module | Key Topics |
 |---|---|---|
+| 0 | [Jetpack Compose Core Definition](#0-jetpack-compose-core-definition--architectural-foundations) | Declarative paradigm vs imperative Views, 4 architectural layers (Compiler, Runtime, UI, Material3) |
 | 1 | [Composable Lifecycle & Recomposition](#1-composable-lifecycle--recomposition) | Composition phases, rendering pipeline, CMP rendering, compiler internals, slot table, stability |
 | 2 | [Side-Effects & Effect APIs](#2-side-effects--effect-apis) | `LaunchedEffect`, `DisposableEffect`, `rememberUpdatedState`, `produceState`, `derivedStateOf`, `snapshotFlow` |
 | 3 | [State Management, Restoring & Hoisting](#3-state-management-restoring--hoisting) | State declaration, hoisting, UDF, savers, the snapshot system |
@@ -27,7 +28,49 @@
 | 12 | [Canvas & Custom Modifiers](#12-canvas-custom-drawing-and-custom-modifiers) | `DrawScope`, `drawWithCache`, `Modifier.Node` |
 | 13 | [Performance & Compiler Metrics](#13-compose-performance-and-compiler-metrics) | Stability reports, deferred reads, Macrobenchmark |
 | 14 | [Testing Compose UI](#14-testing-compose-ui) | Semantics finders, clock control, screenshot tests, Robolectric |
-| 15 | [Interview Questions](#15-interview-questions) | Pointer to the question bank |
+| 15 | [Compose & View Interoperability](#15-compose--view-interoperability-interop-architecture) | `ComposeView`, `ViewCompositionStrategy`, `AndroidView`, `AndroidViewBinding`, state sync |
+| 16 | [Window Insets & Edge-to-Edge](#16-window-insets-edge-to-edge--keyboard-management) | Android 15 edge-to-edge, `WindowInsets.safeDrawing`, IME/keyboard, inset consumption |
+| 17 | [Adaptive Layouts & Window Size Classes](#17-adaptive-layouts-window-size-classes--foldables) | `WindowWidthSizeClass`, `ListDetailPaneScaffold`, foldables, hinge postures |
+| 18 | [Interview Questions](#18-jetpack-compose-interview-questions-40-questions) | Pointer to the question bank |
+
+---
+
+# 0. Jetpack Compose: Core Definition & Architectural Foundations
+
+## 0.1 What is Jetpack Compose?
+
+### Definition
+* **Simple:** Jetpack Compose is Android's modern, fully declarative UI toolkit. Instead of mutating stateful XML view hierarchies (e.g., `findViewById`, `setText()`, `setVisibility()`), you write Kotlin functions annotated with `@Composable` that describe what the UI should look like for a given state. When state changes, Compose automatically re-executes the relevant functions to update the display.
+* **Advanced:** Jetpack Compose is a declarative UI programming model built on a reactive **Snapshot State system**, powered by a **Kotlin Compiler Plugin** and a dedicated **Runtime**. It replaces Android's legacy 16-year-old object-oriented View hierarchy (`android.view.View`, `ViewGroup`) with a stateless virtual node tree (`LayoutNode`). Compose bypasses XML layout inflation and view measurement overhead, rendering directly to hardware-accelerated graphics canvases via single-pass measure/layout passes.
+
+```mermaid
+graph TD
+    subgraph Imperative["Imperative Model (Legacy Views & XML)"]
+        StateA[State Changes] --> ViewFind[findViewById / ViewBinding]
+        ViewFind --> Mutate[Imperatively Mutate: view.text = ..., view.visibility = GONE]
+        Mutate --> SyncBug[State & UI fall out of sync]
+    end
+
+    subgraph Declarative["Declarative Model (Jetpack Compose)"]
+        StateB[State Changes: MutableState] --> RuntimeNotify[Compose Runtime Notified via Snapshot System]
+        RuntimeNotify --> Recompose[Recompose: Functions re-execute with new state]
+        Recompose --> SingleSource[UI is a pure transformation: UI = f(State)]
+    end
+```
+
+### The 4 Core Architectural Layers of Compose
+
+| Layer | Maven Artifact | Responsibility |
+|---|---|---|
+| **Compiler** | `androidx.compose.compiler` | Kotlin compiler plugin that transforms `@Composable` functions, generates synthetic parameters (`$composer`, `$changed`), and builds slot-table tracking. |
+| **Runtime** | `androidx.compose.runtime` | State management (`Snapshot`, `mutableStateOf`), the Slot Table (Gap Buffer), and recomposition scheduling. Platform-agnostic. |
+| **UI** | `androidx.compose.ui` | The rendering engine: `LayoutNode` tree, measure & layout passes, `Modifier` chains, touch/pointer input, graphics, and drawing. |
+| **Foundation & Material 3** | `androidx.compose.foundation` / `material3` | High-level design components: `LazyColumn`, `Row`, `Column`, `Scaffold`, `TopAppBar`, gestures, design system tokens, dynamic theming. |
+
+### Why It Is Used
+1. **Eliminates UI/State Desynchronization:** In imperative Views, holding data in both a model and the View objects leads to state drift and illegal UI states. Compose treats UI strictly as a projection of state: `UI = f(State)`.
+2. **Accelerated Development & 100% Kotlin:** Completely eliminates XML, `attrs.xml`, `styles.xml`, and ViewBinding glue code.
+3. **Single-Pass Measurement ($O(N)$):** Traditional nested XML layouts (e.g., nested `LinearLayout` weights) trigger exponential measurement passes ($O(2^N)$), causing frame drops. Compose guarantees single-pass layout measurement.
 
 ---
 
@@ -1830,7 +1873,414 @@ compose.onNodeWithContentDescription("Like, 42 likes")
 
 ---
 
-# 15. Jetpack Compose Interview Questions (40 Questions)
+# 15. Compose & View Interoperability (Interop Architecture)
+
+## 15.1 Compose inside Views (ComposeView & Disposal Strategies)
+
+### Definition
+* **Simple:** `ComposeView` is a regular Android `View` that acts as a container for Jetpack Compose content inside an XML layout, Fragment, or Activity.
+* **Advanced:** `ComposeView` is a concrete subclass of `AbstractComposeView` that instantiates, hosts, and manages the lifecycle of a Compose `Composition` within the traditional Android `ViewTree`. Its memory release, recomposition scope, and lifecycle attachment are governed by its `ViewCompositionStrategy`.
+
+```mermaid
+graph LR
+    FragmentView[Fragment View Created] -->|onCreateView| ComposeView[ComposeView.setContent]
+    ComposeView -->|Attach to ViewTree| Strategy{ViewCompositionStrategy}
+    Strategy -->|DisposeOnViewTreeLifecycleDestroyed| LifecycleDestroyed[Fragment onDestroyView: Disposes Composition]
+    Strategy -->|Default: DisposeOnDetachedFromWindow| Detach[Detach: Premature Disposal on Backstack!]
+```
+
+### Why It Is Used
+Virtually all mature Android applications migrate incrementally rather than undertaking a risky full rewrite. `ComposeView` allows engineering teams to convert individual screens, Fragments, or custom XML compound views one component at a time while keeping the surrounding legacy View architecture intact.
+
+### How It Works Internally
+When `ComposeView.setContent` is called, Compose locates or creates a `Recomposer` rooted at the host `Window` or `ViewTreeLifecycleOwner`.
+* By default, the disposal strategy is `DisposeOnDetachedFromWindowOrReleasedFromPool` (or `DisposeOnDetachedFromWindow`). This automatically disposes the composition when the View detaches from the window.
+* **The Fragment Backstack Trap:** When a Fragment is replaced and pushed to the backstack, its View hierarchy is destroyed and detached, but the Fragment instance remains in memory. Under the default strategy, the composition is prematurely destroyed on detach, causing state loss or broken recreation when popped.
+* **`DisposeOnViewTreeLifecycleDestroyed`:** Binds the composition's lifecycle to the Fragment's `viewLifecycleOwner`. The composition stays intact during transient detaches and only disposes when the Fragment executes `onDestroyView()`.
+
+| Strategy | When It Disposes | Recommended Use Case |
+|---|---|---|
+| `DisposeOnViewTreeLifecycleDestroyed` | When the host `ViewTreeLifecycleOwner` is destroyed (`onDestroyView`) | **Fragments** (mandatory when using backstack) |
+| `DisposeOnDetachedFromWindowOrReleasedFromPool` | When detached and not pooled in `PoolingContainer` | **RecyclerView items** hosting Compose |
+| `DisposeOnLifecycleDestroyed(lifecycle)` | When an explicit `Lifecycle` reaches `DESTROYED` | Custom dialogs, floating windows |
+| `DisposeOnDetachedFromWindow` (Legacy Default) | Whenever the View detaches from window | Top-level Activity views only |
+
+### Code Example
+```kotlin
+class ProfileFragment : Fragment() {
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            // CRITICAL: Prevent composition leaks and premature destruction on backstack
+            setViewCompositionStrategy(
+                ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+            )
+            setContent {
+                AppTheme {
+                    ProfileScreen(
+                        viewModel = hiltViewModel(),
+                        onNavigateSettings = { findNavController().navigate(R.id.to_settings) }
+                    )
+                }
+            }
+        }
+    }
+}
+```
+
+```kotlin
+// Embedding ComposeView inside XML
+// res/layout/activity_hybrid.xml:
+// <androidx.compose.ui.platform.ComposeView
+//     android:id="@+id/compose_header"
+//     android:layout_width="match_parent"
+//     android:layout_height="wrap_content" />
+
+class HybridActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_hybrid)
+
+        findViewById<ComposeView>(R.id.compose_header).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                AppTheme { HeaderBar(title = "Hybrid Dashboard") }
+            }
+        }
+    }
+}
+```
+
+### Common Pitfalls
+* **Omitting `setViewCompositionStrategy` in Fragments.** Using the default strategy causes the composition to be disposed as soon as the Fragment view detaches, breaking state preservation when navigating back.
+* **Embedding multiple standalone `ComposeView`s inside a `RecyclerView`.** Each `ComposeView` creates an isolated composition and layout tree. This creates overhead and frame drops compared to migrating the entire scrolling container to a single `LazyColumn`.
+* **Capturing Fragment context/references inside long-lived composables.** Causes memory leaks; always pass lambdas or observe through `LocalLifecycleOwner.current`.
+
+---
+
+## 15.2 Views inside Compose (AndroidView & AndroidViewBinding)
+
+### Definition
+* **Simple:** `AndroidView` is a Composable that lets you insert any legacy Android `View` (like `MapView`, `WebView`, `SurfaceView`, or `AdView`) directly into a Compose layout.
+* **Advanced:** An adapter composable that instantiates a native `View` subclass via a `factory` block once, binds it into a specialized `LayoutNode` in the composition tree, propagates Compose state updates into the View through an `update` block, and handles lifecycle cleanup via `onRelease`.
+
+### Why It Is Used
+Many complex SDKs (Google Maps SDK, AdMob Banner Ads, ExoPlayer `PlayerView`, legacy camera views, `WebView`) rely entirely on native `android.view.View` APIs. Rewriting them from scratch in pure Compose is impractical or impossible.
+
+### How It Works Internally
+`AndroidView` operates through a three-stage lifecycle:
+1. **`factory` (Single run):** Invoked exactly once when the node enters composition. Must create and configure the View instance.
+2. **`update` (Runs on state change):** Invoked immediately after `factory`, and re-executed whenever any Compose `State` read within the lambda changes. It translates declarative state mutations into imperative View setters (e.g., `view.text = state`).
+3. **`onRelease` (Cleanup):** Invoked when the Composable leaves composition. Essential for terminating native sessions, surface buffers, and hardware renderers.
+
+### Code Example
+```kotlin
+@Composable
+fun InteractiveMap(
+    targetLocation: LatLng,
+    zoomLevel: Float,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            // Factory runs ONCE: initialize heavy view components
+            MapView(context).apply {
+                onCreate(null)
+                onResume()
+            }
+        },
+        update = { mapView ->
+            // Update runs on recomposition when targetLocation or zoomLevel changes
+            mapView.getMapAsync { googleMap ->
+                googleMap.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(targetLocation, zoomLevel)
+                )
+            }
+        },
+        onRelease = { mapView ->
+            // Mandatory cleanup: prevents Surface / EGL / Map context leaks
+            mapView.onPause()
+            mapView.onDestroy()
+        }
+    )
+}
+```
+
+```kotlin
+// AndroidViewBinding: Inflating XML with ViewBinding inside Compose
+@Composable
+fun LegacyPaymentModule(
+    amount: String,
+    onPayClicked: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AndroidViewBinding(
+        factory = LayoutLegacyPaymentBinding::inflate,
+        modifier = modifier
+    ) {
+        // 'this' is LayoutLegacyPaymentBinding
+        tvAmount.text = amount
+        btnPay.setOnClickListener { onPayClicked() }
+    }
+}
+```
+
+### Common Pitfalls
+* **Setting dynamic state only inside `factory`.** The `factory` block runs only once. If you read changing state inside `factory` instead of `update`, the View will never reflect subsequent state changes.
+* **Skipping `onRelease`.** Views that manage native rendering pipelines (like `MapView`, `SurfaceView`, or `PlayerView`) will permanently leak hardware buffers and background threads if not destroyed in `onRelease`.
+* **Triggering recomposition from inside `update`.** Modifying a Compose `State` inside the `update` block can trigger infinite recomposition loops.
+
+---
+
+# 16. Window Insets, Edge-to-Edge & Keyboard Management
+
+## 16.1 Modern Edge-to-Edge Architecture (Android 15+)
+
+### Definition
+* **Simple:** Edge-to-edge means the application draws its UI across the entire physical display, seamlessly extending behind the system status bar, gesture navigation bar, and camera cutouts.
+* **Advanced:** The layout architecture where system window decoration decor fitting is disabled via `WindowCompat.setDecorFitsSystemWindows(window, false)` (or `enableEdgeToEdge()`), delegating full insets management to the UI hierarchy. In **Android 15 (API 35)** and higher, edge-to-edge is mandatory and cannot be disabled by targetSdk 35+ applications.
+
+```mermaid
+graph TD
+    Screen[Full Display Bounds] --> StatusBar[Status Bar Inset: Clock, Battery, Icons]
+    Screen --> DisplayCutout[Display Cutout Inset: Camera Notch]
+    Screen --> AppContent[App Content Layer: Scaffolds, Lists, Graphics]
+    Screen --> NavigationBar[Navigation Bar Inset: 3-Button / Gesture Pill]
+    Screen --> IME[IME Inset: Software Keyboard]
+```
+
+### Why It Is Used
+Traditional Android apps clipped their content between the status bar and navigation bar, creating jarring solid black or gray letterboxing. Modern Android provides an immersive, edge-to-edge canvas. Compose makes insets reactive: animations of the software keyboard (IME) or orientation changes smoothly update insets in real time.
+
+### How It Works Internally
+* `ComponentActivity.enableEdgeToEdge()` sets transparent system bar styles with automatic contrast protection.
+* The platform dispatches `WindowInsetsCompat` to the root view. Compose's `WindowInsets` reads these snapshot values and exposes them to composables.
+* **Key Inset Types:**
+  * `WindowInsets.statusBars`: Height of top status icons.
+  * `WindowInsets.navigationBars`: Height/width of bottom navigation bar.
+  * `WindowInsets.displayCutout`: Avoids camera notches/punch-holes.
+  * `WindowInsets.safeDrawing`: The union of status bars, navigation bars, and display cutouts.
+  * `WindowInsets.ime`: Soft keyboard height and animation progress.
+
+### Insets Modifiers and Consumption
+* `Modifier.windowInsetsPadding(WindowInsets.safeDrawing)`: Adds padding to ensure content does not collide with system bars.
+* `Modifier.imePadding()`: Dynamically increases bottom padding as the on-screen keyboard slides up, keeping inputs visible.
+* `Modifier.consumeWindowInsets(PaddingValues)`: Informs child composables that an outer container has already absorbed certain insets, preventing double-padding bugs.
+
+### Code Example
+```kotlin
+// 1. In MainActivity.kt:
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Enforce modern edge-to-edge before setContent
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        setContent {
+            AppTheme { AppMainScreen() }
+        }
+    }
+}
+
+// 2. In Compose Screen:
+@Composable
+fun AppMainScreen() {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Feed") },
+                // TopAppBar internally consumes statusBars insets
+            )
+        },
+        // Let Scaffold handle system insets
+        contentWindowInsets = WindowInsets.safeDrawing
+    ) { innerPadding ->
+        // LazyColumn with correct edge-to-edge content scrolling
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                // Consume innerPadding so children don't double-pad
+                .consumeWindowInsets(innerPadding)
+                // imePadding pushes the list upward when the keyboard opens
+                .imePadding(),
+            // CRITICAL: Insets belong in contentPadding, NOT on Modifier.padding()
+            // This allows list items to scroll UNDER the translucent system bars!
+            contentPadding = PaddingValues(
+                top = innerPadding.calculateTopPadding(),
+                bottom = innerPadding.calculateBottomPadding() + 16.dp,
+                start = 16.dp,
+                end = 16.dp
+            )
+        ) {
+            items(100) { index ->
+                Text(
+                    text = "Feed Item #$index",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                )
+            }
+        }
+    }
+}
+```
+
+```kotlin
+// Keyboard visibility observation
+@Composable
+fun KeyboardAwareActionFooter(onSend: (String) -> Unit) {
+    val isKeyboardOpen = WindowInsets.isImeVisible
+    var text by remember { mutableStateOf("") }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .imePadding()
+            .padding(8.dp)
+    ) {
+        TextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Type a message...") }
+        )
+        IconButton(onClick = { onSend(text) }) {
+            Icon(Icons.Default.Send, contentDescription = "Send")
+        }
+    }
+}
+```
+
+### Common Pitfalls
+* **Applying `windowInsetsPadding` directly to `LazyColumn`.** Doing `LazyColumn(Modifier.windowInsetsPadding(WindowInsets.safeDrawing))` causes the list bounds to be cut off before the system bars, preventing items from scrolling beautifully behind translucent system bars. Always use `contentPadding` for scrolling containers.
+* **Double Padding Bugs.** Applying `Modifier.padding(innerPadding)` from `Scaffold` and then adding `Modifier.windowInsetsPadding(WindowInsets.statusBars)` inside children. Always consume the insets with `Modifier.consumeWindowInsets(innerPadding)`.
+* **Not using `imePadding` on forms.** Without `imePadding()`, the soft keyboard will cover the active input field when focused.
+
+---
+
+# 17. Adaptive Layouts, Window Size Classes & Foldables
+
+## 17.1 Window Size Classes & Adaptive Scaffolds
+
+### Definition
+* **Simple:** Window Size Classes are standardized breakpoints that classify the available screen area into three tiers (Compact, Medium, Expanded) so your app automatically adapts between phones, foldables, tablets, and desktops.
+* **Advanced:** An opinionated design breakpoint framework defined by the Material 3 specification (`WindowSizeClass`). It measures the current window's width and height into discrete buckets (**Compact** < 600dp, **Medium** 600–840dp, **Expanded** > 840dp) rather than relying on brittle device models or orientation checks, driving adaptive navigation and multi-pane scaffolds (`ListDetailPaneScaffold`).
+
+```mermaid
+graph TD
+    ScreenMetric[Window Metrics Calculation] --> WidthBucket{WindowWidthSizeClass}
+    WidthBucket -->|< 600dp| Compact[Compact: Phones - Single Pane Stack, Bottom Nav]
+    WidthBucket -->|600dp - 840dp| Medium[Medium: Small Tablets & Foldables - Navigation Rail]
+    WidthBucket -->|> 840dp| Expanded[Expanded: Large Tablets & Desktops - Two-Pane Scaffold, Permanent Drawer]
+```
+
+### Why It Is Used
+Modern Android powers thousands of device form factors: candy-bar phones, inner-folding book devices (Pixel Fold, Galaxy Fold), flip foldables, 11-inch tablets, and desktop ChromeOS environments.
+* Checking `screenOrientation == LANDSCAPE` is broken: a phone in landscape has narrow vertical space, while a foldable unfolded in portrait has tablet-like width.
+* Hardcoding device screen sizes fails in multi-window split screen.
+* Window Size Classes provide a unified, responsive breakpoint system.
+
+### How It Works Internally
+* `calculateWindowSizeClass(activity)` computes the current window boundaries using the AndroidX Window library's `WindowMetricsCalculator`.
+* Material 3 Adaptive (`androidx.compose.material3.adaptive:adaptive-layout`) provides:
+  * **`ListDetailPaneScaffold`**: Manages a two-pane Master-Detail layout. On Compact width, it presents only one pane at a time with automated back-stack handling. On Expanded width, it renders both panes side-by-side.
+  * **`SupportingPaneScaffold`**: Primary content pane alongside secondary contextual panels (e.g., document editor with comments rail).
+  * **Hinge & Foldable Postures**: Inspects `FoldingFeature` from AndroidX Window to avoid rendering buttons across physical screen creases and to adapt to tabletop posture (`FoldingFeature.State.HALF_OPENED`).
+
+| WindowWidthSizeClass | Breakpoint Width | Typical Hardware | Ideal Navigation / Layout |
+|---|---|---|---|
+| **Compact** | `< 600dp` | Standard Phones (Portrait) | `NavigationBar` (Bottom), Single Pane |
+| **Medium** | `600dp – 840dp` | Foldables Unfolded, 7-8" Tablets | `NavigationRail` (Side), Flexible Pane |
+| **Expanded** | `> 840dp` | Large Tablets, Desktops, Landscape Foldables | `NavigationDrawer` (Expanded Side), `ListDetailPaneScaffold` (Dual Pane) |
+
+### Code Example
+```kotlin
+// 1. Determining WindowSizeClass in MainActivity
+class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
+            AppTheme {
+                AdaptiveHomeScreen(windowWidthSizeClass = windowSizeClass.widthSizeClass)
+            }
+        }
+    }
+}
+
+// 2. Responsive Navigation Shell
+@Composable
+fun AdaptiveHomeScreen(windowWidthSizeClass: WindowWidthSizeClass) {
+    when (windowWidthSizeClass) {
+        WindowWidthSizeClass.Compact -> {
+            // Standard Phone: Bottom Bar
+            Scaffold(bottomBar = { AppBottomNavigationBar() }) { padding ->
+                ScreenContent(Modifier.padding(padding))
+            }
+        }
+        WindowWidthSizeClass.Medium -> {
+            // Small Tablet / Foldable: Navigation Rail on the left
+            Row(Modifier.fillMaxSize()) {
+                AppNavigationRail()
+                ScreenContent(Modifier.weight(1f))
+            }
+        }
+        WindowWidthSizeClass.Expanded -> {
+            // Large Tablet / Desktop: Permanent Navigation Drawer
+            PermanentNavigationDrawer(
+                drawerContent = { PermanentDrawerSheet { AppDrawerContent() } }
+            ) {
+                ScreenContent(Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+```
+
+```kotlin
+// 3. Material 3 Adaptive List-Detail Pane Scaffold
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+@Composable
+fun AdaptiveMailApp() {
+    val navigator = rememberListDetailPaneScaffoldNavigator<String>()
+
+    // BackHandler automatically handles popping from detail to list on Compact screens
+    NavigableListDetailPaneScaffold(
+        navigator = navigator,
+        listPane = {
+            EmailListPane(
+                onSelectEmail = { emailId ->
+                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, emailId)
+                }
+            )
+        },
+        detailPane = {
+            val selectedEmailId = navigator.currentDestination?.content
+            if (selectedEmailId != null) {
+                EmailDetailPane(
+                    emailId = selectedEmailId,
+                    onBack = { navigator.navigateBack() }
+                )
+            } else {
+                EmptyDetailPlaceholder()
+            }
+        }
+    )
+}
+```
+
+### Common Pitfalls
+* **Relying on device configuration orientation instead of Window Size Classes.** A phone held in landscape does NOT have the screen real estate of a tablet; using orientation results in unreadable, squished dual-pane layouts on phones.
+* **Placing interactive buttons directly over a foldable hinge.** A device in tabletop or half-folded posture (`FoldingFeature.OcclusionType.FULL`) can mask or distort content positioned across the fold. Query `FoldingFeature.bounds` to pad content away from the hinge.
+* **Duplicating state between single-pane and two-pane modes.** State must reside in a common parent ViewModel or state holder so that resizing the window (e.g., folding/unfolding) does not clear user selections or progress.
+
+---
+
+# 18. Jetpack Compose Interview Questions (40 Questions)
 
 > Core topics: Composable lifecycle, recomposition, stability, effects, state hoisting, layout, animation, gestures, performance, testing, and interop.
 > Difficulty: `[Junior]` `[Mid]` `[Senior]`
