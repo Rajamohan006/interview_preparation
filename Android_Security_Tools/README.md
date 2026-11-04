@@ -5,14 +5,17 @@ Welcome to the **Android Security & Penetration Testing Tools** reference reposi
 
 ---
 
-## 📚 Dedicated Tool Master Guides
+## 📚 Dedicated Tool Master Guides & Checklists
 
-| Tool | Core Domain & Focus | Link to Comprehensive Guide |
+| Resource | Core Domain & Focus | Link to Comprehensive Guide |
 |---|---|---|
+| **Penetration Testing Checklist** | **Complete 17-Section Master Playbook**: Vulnerability analysis, exploitation, detection commands & remediation for all Android security domains. | [👉 Read Complete Pentest Checklist](complete_pentest_checklist.md) |
 | **ADB** | Android Debug Bridge: Device communication, package management, activity execution, port forwarding, logcat inspection, and root operations. | [👉 Read Complete ADB Guide](adb.md) |
 | **JADX** | Dalvik to Java Decompiler: Decompilation, JADX-GUI code exploration, automated deobfuscation, crypto auditing, and vulnerability discovery. | [👉 Read Complete JADX Guide](jadx.md) |
 | **APKTool** | Binary Disassembly & Repackaging: Smali assembly modification, resource decoding, root/SSL pinning bypass patching, and APK re-signing. | [👉 Read Complete APKTool Guide](apktool.md) |
 | **MobSF** | Mobile Security Framework: Automated SAST/DAST, REST API pipelines, dynamic Frida testing, live traffic interception, and CI/CD security quality gates. | [👉 Read Complete MobSF Guide](mobsf.md) |
+| **Burp Suite** | Web & Mobile Intercepting Proxy: Traffic manipulation, OWASP Top 10 auditing, REST/GraphQL API testing, Android system CA installation, and SSL pinning bypass. | [👉 Read Complete Burp Suite Guide](burpsuite.md) |
+| **Metasploit** | Penetration Testing & Exploitation Framework: Remote & local exploits, Meterpreter in-memory C2, msfvenom payload generation, Android APK backdooring, network pivoting, and post-exploitation. | [👉 Read Complete Metasploit Guide](metasploit.md) |
 
 ---
 
@@ -88,4 +91,7 @@ In a real-world mobile security audit, these four tools form an interconnected, 
 2. Explore [**JADX**](jadx.md) to learn how to dissect compiled Java classes and trace cryptographic keys.
 3. Advance to [**APKTool**](apktool.md) to master Smali patching, APK rebuilding, alignment, and signature verification.
 4. Scale your security operations with [**MobSF**](mobsf.md) for automated SAST/DAST audits and CI/CD pipelines.
+5. Intercept and audit network APIs with [**Burp Suite**](burpsuite.md) for OWASP Top 10 web & mobile vulnerabilities.
+6. Master post-exploitation, payload generation, and APK backdooring with [**Metasploit**](metasploit.md).
+7. Review the master [**Complete Penetration Testing Checklist**](complete_pentest_checklist.md) before undertaking any mobile audit.
 
